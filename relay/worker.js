@@ -3,7 +3,7 @@
  *
  * The browser runs the whole Claude-subscription OAuth flow (PKCE verifier,
  * authorize page, pasted code, direct api.anthropic.com calls afterwards);
- * console.anthropic.com/v1/oauth/token rejects every browser origin, so this
+ * platform.claude.com/v1/oauth/token rejects every browser origin, so this
  * relay forwards exactly that exchange and nothing else. Pattern proven in
  * gm2211/motive (server/src/claude-exchange.ts): stateless — nothing stored,
  * no token ever logged, the response body is the only place tokens exist here.
@@ -13,9 +13,9 @@
  *   Deno Deploy: deployctl deploy --project trim-lab-relay relay/worker.js   (or point the dashboard at this file)
  * Then paste the deployed URL into the coach's settings panel.
  */
-const CLAUDE_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token";
+const CLAUDE_TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
 const CLAUDE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-const CLAUDE_REDIRECT = "https://console.anthropic.com/oauth/code/callback";
+const CLAUDE_REDIRECT = "https://platform.claude.com/oauth/code/callback";
 const ALLOWED_ORIGINS = [
   "https://gm2211.github.io",
   "http://localhost:8472",

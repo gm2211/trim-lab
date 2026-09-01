@@ -9604,10 +9604,13 @@ async function oauthBegin(){
   const verifier=b64url(raw);
   const challenge=b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
   PKCE={verifier, state:b64url(crypto.getRandomValues(new Uint8Array(16)))};
-  const u=new URL("https://claude.ai/oauth/authorize");
+  // endpoints per the current Claude Code CLI (captured live from
+  // `claude setup-token`): claude.ai/oauth/authorize now answers
+  // "Invalid request format" — the flow moved to claude.com
+  const u=new URL("https://claude.com/cai/oauth/authorize");
   u.search=new URLSearchParams({code:"true", client_id:"9d1c250a-e61b-44d9-88ed-5944d1962f5e",
-    response_type:"code", redirect_uri:"https://console.anthropic.com/oauth/code/callback",
-    scope:"user:profile user:inference", code_challenge:challenge, code_challenge_method:"S256",
+    response_type:"code", redirect_uri:"https://platform.claude.com/oauth/code/callback",
+    scope:"user:inference", code_challenge:challenge, code_challenge_method:"S256",
     state:PKCE.state}).toString();
   window.open(u.toString(),"_blank");
   $("oauthCodeRow").style.display="block";
