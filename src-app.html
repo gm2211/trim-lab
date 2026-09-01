@@ -210,19 +210,28 @@
   .drillnav button:disabled{opacity:.4;cursor:default}
   .drillnav .score{font-family:var(--mono);font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums}
 
-  /* live effect bar */
-  .fx{
-    background:var(--panel);border:1px solid var(--line);border-radius:4px;
-    padding:6px 12px;margin-bottom:8px;font-size:12px;
-    display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;min-height:20px;
-  }
-  .fx .src{font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);white-space:nowrap}
-  .fx .job{color:var(--ink3);font-size:11px;white-space:nowrap}
+  /* effect + next-move footer */
+  .fx{background:var(--panel);border:1px solid var(--line);border-radius:4px;margin-top:8px;
+    display:grid;grid-template-columns:1fr 1.4fr 1.6fr;overflow:hidden}
+  .fx-zone{padding:8px 14px;border-right:1px solid var(--line);min-width:0}
+  .fx-zone:last-child{border-right:none}
+  .fx-k{font-family:var(--disp);font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);margin-bottom:2px}
+  .fx-k.accent{color:var(--accent)}
+  .fx-line{font-size:16px;font-weight:700;color:var(--accent)}
+  .fx-job{font-size:11.5px;color:var(--ink2)}
+  .fx-chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-height:24px}
   .fx .chip{font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums;padding:1px 7px;border-radius:99px;white-space:nowrap}
   .fx .chip.good{background:var(--good-soft);color:var(--good)}
   .fx .chip.bad{background:var(--crit-soft);color:var(--crit)}
   .fx .chip.mut{background:var(--panel2);color:var(--ink2)}
   .fx .idle{color:var(--ink3);font-size:12px}
+  .fx-move{font-size:14.5px;font-weight:700}
+  .fx-sub{font-size:11.5px;color:var(--ink2);line-height:1.4}
+  .fx-next{background:var(--panel2)}
+  .fx-next.bad{background:var(--crit-soft)}
+  .fx-next.warn{background:var(--warn-soft)}
+  .fx-next.good{background:var(--good-soft)}
+  @media(max-width:759px){.fx{grid-template-columns:1fr}.fx-zone{border-right:none;border-bottom:1px solid var(--line)}}
 
   .card button.try{
     margin-top:10px;font-family:var(--disp);letter-spacing:.08em;text-transform:uppercase;font-size:11px;font-weight:700;
@@ -291,6 +300,7 @@
     #pane-sim .controls{position:static;height:100%}
     #pane-sim .stage{height:100%;display:flex;flex-direction:column;min-width:0}
     #pane-sim .viz-grid{flex:1;min-height:0;display:grid;grid-template-columns:1.25fr 1fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:8px}
+    #pane-sim .fx{flex:0 0 auto}
     #fig-sections{grid-row:auto}
     #pane-sim figure.viz{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;padding:8px 10px}
     #pane-sim figure.viz svg{flex:1 1 0;min-height:0;width:100%;height:100%}
@@ -403,7 +413,6 @@
 
     <div class="stage">
       <div class="tiles" id="tiles"></div>
-      <div class="fx" id="fx"><span class="idle">Pull any line — what it changes shows up here, live.</span></div>
       <div class="coach" id="coach"></div>
       <div class="viz-grid">
         <figure class="viz" id="fig-sections">
@@ -423,6 +432,11 @@
           <figcaption>Heel <span class="hint">target band 12–22°</span></figcaption>
           <svg id="svg-heel" viewBox="0 0 360 205" role="img" aria-label="Heel angle gauge"></svg>
         </figure>
+      </div>
+      <div class="fx" id="fx">
+        <div class="fx-zone"><div class="fx-k">You pulled</div><div class="fx-line" id="fxLine">—</div><div class="fx-job" id="fxJob">pull any line to see its effect here</div></div>
+        <div class="fx-zone fx-mid"><div class="fx-k">What it changed</div><div class="fx-chips" id="fxChips"></div></div>
+        <div class="fx-zone fx-next" id="fxNext"><div class="fx-k accent">Next move</div><div class="fx-move" id="fxMove">Trim something.</div><div class="fx-sub" id="fxSub"></div></div>
       </div>
     </div>
   </div>
@@ -1140,38 +1154,52 @@ function renderFx(src,a,b){
   const add=(label,ov,nv,eps,f,dOld,dNew)=>{
     if(Math.abs(nv-ov)<eps) return;
     const cls = dNew<dOld-1e-9 ? "good" : dNew>dOld+1e-9 ? "bad" : "mut";
-    chips.push({mag:Math.abs(nv-ov)/eps, html:`<span class="chip ${cls}">${label} ${f(ov)}→${f(nv)}</span>`});
+    chips.push({mag:Math.abs(nv-ov)/eps, html:`<span class="chip ${cls}">${label} ${f(ov)}\u2192${f(nv)}</span>`});
   };
-  const dg=v=>fmt1(v)+"°", pc=v=>(v*100).toFixed(0)+"%", kt=v=>fmt1(v)+" kt";
+  const dg=v=>fmt1(v)+"\u00B0", pc=v=>(v*100).toFixed(0)+"%", kt=v=>fmt1(v)+" kt";
   add("main twist",a.main.twist,b.main.twist,.8,dg,Math.abs(a.main.twist-a.idl.twist),Math.abs(b.main.twist-b.idl.twist));
   add("main belly",a.main.depth,b.main.depth,.004,pc,Math.abs(a.main.depth-a.idl.depth),Math.abs(b.main.depth-b.idl.depth));
   add("main draft",a.main.draft,b.main.draft,.007,pc,Math.abs(a.main.draft-a.idl.draftPos),Math.abs(b.main.draft-b.idl.draftPos));
   add("boom angle",a.main.boom,b.main.boom,1.5,dg,0,0);
   add("jib twist",a.jib.twist,b.jib.twist,.8,dg,Math.abs(a.jib.twist-a.idl.twist),Math.abs(b.jib.twist-b.idl.twist));
   add("jib belly",a.jib.depth,b.jib.depth,.004,pc,Math.abs(a.jib.depth-a.idl.depth),Math.abs(b.jib.depth-b.idl.depth));
-  add("jib draft",a.jib.draft,b.jib.draft,.007,pc,Math.abs(a.jib.draft-a.idl.draftPos),Math.abs(b.jib.draft-b.idl.draftPos));
   add("heel",a.heel,b.heel,.5,dg,distBand(a.heel,12,22),distBand(b.heel,12,22));
   add("helm",a.helm,b.helm,.5,dg,distBand(a.helm,1,4),distBand(b.helm,1,4));
   add("speed",a.speed,b.speed,.05,kt,-a.speed,-b.speed);
-  add("power",a.eff,b.eff,.02,v=>Math.round(v*100)+"%",-a.eff,-b.eff);
   chips.sort((x,y)=>y.mag-x.mag);
-  // prescription, not just diagnosis: where the optimizer would put this line
-  let tip="";
-  if(OPT && (src in OPT)){
-    const d=OPT[src]-state[src];
-    if(Math.abs(d)<=.05) tip=`<span class="chip good">✓ at the best setting</span>`;
-    else{
-      const verb= src==="trav" ? (d>0?"car up":"car down") : (d>0?"pull to":"ease to");
-      tip=`<span class="chip mut">coach: ${verb} ${Math.round(OPT[src]*100)}</span>`;
-    }
+  $("fxLine").textContent=M.name;
+  $("fxJob").textContent=M.job;
+  $("fxChips").innerHTML = chips.length ? chips.slice(0,4).map(c=>c.html).join("")
+    : `<span class="idle">no measurable change \u2014 try a bigger pull</span>`;
+  // NEXT MOVE: the solver's biggest remaining gain across every line
+  const nextEl=$("fxNext");
+  if(!OPT){ $("fxMove").textContent="\u2026solver warming up"; $("fxSub").textContent=""; nextEl.className="fx-zone fx-next"; return; }
+  let worst=null, wd=0;
+  for(const k of TRIM_KEYS){
+    const span=k==="trav"?2:1;
+    const d=Math.abs(OPT[k]-state[k])/span;
+    if(d>wd){wd=d; worst=k;}
   }
-  $("fx").innerHTML = `<span class="src">${M.name}</span><span class="job">${M.job}</span>` +
-    (chips.length ? chips.slice(0,5).map(c=>c.html).join("")
-                  : `<span class="idle">no measurable change — try a bigger pull</span>`) + tip;
+  const wrongWay = (src in OPT) && PREV_STATE &&
+    Math.abs(state[src]-OPT[src]) > Math.abs(PREV_STATE[src]-OPT[src]) + .01;
+  if(wd<=.06){
+    nextEl.className="fx-zone fx-next good";
+    $("fxMove").textContent="You're at the solver's best trim.";
+    $("fxSub").textContent="Change the wind or heading and re-trim.";
+  }else{
+    const m2=LINEMETA[worst];
+    const d=OPT[worst]-state[worst];
+    const verb = worst==="trav" ? (d>0?"Traveler up":"Traveler down")
+               : (d>0?"Pull the "+m2.name.toLowerCase():"Ease the "+m2.name.toLowerCase());
+    nextEl.className="fx-zone fx-next "+(wrongWay?"bad":"warn");
+    $("fxMove").textContent=`${verb} \u2014 roughly ${Math.round(Math.abs(d)*100)}% of range to go.`;
+    $("fxSub").textContent=(wrongWay?"That last move went the wrong way. ":"")+
+      `Fast setting is ~${Math.round(OPT[worst]*100)}; this line owns ${m2.job}.`;
+  }
 }
 
 /* ---------------- main update ---------------- */
-let lastR=null;
+let lastR=null, PREV_STATE=null;
 function update(src){
   renderVals();
   const r = compute();
@@ -1183,6 +1211,7 @@ function update(src){
   B3dirty=true;
   if($("awCard")) $("awCard").innerHTML = "Apparent wind is what the sails actually feel: <b>"+fmt1(r.aws)+" kt</b> at <b>"+Math.round(r.awa)+"\u00B0</b> off the bow.";
   if(src){ renderOptims(); scheduleOptims(); }
+  PREV_STATE=Object.fromEntries(TRIM_KEYS.map(k=>[k,state[k]]));
 }
 
 /* ---------------- wind compass dial ---------------- */
