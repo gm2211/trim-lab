@@ -23,7 +23,7 @@ CLAIM={("sheet",1):"trim the main back onto the wind",("sheet",-1):"let the leec
 ("jhal",1):"firm up the jib's luff and pull its draft forward",("jhal",-1):"soften the jib's entry"}
 NAME={"sheet":"Mainsheet","trav":"Traveler","vang":"Boom vang","outhaul":"Outhaul","cunn":"Cunningham",
 "backstay":"Backstay","mainhal":"Main halyard","jsheet":"Jib sheet","jcar":"Fairlead car","jhal":"Jib halyard"}
-WINDP={"medium":"11 kt of good breeze","fresh":"a fresh 16 kt","heavy":"21 kt and plenty of it"}
+WINDP={"medium":"11 kt of wind","fresh":"16 kt of wind","heavy":"21 kt of wind"}
 POSP={"close-hauled":"Close-hauled","close reach":"On a close reach","beam reach":"On a beam reach",
 "broad reach":"On a broad reach","a run":"Running downwind"}
 

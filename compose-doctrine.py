@@ -26,7 +26,7 @@ CLAIM={("mainsheet","tension"):"close the leech and point",("mainsheet","ease"):
 ("jib halyard","tension"):"round the jib's entry",("jib halyard","ease"):"soften the jib's entry",
 ("reef","tension"):"shorten sail and drop the center of effort"}
 ALL=list(ACT.keys())
-WINDP={"light":"a soft 6 kt of breeze","medium":"11 kt of good breeze","fresh":"a fresh 16 kt","heavy":"21 kt and building"}
+WINDP={"light":"6 kt of wind","medium":"11 kt of wind","fresh":"16 kt of wind","heavy":"21 kt of wind"}
 POSP={"close-hauled":"Close-hauled","close-reach":"On a close reach","beam-reach":"On a beam reach","broad-reach":"On a broad reach","run":"Running downwind"}
 
 out=[]
