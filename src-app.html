@@ -226,6 +226,41 @@
     background:rgba(10,20,26,.65);color:#fff;border:1.5px solid rgba(255,255,255,.5)}
   .dye-btn.on{background:var(--accent);border-color:var(--accent)}
   .dye-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  /* ============ AI COACH ============ */
+  .coach-fab{position:fixed;bottom:16px;right:16px;z-index:90;font-family:var(--disp);letter-spacing:.08em;
+    text-transform:uppercase;font-size:12px;font-weight:700;padding:10px 16px;border-radius:99px;cursor:pointer;
+    background:var(--accent);color:#fff;border:none;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+  .coach-fab:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .coach-panel{position:fixed;bottom:16px;right:16px;z-index:95;width:min(400px,calc(100vw - 32px));
+    max-height:min(560px,calc(100vh - 90px));display:none;flex-direction:column;background:var(--panel);
+    border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.4);overflow:hidden}
+  .coach-panel.open{display:flex}
+  .coach-head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}
+  .coach-head b{font-family:var(--disp);letter-spacing:.1em;text-transform:uppercase;font-size:12px}
+  .coach-head .prov{font-size:10.5px;color:var(--ink3);margin-left:auto}
+  .coach-head button{background:none;border:none;color:var(--ink2);cursor:pointer;font-size:14px;padding:2px 6px}
+  .coach-log{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px;min-height:120px}
+  .cmsg{max-width:88%;padding:7px 11px;border-radius:8px;font-size:13px;line-height:1.45;white-space:pre-wrap}
+  .cmsg.user{align-self:flex-end;background:var(--accent-soft);color:var(--ink)}
+  .cmsg.ai{align-self:flex-start;background:var(--panel2)}
+  .cmsg.sys{align-self:center;background:none;color:var(--ink3);font-size:11.5px;text-align:center}
+  .cmsg .delta{display:block;margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--ink2)}
+  .coach-in{display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--line)}
+  .coach-in input{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--ink);
+    padding:8px 10px;font-size:13px}
+  .coach-in button{font-family:var(--disp);font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+    background:var(--accent);color:#fff;border:none;border-radius:4px;padding:0 14px;cursor:pointer}
+  .coach-in button:disabled{opacity:.5;cursor:default}
+  .coach-key{padding:10px 12px;border-top:1px solid var(--line);font-size:12px;display:none}
+  .coach-key.show{display:block}
+  .coach-key input{width:100%;margin:6px 0;background:var(--bg);border:1px solid var(--line);border-radius:4px;
+    color:var(--ink);padding:7px 9px;font-size:12px;font-family:var(--mono)}
+  .coach-key .row{display:flex;gap:6px;align-items:center}
+  .coach-key select{background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--ink);padding:5px;font-size:12px}
+  .coach-key small{color:var(--ink3)}
+  .ai-flash{animation:aiflash 1.2s ease 3}
+  @keyframes aiflash{0%,100%{background:transparent}50%{background:var(--accent-soft)}}
+
   /* ===== desktop: whole Helm tab fits one viewport, no page scroll ===== */
   @media(min-width:760px) and (min-height:520px){
     main.lock{height:calc(100dvh - 60px);padding:8px 16px;overflow:hidden}
@@ -266,8 +301,9 @@
           <input type="range" id="tws" min="4" max="24" step="1" value="12">
         </div>
         <div class="ctl">
-          <div class="row1"><label>Point of sail</label></div>
+          <div class="row1"><label>Point of sail</label><span class="val" id="v-twa"></span></div>
           <div class="seg" id="pos-seg"></div>
+          <svg id="windDial" viewBox="0 0 130 130" style="width:112px;display:block;margin:6px auto 0;cursor:grab;touch-action:none" role="slider" aria-label="Wind direction"></svg>
         </div>
         <div class="ctl">
           <div class="row1"><label>Sea state</label></div>
@@ -369,6 +405,25 @@
 </section>
 </main>
 
+<button class="coach-fab" id="coachFab">⚓ Ask the coach</button>
+<div class="coach-panel" id="coachPanel" role="dialog" aria-label="AI coach">
+  <div class="coach-head"><b>AI Coach</b><span class="prov" id="coachProv"></span>
+    <button id="coachGear" title="settings">⚙</button><button id="coachClose" title="close">✕</button></div>
+  <div class="coach-log" id="coachLog"></div>
+  <div class="coach-key" id="coachKey">
+    <div>Bring your own Anthropic API key — stored only in this browser, sent only to api.anthropic.com.</div>
+    <input type="password" id="keyIn" placeholder="sk-ant-...">
+    <div class="row">
+      <select id="modelSel"><option value="claude-opus-5">Opus 5 (best)</option><option value="claude-haiku-4-5">Haiku 4.5 (cheap)</option></select>
+      <button id="keySave" style="font-size:11px;padding:5px 10px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Save</button>
+      <button id="keyForget" style="font-size:11px;padding:5px 10px;background:none;border:1px solid var(--line);color:var(--ink2);border-radius:4px;cursor:pointer">Forget key</button>
+    </div>
+    <small>Ask things like “demonstrate how I can add more twist”.</small>
+  </div>
+  <div class="coach-in"><input id="coachMsg" placeholder="Ask, or say “demonstrate …”" maxlength="500">
+    <button id="coachSend">Ask</button></div>
+</div>
+
 <script id="lib-slot"></script>
 <script>
 "use strict";
@@ -388,7 +443,7 @@ const POS = [
   {name:"Run",          twa:165},
 ];
 const state = {
-  tws:12, posIdx:0, sea:"flat", gust:false,
+  tws:12, posIdx:0, twaC:null, sea:"flat", gust:false,
   sheet:.85, trav:0, vang:.40, outhaul:.50, cunn:.25, backstay:.35,
   jsheet:.75, jsheetw:0, jcar:.50, jhal:.55, mainhal:.90,
 };
@@ -534,7 +589,7 @@ function compute(){
   const s = state;
   const twsKt = s.tws + (s.gust?6:0);
   const tws = twsKt*KT;
-  const twa = s.twaOv || POS[s.posIdx].twa;
+  const twa = s.twaOv || s.twaC || POS[s.posIdx].twa;
   const chopDrag = s.sea==="chop" ? 1.14 : 1.0;
 
   let V=2.0, heel=8, lee=3, r=null;
@@ -768,14 +823,17 @@ function arrow(x,y,angDeg,len,color,label,dash){
 
 // horizontal section: luff at (x0,y0), bow to the LEFT, chord runs right and droops
 // down (leeward) by ang degrees; camber bulges leeward (down)
-function hSection(x0,y0,ang,L,depth,draftPos){
+function hSectionGeom(x0,y0,ang,L,depth,draftPos){
   const a=clamp(ang,-5,40);
   const cx=Math.cos(rad(a)), cy=Math.sin(rad(a));
   const nx=-cy, ny=cx; // 90° CW = leeward
-  const px = x0 + cx*L*draftPos + nx*depth*L*2;
-  const py = y0 + cy*L*draftPos + ny*depth*L*2;
-  return `M ${x0} ${y0} Q ${px} ${py} ${x0+cx*L} ${y0+cy*L}`;
+  const P0=[x0,y0];
+  const Pc=[x0 + cx*L*draftPos + nx*depth*L*2, y0 + cy*L*draftPos + ny*depth*L*2];
+  const P2=[x0+cx*L, y0+cy*L];
+  const at=t=>{const u=1-t; return [u*u*P0[0]+2*t*u*Pc[0]+t*t*P2[0], u*u*P0[1]+2*t*u*Pc[1]+t*t*P2[1]];};
+  return {d:`M ${P0[0]} ${P0[1]} Q ${Pc[0]} ${Pc[1]} ${P2[0]} ${P2[1]}`, at};
 }
+function hSection(x0,y0,ang,L,depth,draftPos){ return hSectionGeom(x0,y0,ang,L,depth,draftPos).d; }
 // wind arrow for section view: bow points left, awa measured off the bow toward the top
 function hArrow(tx,ty,awa,len,color,label){
   const ux=-Math.cos(rad(awa)), uy=-Math.sin(rad(awa));
@@ -811,14 +869,22 @@ function renderSections(r){
       <text x="238" y="${row.y-8}" font-size="10" fill="var(--ink2)" font-family="var(--mono)">+${fmt1(mAng)}° twist</text>`;
     out += hArrow(xm+34, row.y-14, clamp(awaLocal,12,150), 40, "var(--teal)", ri===0?"apparent wind":"");
     out += `<path class="sailpath" d="${hSection(xm,row.y,mIdl,row.Lm,idl.depth*depthTaper,idl.draftPos)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
-    out += `<path class="sailpath" d="${hSection(xm,row.y,mAng,row.Lm,r.main.depth*depthTaper,r.main.draft)}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
+    { const g=hSectionGeom(xm,row.y,mAng,row.Lm,r.main.depth*depthTaper,r.main.draft);
+      out += `<path class="sailpath" d="${g.d}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
+      const [dx2,dy2]=g.at(r.main.draft), [tx2,ty2]=g.at(r.idl.draftPos);
+      out += `<circle cx="${tx2}" cy="${ty2}" r="4" fill="none" stroke="var(--ghost)" stroke-width="1.4"/>`;
+      out += `<circle cx="${dx2}" cy="${dy2}" r="3.2" fill="var(--accent)" stroke="var(--bg)" stroke-width="1"/>`; }
     out += `<circle cx="${xm}" cy="${row.y}" r="3" fill="var(--ink)"/>`;
     const jIdl = mIdl;
     out += `<path class="sailpath" d="${hSection(xj,row.y,jIdl,row.Lj,idl.depth*depthTaper,idl.draftPos)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
-    out += `<path class="sailpath" d="${hSection(xj,row.y,jAng,row.Lj,r.jib.depth*depthTaper,r.jib.draft)}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
+    { const g=hSectionGeom(xj,row.y,jAng,row.Lj,r.jib.depth*depthTaper,r.jib.draft);
+      out += `<path class="sailpath" d="${g.d}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
+      const [dx2,dy2]=g.at(r.jib.draft), [tx2,ty2]=g.at(r.idl.draftPos);
+      out += `<circle cx="${tx2}" cy="${ty2}" r="4" fill="none" stroke="var(--ghost)" stroke-width="1.4"/>`;
+      out += `<circle cx="${dx2}" cy="${dy2}" r="3.2" fill="var(--accent)" stroke="var(--bg)" stroke-width="1"/>`; }
     out += `<circle cx="${xj}" cy="${row.y}" r="3" fill="var(--ink)"/>`;
   });
-  out += `<text x="14" y="348" font-size="11" fill="var(--ink3)">Head sits ${fmt1(r.main.twist)}° more open than the foot — wind aloft is stronger and further aft, so the arrows lean with height.</text>`;
+  out += `<text x="14" y="348" font-size="11" fill="var(--ink3)">Head opens +${fmt1(r.main.twist)}° · ● = draft (deepest point, cunningham/halyard move it) · ○ = its target.</text>`;
   $("svg-sections").innerHTML = out;
 }
 
@@ -852,7 +918,12 @@ function renderDeck(r){
   // wind arrows from starboard (right side); direction from bow = twa/awa
   out += arrow(258, 84, r.twa, 60, "var(--ink2)", "true "+fmt1(r.tws)+" kt", true);
   out += arrow(258, 168, r.awa, 60, "var(--teal)", "apparent "+fmt1(r.aws)+" kt", false);
-  out += `<text x="16" y="318" font-size="11" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° off centerline · ${POS[state.posIdx].name} (${r.twa}° true)</text>`;
+  { const helmDeg=r.helm, sev=helmDeg>8?"var(--crit)":helmDeg>5.5?"var(--warn)":"var(--good)";
+    const ra=rad(clamp(helmDeg,-6,15)*2.5);            // deflection exaggerated 2.5x to read
+    const rx=cx+Math.sin(ra)*26, ry=sternY+Math.cos(ra)*26;
+    out += `<line x1="${cx}" y1="${sternY-2}" x2="${rx}" y2="${ry}" stroke="${sev}" stroke-width="4" stroke-linecap="round"/>
+      <text x="${cx+34}" y="${sternY+10}" font-size="9.5" fill="var(--ink3)">rudder ${fmt1(helmDeg)}° (×2.5)</text>`; }
+  out += `<text x="16" y="318" font-size="11" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° off centerline · ${Math.round(state.twaC||POS[state.posIdx].twa)}° true · rudder shows helm you must hold</text>`;
   $("svg-deck").innerHTML = out;
 }
 
@@ -943,6 +1014,8 @@ const easeWords = ["fully eased","eased","cracked","firm","hard on"];
 function word(v){ return easeWords[clamp(Math.floor(v*4.999),0,4)]; }
 function renderVals(){
   $("v-tws").textContent = state.tws+" kt"+(state.gust?" (+6 gust)":"");
+  $("v-twa").textContent = Math.round(state.twaC||POS[state.posIdx].twa)+"\u00B0 true";
+  renderDial();
   $("v-sheet").textContent = word(state.sheet);
   $("v-trav").textContent = state.trav===0?"centered":(state.trav>0?"up (windward) "+Math.round(state.trav*100)+"%":"down (leeward) "+Math.round(-state.trav*100)+"%");
   $("v-vang").textContent = word(state.vang);
@@ -987,11 +1060,11 @@ function renderFx(src,a,b){
   const dg=v=>fmt1(v)+"°", pc=v=>(v*100).toFixed(0)+"%", kt=v=>fmt1(v)+" kt";
   add("main twist",a.main.twist,b.main.twist,.8,dg,Math.abs(a.main.twist-a.idl.twist),Math.abs(b.main.twist-b.idl.twist));
   add("main belly",a.main.depth,b.main.depth,.004,pc,Math.abs(a.main.depth-a.idl.depth),Math.abs(b.main.depth-b.idl.depth));
-  add("main draft",a.main.draft,b.main.draft,.012,pc,Math.abs(a.main.draft-a.idl.draftPos),Math.abs(b.main.draft-b.idl.draftPos));
+  add("main draft",a.main.draft,b.main.draft,.007,pc,Math.abs(a.main.draft-a.idl.draftPos),Math.abs(b.main.draft-b.idl.draftPos));
   add("boom angle",a.main.boom,b.main.boom,1.5,dg,0,0);
   add("jib twist",a.jib.twist,b.jib.twist,.8,dg,Math.abs(a.jib.twist-a.idl.twist),Math.abs(b.jib.twist-b.idl.twist));
   add("jib belly",a.jib.depth,b.jib.depth,.004,pc,Math.abs(a.jib.depth-a.idl.depth),Math.abs(b.jib.depth-b.idl.depth));
-  add("jib draft",a.jib.draft,b.jib.draft,.012,pc,Math.abs(a.jib.draft-a.idl.draftPos),Math.abs(b.jib.draft-b.idl.draftPos));
+  add("jib draft",a.jib.draft,b.jib.draft,.007,pc,Math.abs(a.jib.draft-a.idl.draftPos),Math.abs(b.jib.draft-b.idl.draftPos));
   add("heel",a.heel,b.heel,.5,dg,distBand(a.heel,12,22),distBand(b.heel,12,22));
   add("helm",a.helm,b.helm,.5,dg,distBand(a.helm,1,4),distBand(b.helm,1,4));
   add("speed",a.speed,b.speed,.05,kt,-a.speed,-b.speed);
@@ -1016,6 +1089,52 @@ function update(src){
   if(src){ renderOptims(); scheduleOptims(); }
 }
 
+/* ---------------- wind compass dial ---------------- */
+function renderDial(){
+  const el=$("windDial"); if(!el) return;
+  const twa=state.twaC||POS[state.posIdx].twa;
+  const c=65, R=52;
+  // wind arrow points AT the boat from bearing twa off the bow (starboard held)
+  const ax=c+Math.sin(rad(twa))*R, ay=c-Math.cos(rad(twa))*R;
+  const bx=c+Math.sin(rad(twa))*(R-16), by=c-Math.cos(rad(twa))*(R-16);
+  let ticks="";
+  for(const [a,lab] of [[0,"irons"],[45,"CH"],[90,"beam"],[135,"broad"],[180,"run"]]){
+    const tx=c+Math.sin(rad(a))*(R+8), ty=c-Math.cos(rad(a))*(R+8);
+    ticks+=`<text x="${tx}" y="${ty+3}" font-size="7.5" fill="var(--ink3)" text-anchor="middle">${lab}</text>`;
+  }
+  // no-go zone shading (< 28 deg)
+  const nx1=c+Math.sin(rad(-28))*R, ny1=c-Math.cos(rad(-28))*R;
+  const nx2=c+Math.sin(rad(28))*R, ny2=c-Math.cos(rad(28))*R;
+  el.innerHTML=`
+    <circle cx="${c}" cy="${c}" r="${R}" fill="var(--panel2)" stroke="var(--line)"/>
+    <path d="M ${c} ${c} L ${nx1} ${ny1} A ${R} ${R} 0 0 1 ${nx2} ${ny2} Z" fill="var(--crit-soft)" opacity=".55"/>
+    ${ticks}
+    <path d="M ${c} ${c-24} L ${c-7} ${c+18} L ${c} ${c+12} L ${c+7} ${c+18} Z" fill="var(--ink2)"/>
+    <line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="var(--teal)" stroke-width="3" stroke-linecap="round"/>
+    <path d="M ${bx} ${by} l ${(c-bx)*.28} ${(c-by)*.28}" stroke="var(--teal)" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="${ax}" cy="${ay}" r="7" fill="var(--teal)" opacity=".25"/>`;
+}
+{
+  const el=$("windDial");
+  const setFromEvent=e=>{
+    const rct=el.getBoundingClientRect();
+    const x=(e.clientX-rct.left)/rct.width*130-65, y=(e.clientY-rct.top)/rct.height*130-65;
+    let a=deg(Math.atan2(x,-y));            // bearing off the bow
+    a=Math.abs(a);                          // port side mirrors to the starboard-tack model
+    state.twaC=clamp(a,28,178);
+    // snap posIdx to the nearest preset so coach/optimizer labels stay honest
+    let best=0,bd=1e9;
+    POS.forEach((p,i)=>{const d=Math.abs(p.twa-state.twaC); if(d<bd){bd=d;best=i;}});
+    state.posIdx=best;
+    [...$("pos-seg").children].forEach((cb,j)=>cb.classList.toggle("on",j===best));
+    update("pos");
+  };
+  let drag=false;
+  el.addEventListener("pointerdown",e=>{drag=true; el.setPointerCapture(e.pointerId); setFromEvent(e);});
+  el.addEventListener("pointermove",e=>{ if(drag) setFromEvent(e); });
+  el.addEventListener("pointerup",()=>{drag=false;});
+}
+
 /* ---------------- wire controls ---------------- */
 [["tws",v=>state.tws=+v],["sheet",v=>state.sheet=v/100],["trav",v=>state.trav=v/100],
  ["vang",v=>state.vang=v/100],["outhaul",v=>state.outhaul=v/100],["cunn",v=>state.cunn=v/100],
@@ -1028,7 +1147,7 @@ POS.forEach((p,i)=>{
   const b=document.createElement("button");
   b.textContent=p.name; if(i===0)b.classList.add("on");
   b.addEventListener("click",()=>{
-    state.posIdx=i;
+    state.posIdx=i; state.twaC=null;
     [...$("pos-seg").children].forEach((c,j)=>c.classList.toggle("on",j===i));
     update("pos");
   });
@@ -1215,6 +1334,14 @@ $("linecards").innerHTML = LINES.map((l,i)=>`
   <div class="note"><b>On the Colgate 26:</b> ${l.c26}</div>
   <button class="try" data-ctl="${LINE_CTL[i]}">Pull it in the simulator →</button>
  </div>`).join("");
+LINE_CTL.forEach((id,i)=>{ const el=$(id); if(!el) return;
+  const l=LINES[i];
+  el.closest(".ctl").title = l.n+"\nTighten \u2192 "+l.tight+"\nEase \u2192 "+l.ease;
+});
+["mainhal","jsheetw"].forEach(id=>{ const el=$(id); if(!el) return;
+  el.closest(".ctl").title = id==="mainhal"
+    ? "Main halyard\nBottom third of travel = the sail drops and piles on the boom.\nAbove that \u2192 luff tension (draft forward)."
+    : "Windward jib sheet\nHaul \u2192 backs the jib against the wind (heave-to, slow-motion tacks).\nSlack is its normal sailing state."; });
 $("linecards").addEventListener("click",e=>{
   const b=e.target.closest(".try"); if(!b) return;
   showTab("sim");
@@ -1917,11 +2044,168 @@ function tick3D(){
   const target=-rad(r.heel);
   B3.heelCur += (target-B3.heelCur)*Math.min(1,dt*3);
   B3.boat.rotation.x=B3.heelCur;
+  const rud=B3.scene.getMeshByName("rudder");
+  if(rud) rud.rotation.y += ((rad(clamp(r.helm,-6,15))) - rud.rotation.y)*Math.min(1,dt*4);
   B3.boat.rotation.z=Math.sin(B3.t*.8)*.012 + clamp(r.speed,0,7)*.004; // gentle pitch + bow-up with speed
   // heeled hull rotates about the keel line here, so add the buoyant rise a
   // real hull gets as its leeward volume immerses
   B3.boat.position.y=Math.sin(B3.t*.62)*.06 + .42 + (1-Math.cos(B3.heelCur))*1.1;
 }
+
+/* ================= AI COACH =================
+   Two transports, one brain:
+   - published artifact: the platform `sample` capability (viewer's own Claude
+     account, consent-gated, no key ever touches the page);
+   - GitHub Pages / localhost: bring-your-own credential, browser-direct to
+     api.anthropic.com (pattern from gm2211/motive): `sk-ant-api…` console keys
+     go in `x-api-key`; `sk-ant-oat…` subscription tokens from `claude
+     setup-token` go in `Authorization: Bearer` + the oauth beta header.
+   The model replies strict JSON {reply, changes}; changes are clamped, applied
+   to the real sliders, flashed, and the before→after numbers are computed
+   locally so they can never be hallucinated.                                */
+const COACH={provider:null, sampleFn:null, turns:[], busy:false};
+const COACH_STORE="trimlab_anth_cred", COACH_MODEL="trimlab_coach_model";
+
+function detectCred(raw){
+  const token=(raw||"").trim();
+  if(!token) return null;
+  return {kind: token.startsWith("sk-ant-")&&!token.startsWith("sk-ant-oat") ? "api-key":"oauth", token};
+}
+function coachInstructions(){
+  const lines=TRIM_KEYS.map(k=>{
+    const m=LINEMETA[k];
+    return `- ${k} (${m.name}): ${m.job}; range ${k==="trav"?"-1..1":"0..1"}, now ${state[k].toFixed(2)}`;
+  }).join("\n");
+  const r=lastR, o=OPT?Object.fromEntries(TRIM_KEYS.map(k=>[k,+OPT[k].toFixed(2)])):null;
+  return `You are the sail-trim coach inside "Trim Lab", a Colgate 26 sail-trim simulator. The user sails a real Colgate 26 and is learning which line does what.
+
+CONTROLS (slider key: what it does; range; current value):
+${lines}
+
+CONDITIONS: true wind ${state.tws} kt, ${POS[state.posIdx].name}, ${state.sea} water${state.gust?", gust active":""}.
+CURRENT PHYSICS RESULT: speed ${r.speed.toFixed(2)} kt, heel ${r.heel.toFixed(1)} deg, weather helm ${r.helm.toFixed(1)} deg, main twist ${r.main.twist.toFixed(1)} deg (target ${r.idl.twist}), main depth ${(r.main.depth*100).toFixed(0)}% (target ${(r.idl.depth*100).toFixed(0)}%), jib twist ${r.jib.twist.toFixed(1)} deg, boom ${r.main.boom.toFixed(1)} deg off centerline.
+${o?`OPTIMIZER'S CURRENT BEST TRIM: ${JSON.stringify(o)}`:""}
+
+Reply with ONLY a JSON object: {"reply": string, "changes": object|null}.
+- "reply": your coaching answer, plain text, under 110 words. Explain WHY in terms of physics (leech tension, angle of attack, draft). No markdown.
+- "changes": ONLY when the user asks you to demonstrate, show, set, or fix something — slider keys from the list with new numeric values (same units as shown). Small targeted moves beat big ones. null for pure questions.
+Example: {"reply":"Easing the mainsheet lets the boom rise so the top of the leech opens...","changes":{"sheet":0.55,"vang":0.2}}`;
+}
+function coachParse(text){
+  try{ return JSON.parse(text); }catch(e){}
+  const m=text.match(/\{[\s\S]*\}/);
+  if(m){ try{ return JSON.parse(m[0]); }catch(e){} }
+  return null;
+}
+function coachApply(changes){
+  if(!changes||typeof changes!=="object") return null;
+  const before={speed:lastR.speed, heel:lastR.heel, twist:lastR.main.twist, eff:lastR.eff};
+  const applied=[];
+  for(const k of TRIM_KEYS){
+    if(!(k in changes)) continue;
+    const lo=k==="trav"?-1:0;
+    const v=clamp(Number(changes[k]), lo, 1);
+    if(!isFinite(v)) continue;
+    state[k]=v;
+    const el=$(k); el.value=Math.round(v*100);
+    update(k);
+    const wrap=el.closest(".ctl"); if(wrap){ wrap.classList.remove("ai-flash"); void wrap.offsetWidth; wrap.classList.add("ai-flash"); }
+    applied.push(`${LINEMETA[k].name} → ${el.value}${k==="trav"?"":"%"}`);
+  }
+  if(!applied.length) return null;
+  const a=lastR;
+  return `${applied.join(" · ")}\nresult: speed ${before.speed.toFixed(2)}→${a.speed.toFixed(2)} kt · heel ${before.heel.toFixed(1)}→${a.heel.toFixed(1)}° · main twist ${before.twist.toFixed(1)}→${a.main.twist.toFixed(1)}° · power ${Math.round(before.eff*100)}→${Math.round(a.eff*100)}%`;
+}
+async function coachAskApi(userMsg){
+  const cred=detectCred(localStorage.getItem(COACH_STORE));
+  if(!cred) throw {code:"no_key"};
+  const model=localStorage.getItem(COACH_MODEL)||"claude-opus-5";
+  const headers={
+    "content-type":"application/json",
+    "anthropic-version":"2023-06-01",
+    "anthropic-dangerous-direct-browser-access":"true",
+  };
+  if(cred.kind==="api-key") headers["x-api-key"]=cred.token;
+  else { headers["authorization"]="Bearer "+cred.token; headers["anthropic-beta"]="oauth-2025-04-20"; }
+  const body={model, max_tokens:1024, system:coachInstructions(),
+    output_config:{effort:"low"},
+    messages:[...COACH.turns, {role:"user", content:userMsg}]};
+  const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers,body:JSON.stringify(body)});
+  if(!res.ok){
+    let detail=""; try{ detail=(await res.json()).error?.message||""; }catch(e){}
+    if(res.status===401&&/CORS requests are not allowed/i.test(detail)) throw {code:"org_cors"};
+    throw {code:"http_"+res.status, message:detail};
+  }
+  const data=await res.json();
+  if(data.stop_reason==="refusal") throw {code:"refused"};
+  return (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
+}
+async function coachAskSample(userMsg){
+  const input=[{role:"user",content:coachInstructions()}, ...COACH.turns, {role:"user",content:userMsg}];
+  return JSON.stringify(await COACH.sampleFn.json(input,{cache:false,modelTier:"quick"}));
+}
+function coachNote(txt){ const d=document.createElement("div"); d.className="cmsg sys"; d.textContent=txt; $("coachLog").appendChild(d); d.scrollIntoView(); }
+function coachBubble(cls,txt){ const d=document.createElement("div"); d.className="cmsg "+cls; d.textContent=txt; $("coachLog").appendChild(d); d.scrollIntoView(); return d; }
+async function coachSend(){
+  const inp=$("coachMsg"), msg=inp.value.trim();
+  if(!msg||COACH.busy) return;
+  if(!COACH.provider){ $("coachKey").classList.add("show"); coachNote("Add a credential below first (API key, or a subscription token from `claude setup-token`)."); return; }
+  COACH.busy=true; $("coachSend").disabled=true; inp.value="";
+  coachBubble("user",msg);
+  const wait=coachBubble("sys","thinking…");
+  try{
+    const raw = COACH.provider==="sample" ? await coachAskSample(msg) : await coachAskApi(msg);
+    wait.remove();
+    const parsed=coachParse(raw);
+    if(!parsed||typeof parsed.reply!=="string"){ coachBubble("ai", raw.slice(0,600)); }
+    else{
+      const b=coachBubble("ai", parsed.reply);
+      const summary=coachApply(parsed.changes);
+      if(summary){ const sp=document.createElement("span"); sp.className="delta"; sp.textContent=summary; b.appendChild(sp); }
+      COACH.turns.push({role:"user",content:msg},{role:"assistant",content:raw.slice(0,2000)});
+      while(COACH.turns.length>10) COACH.turns.shift();
+    }
+  }catch(e){
+    wait.remove();
+    const msgs={no_key:"No credential saved — open ⚙ and paste one.",
+      org_cors:"Your Anthropic organization blocks browser-direct API calls; this static site has no relay. Use the claude.ai artifact version of this page instead.",
+      refused:"The model declined that request.",
+      not_granted:"You declined Claude access for this artifact — the coach stays off in this view.",
+      rate_limited:"Rate limited — wait a moment and try again.",
+      invalid_json:"Got an unparseable reply — try rephrasing.",
+      http_401:"Credential rejected (401) — check the key/token in ⚙."};
+    coachNote(msgs[e.code]||("Coach error: "+(e.code||e.message||"unknown")));
+  }
+  COACH.busy=false; $("coachSend").disabled=false;
+}
+async function coachInit(){
+  try{
+    if(window.claude&&claude.use){
+      const fn=await claude.use("sample");
+      if(fn){ COACH.provider="sample"; COACH.sampleFn=fn; $("coachProv").textContent="via your Claude account"; return; }
+    }
+  }catch(e){}
+  if(detectCred(localStorage.getItem(COACH_STORE))){ COACH.provider="api"; $("coachProv").textContent="via your key"; }
+  else { $("coachProv").textContent="no credential yet"; }
+}
+$("coachFab").addEventListener("click",()=>{ $("coachPanel").classList.toggle("open");
+  if(!$("coachLog").childElementCount) coachNote("Ask about trim, or say “demonstrate how I can add more twist” — the coach will move the sliders and explain.");
+});
+$("coachClose").addEventListener("click",()=>$("coachPanel").classList.remove("open"));
+$("coachGear").addEventListener("click",()=>$("coachKey").classList.toggle("show"));
+$("coachSend").addEventListener("click",coachSend);
+$("coachMsg").addEventListener("keydown",e=>{ if(e.key==="Enter") coachSend(); });
+$("keySave").addEventListener("click",()=>{
+  const v=$("keyIn").value.trim();
+  if(v){ localStorage.setItem(COACH_STORE,v); localStorage.setItem(COACH_MODEL,$("modelSel").value);
+    $("keyIn").value=""; $("coachKey").classList.remove("show");
+    if(COACH.provider!=="sample"){ COACH.provider="api"; $("coachProv").textContent="via your key"; }
+    coachNote("Credential saved in this browser only."); }
+});
+$("keyForget").addEventListener("click",()=>{ localStorage.removeItem(COACH_STORE);
+  if(COACH.provider!=="sample"){ COACH.provider=null; $("coachProv").textContent="no credential yet"; }
+  coachNote("Credential forgotten."); });
+coachInit();
 
 /* ---------------- go ---------------- */
 TRIM_KEYS.forEach(k=>{ const el=$(k); const w=document.createElement("div");
