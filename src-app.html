@@ -1903,7 +1903,7 @@ function ensure3Dinner(canvas){
     B3.dyeOn=!B3.dyeOn;
     $("dyeBtn").classList.toggle("on",B3.dyeOn);
     $("dyeBtn").textContent="wind dye: "+(B3.dyeOn?"on":"off");
-    if(!B3.dyeOn){ if(B3.dyeMesh){B3.dyeMesh.dispose();B3.dyeMesh=null;} if(B3.pulseMesh){B3.pulseMesh.dispose();B3.pulseMesh=null;} B3.dyeState=null; }
+    if(!B3.dyeOn){ if(B3.dyeMesh){B3.dyeMesh.dispose();B3.dyeMesh=null;} B3.dyeState=null; }
     B3dirty=true;
   });
 
@@ -1944,8 +1944,8 @@ function buildDye(r){
   for(const y of [2.2,5,7.8]){
     let H=null;
     if(PANEL.H) for(const h of PANEL.H) if(!H||Math.abs(h.y-y)<Math.abs(H.y-y)) H=h;
-    for(let k=0;k<9;k++){
-      const lat=(k-4)*1.15;
+    for(let k=0;k<13;k++){
+      const lat=(k-6)*.78;
       let px=upX*13-upZ*lat+.7, pz=upZ*13+upX*lat;
       const pts=[], spd=[];
       for(let i=0;i<150;i++){
@@ -2139,8 +2139,10 @@ function tick3D(){
     if(!B3.ropeMats){ B3.ropeMats={};
       const ropeTex=window.__ROPE_COLOR?new BABYLON.Texture(window.__ROPE_COLOR,B3.scene):null;
       const ropeBump=window.__ROPE_NORMAL?new BABYLON.Texture(window.__ROPE_NORMAL,B3.scene):null;
-      if(ropeTex){ ropeTex.uScale=1; ropeTex.vScale=10; }
-      if(ropeBump){ ropeBump.uScale=1; ropeBump.vScale=10; ropeBump.level=.7; }
+      // braid pitch on a real line is a few cm — repeat the weave ~40x along a
+      // rope run so the tubes read as rope, not smooth cylinders
+      if(ropeTex){ ropeTex.uScale=2; ropeTex.vScale=40; }
+      if(ropeBump){ ropeBump.uScale=2; ropeBump.vScale=40; ropeBump.level=1.25; }
       for(const k in ROPE_COLORS){ const m=new BABYLON.PBRMaterial("rm_"+k,B3.scene);
         m.albedoColor=new BABYLON.Color3(...ROPE_COLORS[k]); m.metallic=0; m.roughness=.9;
         if(ropeTex) m.albedoTexture=ropeTex;
@@ -2152,6 +2154,8 @@ function tick3D(){
       B3.ropeHi=new BABYLON.PBRMaterial("ropeHi",B3.scene);
       B3.ropeHi.albedoColor=new BABYLON.Color3(1,.35,.1); B3.ropeHi.metallic=0; B3.ropeHi.roughness=.5;
       B3.ropeHi.emissiveColor=new BABYLON.Color3(.9,.3,.05);
+      if(window.__ROPE_COLOR){ const t=new BABYLON.Texture(window.__ROPE_COLOR,B3.scene); t.uScale=2; t.vScale=40; B3.ropeHi.albedoTexture=t; }
+      if(window.__ROPE_NORMAL){ const t=new BABYLON.Texture(window.__ROPE_NORMAL,B3.scene); t.uScale=2; t.vScale=40; t.level=1.25; B3.ropeHi.bumpTexture=t; }
     }
     if(!B3.steelMat){
       B3.steelMat=new BABYLON.PBRMaterial("steelM",B3.scene);
@@ -2166,39 +2170,44 @@ function tick3D(){
     }
     // wind dye streamlines (steady flow -> rebuild only when trim changes)
     if(B3.dyeOn){
-      if(B3.dyeMesh) B3.dyeMesh.dispose();
+      if(B3.dyeMesh){ B3.dyeMesh.dispose(); B3.dyeMesh=null; }
       const dye=buildDye(r);
-      B3.dyeState={paths:dye.lines, speeds:dye.speeds, phase:dye.lines.map((_,i)=>i*1.7)};
-      B3.dyeMesh=BABYLON.MeshBuilder.CreateLineSystem("dye",{lines:dye.lines},B3.scene);
-      B3.dyeMesh.color=new BABYLON.Color3(.35,.95,.85);
-      B3.dyeMesh.alpha=.10; B3.dyeMesh.parent=B3.boat;
+      // smoke-tunnel filaments: per-vertex alpha carries the look — bright
+      // where the solved flow runs fast (streamtube squeeze over the lee
+      // side), dim and broken where it separates. Normalized per line to its
+      // own free-stream sample so every height band reads the same.
+      const sN=dye.lines.map((pts,i)=>{
+        const ref=Math.max(dye.speeds[i][0],.5);
+        return dye.speeds[i].map(s=>clamp(s/ref-.35,0,1.3));
+      });
+      const cols=dye.lines.map(pts=>pts.map(()=>new BABYLON.Color4(.82,1,.94,0)));
+      B3.dyeState={paths:dye.lines, speeds:dye.speeds, sN, cols, phase:dye.lines.map((_,i)=>i*2.13)};
+      B3.dyeMesh=BABYLON.MeshBuilder.CreateLineSystem("dye",{lines:dye.lines,colors:cols,updatable:true},B3.scene);
+      B3.dyeMesh.parent=B3.boat;
     } else B3.dyeState=null;
     if($("hud3d")) $("hud3d").innerHTML=
       `${fmt1(r.speed)} kt &nbsp;·&nbsp; heel ${fmt1(r.heel)}° &nbsp;·&nbsp; leeway ${fmt1(r.leeway)}°<br>`+
       `main twist ${fmt1(r.main.twist)}° · belly ${(r.main.depth*100).toFixed(0)}% &nbsp;·&nbsp; jib twist ${fmt1(r.jib.twist)}° · power ${Math.round(r.eff*100)}%`;
     B3dirty=false;
   }
-  // dye pulses: advance along each streamline at the LOCAL solved flow speed
-  if(B3.dyeOn&&B3.dyeState){
-    const D=B3.dyeState, PL=10, NP=3, pulses=[];
+  // smoke advection: a drifting brightness texture slides along each filament
+  // at the LOCAL solved flow speed — continuous smoke, not discrete packets
+  if(B3.dyeOn&&B3.dyeState&&B3.dyeMesh){
+    const D=B3.dyeState;
     for(let i=0;i<D.paths.length;i++){
-      const path=D.paths[i], spd=D.speeds[i], n=path.length;
-      if(n<PL+2) continue;
-      const j=Math.floor(D.phase[i])%(n-PL);
-      D.phase[i]+=spd[Math.min(j,spd.length-1)]*dt*6.5;   // index rate ∝ local speed
-      if(D.phase[i]>=n-PL) D.phase[i]=0;
-      for(let k=0;k<NP;k++){                              // several dye packets per line
-        const jk=(j+Math.floor(k*(n-PL)/NP))%(n-PL);
-        pulses.push(path.slice(jk,jk+PL));
+      const spd=D.speeds[i], sn=D.sN[i], col=D.cols[i], n=col.length;
+      const j=Math.min(Math.floor(D.phase[i])%n, spd.length-1);
+      D.phase[i]+=spd[j]*dt*3.2;
+      const ph=D.phase[i];
+      for(let q=0;q<n;q++){
+        const m1=.5+.5*Math.sin(q*.52-ph);
+        const m2=.5+.5*Math.sin(q*.21-ph*.62+i*2.1);
+        const smoke=.30+.70*(m1*.55+m2*.45);
+        col[q].a=clamp((.05+.42*Math.pow(sn[q],1.5))*smoke,0,.6);
       }
     }
-    if(B3.pulseMesh) B3.pulseMesh.dispose();
-    if(pulses.length){
-      B3.pulseMesh=BABYLON.MeshBuilder.CreateLineSystem("pulse",{lines:pulses},B3.scene);
-      B3.pulseMesh.color=new BABYLON.Color3(.75,1,.96);
-      B3.pulseMesh.alpha=1; B3.pulseMesh.parent=B3.boat;
-    }
-  } else if(B3.pulseMesh){ B3.pulseMesh.dispose(); B3.pulseMesh=null; }
+    BABYLON.MeshBuilder.CreateLineSystem("dye",{lines:D.paths,colors:D.cols,instance:B3.dyeMesh});
+  }
   // cloth dynamics every frame
   if(CLOTH.main){
     const cdt=Math.min(dt,.033);
