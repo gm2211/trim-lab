@@ -1978,19 +1978,29 @@ function segX(ax,az,bx,bz,cx,cz,dx,dz){ // 2D segment intersection -> t along ab
   const t=((cx-ax)*sz-(cz-az)*sx)/den, u=((cx-ax)*rz-(cz-az)*rx)/den;
   return (t>=0&&t<=1&&u>=0&&u<=1)?t:-1;
 }
-const PUFF_N=2400;
+const PUFF_N=1600;
 function initPuffs(){
-  // dye as PARTICLES: tiny unlit puffs thin-instanced off one low-poly sphere,
-  // advected through the panel-solved flow every frame
-  const base=BABYLON.MeshBuilder.CreateSphere("puff",{diameter:.10,segments:2},B3.scene);
+  // dye as PARTICLES: one custom updatable mesh of camera-facing quads (the
+  // recovered engine bundle has no working thin instances or particle system,
+  // so the quads are billboarded on the CPU like the cloth ribbons)
+  const mesh=new BABYLON.Mesh("puffs",B3.scene);
+  const pos=new Float32Array(PUFF_N*12), idx=new Uint32Array(PUFF_N*6);
+  for(let i=0;i<PUFF_N;i++){
+    idx[i*6]=i*4; idx[i*6+1]=i*4+1; idx[i*6+2]=i*4+2;
+    idx[i*6+3]=i*4; idx[i*6+4]=i*4+2; idx[i*6+5]=i*4+3;
+  }
+  mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind,pos,true);
+  mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind,new Float32Array(PUFF_N*12),true);
+  mesh.setIndices(idx);
   const pm=new BABYLON.PBRMaterial("puffM",B3.scene);
-  pm.unlit=true; pm.emissiveColor=new BABYLON.Color3(.62,.93,.88);
-  pm.albedoColor=new BABYLON.Color3(0,0,0); pm.alpha=.38;
-  base.material=pm; base.parent=B3.boat; base.isPickable=false;
-  const buf=new Float32Array(PUFF_N*16), pp=new Float32Array(PUFF_N*3);
-  for(let i=0;i<PUFF_N;i++){ buf[i*16]=1; buf[i*16+5]=1; buf[i*16+10]=1; buf[i*16+15]=1; seedPuff(pp,i,true); }
-  base.thinInstanceSetBuffer("matrix",buf,16,false);
-  B3.puffs=base; B3.puffBuf=buf; B3.pp=pp;
+  pm.unlit=true; pm.albedoColor=new BABYLON.Color3(.62,.93,.88); pm.alpha=.5;
+  pm.backFaceCulling=false;
+  mesh.material=pm; mesh.parent=B3.boat; mesh.isPickable=false;
+  mesh.alwaysSelectAsActiveMesh=true;                     // skip frustum test: verts move every frame
+  const pp=new Float32Array(PUFF_N*3);
+  B3.dyeR=B3.dyeR||{aws:12,awa:32};
+  for(let i=0;i<PUFF_N;i++) seedPuff(pp,i,true);
+  B3.puffs=mesh; B3.puffPos=pos; B3.pp=pp;
 }
 function seedPuff(pp,i,anywhere){
   const r=B3.dyeR||{awa:30};
@@ -2003,18 +2013,24 @@ function seedPuff(pp,i,anywhere){
   pp[i*3+2]=upZ*along+upX*lat;
 }
 function stepPuffs(dt){
-  const dtc=Math.min(dt,.05), pp=B3.pp, buf=B3.puffBuf, r=B3.dyeR;
+  const dtc=Math.min(dt,.05), pp=B3.pp, pos=B3.puffPos, r=B3.dyeR;
   const upX=Math.cos(rad(r.awa)), upZ=-Math.sin(rad(r.awa));
+  const vm=B3.scene.activeCamera.getViewMatrix().m;
+  const s=.055, rx=vm[0]*s, ry=vm[4]*s, rz=vm[8]*s, ux=vm[1]*s, uy=vm[5]*s, uz=vm[9]*s;
   for(let i=0;i<PUFF_N;i++){
     let x=pp[i*3], y=pp[i*3+1], z=pp[i*3+2];
     const [vx,vz]=flowVel(x,z,y,r);
     x+=vx*dtc; z+=vz*dtc;
     const along=(x-.7)*upX+z*upZ, lat=-(x-.7)*upZ+z*upX;
-    if(along<-15||Math.abs(lat)>9||Math.hypot(x,z)>26){ seedPuff(pp,i,false); }
+    if(along<-15||Math.abs(lat)>9||Math.hypot(x,z)>26){ seedPuff(pp,i,false); x=pp[i*3]; z=pp[i*3+2]; }
     else { pp[i*3]=x; pp[i*3+2]=z; }
-    buf[i*16+12]=pp[i*3]; buf[i*16+13]=pp[i*3+1]; buf[i*16+14]=pp[i*3+2];
+    const o=i*12;
+    pos[o  ]=x-rx-ux; pos[o+1 ]=y-ry-uy; pos[o+2 ]=z-rz-uz;
+    pos[o+3]=x+rx-ux; pos[o+4 ]=y+ry-uy; pos[o+5 ]=z+rz-uz;
+    pos[o+6]=x+rx+ux; pos[o+7 ]=y+ry+uy; pos[o+8 ]=z+rz+uz;
+    pos[o+9]=x-rx+ux; pos[o+10]=y-ry+uy; pos[o+11]=z-rz+uz;
   }
-  B3.puffs.thinInstanceBufferUpdated("matrix");
+  B3.puffs.updateVerticesData(BABYLON.VertexBuffer.PositionKind,pos);
 }
 /* ---- position-based-dynamics sail cloth ----
    Verlet particles + distance constraints. Luff and boom edges pinned, wind
