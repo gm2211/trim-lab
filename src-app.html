@@ -1634,20 +1634,40 @@ const DRILLS = [
   e:"First gear. At low speed you make less of your own wind, so the apparent wind is lighter and further aft \u2014 and the keel can't grip until water is flowing over it. Aim a few degrees low of close-hauled with forgiving, slightly full and twisted sails, let the boat accelerate, then shift up: sheet on, flatten, point. Trimming hard and pointing immediately just stalls everything at low speed. (Concepts: The gears, Apparent wind.)"},
 ];
 let qi=0, right=0, answered=0;
+// simulator-verified drills, generated against this page's own physics and
+// injected at build time — every option's consequence was measured, not written
+if(window.__GEN_DRILLS){
+  const shuffled=[...window.__GEN_DRILLS];
+  let sd=97; const rnd=()=>{sd=(sd*9301+49297)%233280; return sd/233280;};
+  for(let i=shuffled.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]]; }
+  for(const g of shuffled) DRILLS.push(g);
+}
+const optText=o=>typeof o==="string"?o:o.t;
+function chipHtml(o){
+  if(typeof o==="string"||o.dSpd===undefined) return "";
+  const sp=o.dSpd, he=o.dHeel, f=v=>`${v>0?"+":""}${v.toFixed(1)}`;
+  const cls=sp>0.05?"good":(sp<-0.05?"bad":"mut");
+  let t=`${f(sp)} kt`; if(Math.abs(he)>=1) t+=` · ${f(he)}° heel`;
+  return ` <span class="chip ${cls}" style="float:right">${t}</span>`;
+}
 function renderDrill(){
   const d=DRILLS[qi];
   $("drill").innerHTML = `
-    <div class="qnum">Drill ${qi+1} of ${DRILLS.length}</div>
+    <div class="qnum">Drill ${qi+1} of ${DRILLS.length}${d.sim?" · simulator-verified":(d.doc?" · "+d.doc:"")}</div>
     <div class="scen">${d.s}</div>
-    <div class="opts">${d.o.map((o,i)=>`<button data-i="${i}">${String.fromCharCode(65+i)}. ${o}</button>`).join("")}</div>
-    <div class="expl" id="expl"><span class="verdict" id="verdict"></span><div id="expl-body" style="margin-top:6px"></div></div>
+    <div class="opts">${d.o.map((o,i)=>`<button data-i="${i}"><span class="opt-t">${String.fromCharCode(65+i)}. ${optText(o)}</span></button>`).join("")}</div>
+    <div class="expl" id="expl"><span class="verdict" id="verdict"></span><div id="expl-body" style="margin-top:6px"></div>
+      ${d.sim?`<button id="drillSim" class="try" style="margin-top:10px">Open this setup on the Helm →</button>`:""}</div>
     <div class="drillnav">
       <span class="score">score ${right}/${answered}</span>
       <button id="next" disabled>${qi<DRILLS.length-1?"Next drill →":"Start over"}</button>
     </div>`;
   document.querySelectorAll("#drill .opts button").forEach(b=>b.addEventListener("click",()=>{
     const i=+b.dataset.i, d=DRILLS[qi];
-    document.querySelectorAll("#drill .opts button").forEach(x=>x.disabled=true);
+    document.querySelectorAll("#drill .opts button").forEach((x,xi)=>{
+      x.disabled=true;
+      x.insertAdjacentHTML("beforeend", chipHtml(d.o[xi]));   // what each move would have done
+    });
     if(i===d.a){ b.classList.add("right"); right++; $("verdict").textContent="✓ Right"; $("verdict").style.color="var(--good)"; }
     else { b.classList.add("wrong");
       document.querySelector(`#drill .opts button[data-i="${d.a}"]`).classList.add("right");
@@ -1657,6 +1677,17 @@ function renderDrill(){
     $("expl").classList.add("show");
     document.querySelector("#drill .score").textContent=`score ${right}/${answered}`;
     $("next").disabled=false;
+    const sb=$("drillSim");
+    if(sb) sb.addEventListener("click",()=>{
+      const S=d.sim;
+      state.tws=S.tws; state.twaC=S.twa; state.twaOv=null;
+      let bi=0,bd=1e9; POS.forEach((p,pi)=>{const dd=Math.abs(p.twa-S.twa); if(dd<bd){bd=dd;bi=pi;}});
+      state.posIdx=bi;
+      $("tws").value=S.tws;
+      for(const k of TRIM_KEYS){ if(k in S.state){ state[k]=S.state[k]; const el=$(k); if(el) el.value=Math.round(S.state[k]*100); } }
+      showTab("sim");
+      update(S.hi);                                            // highlights the mistrimmed line
+    });
   }));
   $("next").addEventListener("click",()=>{
     if(qi<DRILLS.length-1){ qi++; } else { qi=0; right=0; answered=0; }

@@ -27,7 +27,9 @@ WINDP={"medium":"11 kt of good breeze","fresh":"a fresh 16 kt","heavy":"21 kt an
 POSP={"close-hauled":"Close-hauled","close reach":"On a close reach","beam reach":"On a beam reach",
 "broad reach":"On a broad reach","a run":"Running downwind"}
 
-def symptom(d):
+import random as _r
+def pick(seed, opts): return _r.Random(seed).choice(opts)
+def symptom(d, seed=0):
     b=d["base"]; k=d["key"]; dr=d["dir"]
     if k=="jhal" and dr==-1: return "the jib's luff has gone slack and sags off to leeward in scallops"
     if k=="jhal" and dr==1: return "the jib's luff is bar-tight with a hard vertical crease behind it"
@@ -38,9 +40,9 @@ def symptom(d):
     if b["jstall"]: return "the jib's outside telltales hang lifeless"
     if b["dHeel"]>=4: return "the boat is heeled well past comfortable and the tiller is tugging"
     cands=[]
-    cands.append((abs(b["dTw"])/6, "the top of the main has twisted wide open and dumps its wind" if b["dTw"]>0 else "the main's leech is strapped shut — the top looks hooked"))
+    cands.append((abs(b["dTw"])/6, pick(seed+1,["the top of the main has twisted wide open and dumps its wind","the head of the main falls off to leeward, spilling everything aloft"]) if b["dTw"]>0 else pick(seed+2,["the main's leech is strapped shut — the top looks hooked","the top batten hooks to windward; the leech never breathes"])))
     cands.append((abs(b["dDep"])/2.5, "the main looks deep and baggy" if b["dDep"]>0 else "the main is board-flat with no punch"))
-    cands.append((abs(b["dDr"])/4, "the deepest part of the main has crept aft toward the leech and the helm feels heavy" if b["dDr"]>0 else "the main's shape is dragged hard forward"))
+    cands.append((abs(b["dDr"])/4, pick(seed+3,["the deepest part of the main has crept aft toward the leech and the helm feels heavy","the main has gone round-backed — its belly sits aft and the tiller loads up"]) if b["dDr"]>0 else "the main's draft is dragged hard forward with a flat, closed back"))
     cands.append((abs(b["jdTw"])/6, "the top of the jib twists off and spills" if b["jdTw"]>0 else "the jib's leech is closed hard against the main"))
     cands.append((abs(b["jdDep"])/2.5, "the jib looks round and full as a spinnaker" if b["jdDep"]>0 else "the jib is stretched flat"))
     if b["dHeel"]<=-3: cands.append((abs(b["dHeel"])/3,"the boat sails strangely flat and sluggish"))
@@ -75,7 +77,7 @@ for i,d in enumerate(sorted(picked,key=lambda x:(x["twa"],x["key"]))):
                      "dSpd":x["dSpd"],"dHeel":x["dHeel"],"ok":False})
     rng.shuffle(opts)
     a=next(idx for idx,o in enumerate(opts) if o["ok"])
-    s=f'{POSP[d["pos"]]} in {WINDP[d["wind"]]}: {symptom(d)}. {lossphrase(d["loss"])} — which line do you reach for?'
+    s=f'{POSP[d["pos"]]} in {WINDP[d["wind"]]}: {symptom(d,seed=i)}. {lossphrase(d["loss"])} — which line do you reach for?'
     heel=d["correct"]["dHeel"]
     hc= f" and takes about {abs(heel):.0f}° of heel off" if heel<=-1.5 else (f" and stands the boat up into its power (heel +{heel:.0f}°)" if heel>=1.5 else "")
     also=""
@@ -83,10 +85,15 @@ for i,d in enumerate(sorted(picked,key=lambda x:(x["twa"],x["key"]))):
         x=d["also"][0]
         also=f' {ACT[(x["j"],x["d2"])]} works too ({x["dSpd"]:+.1f} kt) — pick whichever hand is free.'
     top=d["distractors"][0]
-    td=f' {ACT[(top["j"],top["d2"])]}, the most tempting wrong answer, {"makes it worse" if top["dSpd"]<-0.05 else "barely moves the needle"} ({top["dSpd"]:+.1f} kt).'
+    td=f' {ACT[(top["j"],top["d2"])]}, the most tempting wrong answer, {"makes it worse" if top["dSpd"]<-0.05 else "does nothing for this problem"}.'
+    g=d["correct"]["dSpd"]
+    if g>=0.15:
+        gain=f'In this exact setup the simulator measures that one move buying back {g:+.1f} kt{hc}.'
+    else:
+        gain=f'The gain is small but real — this is a shape fix, not a throttle: the sail returns to its designed form and the helm settles{hc}.'
     e=(f'{ACT[(d["key"],d["correct"]["d2"])]} to {CLAIM[(d["key"],d["correct"]["d2"])]}. '
-       f'In this exact setup the simulator measures that one move buying back {d["correct"]["dSpd"]:+.1f} kt{hc}.{also}{td} (Line: {NAME[d["key"]]}.)')
-    out.append({"s":s,"o":[{"t":o["t"],"dSpd":o["dSpd"],"dHeel":o["dHeel"]} for o in opts],"a":a,"e":e,
+       f'{gain}{also}{td} (Line: {NAME[d["key"]]}.)')
+    out.append({"s":s,"o":[{"t":o["t"],"dSpd":(0.0 if abs(o["dSpd"])<0.05 else o["dSpd"]),"dHeel":(0.0 if abs(o["dHeel"])<0.05 else o["dHeel"])} for o in opts],"a":a,"e":e,
                 "sim":{"tws":d["tws"],"twa":d["twa"],"state":d["state"],"hi":d["key"]}})
 json.dump(out,open("drills-gen.json","w"),indent=None)
 print(len(out),"composed;")
