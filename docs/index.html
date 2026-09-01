@@ -9020,6 +9020,12 @@ function ensure3Dinner(canvas){
   hullM.albedoColor=new BABYLON.Color3(.93,.94,.95); hullM.metallic=0; hullM.roughness=.62;
   const hull=BABYLON.MeshBuilder.CreateRibbon("hull",{pathArray:hullPaths(),sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
   hull.material=hullM; hull.parent=boat;
+  // transom: the lofted ribbon ends at an open stern section, so cap it with a
+  // fan from the last station to the centreline — otherwise the hull shows a
+  // hole when seen from astern
+  const sternRow=hullPaths()[hullPaths().length-1];
+  const transom=BABYLON.MeshBuilder.CreateRibbon("transom",{pathArray:[sternRow,sternRow.map(p=>V3(p.x,p.y,0))],sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
+  transom.material=hullM; transom.parent=boat;
   const deck=BABYLON.MeshBuilder.CreateRibbon("deck",{pathArray:(()=>{const hp=hullPaths();return hp.map(r=>[r[0],r[r.length-1]]);})(),sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
   const deckM=new BABYLON.PBRMaterial("deckM",scene);
   deckM.albedoTexture=makeDeckTexture(); deckM.albedoTexture.uScale=6; deckM.albedoTexture.vScale=2;
@@ -9141,7 +9147,7 @@ function ensure3Dinner(canvas){
   mainSail.material=sailM; jibSail.material=sailM;
   mainSail.parent=boat; jibSail.parent=boat;
 
-  [hull,deck,mast,boom,mainSail,jibSail].forEach(m=>wm.addToRenderList(m));
+  [hull,transom,deck,mast,boom,mainSail,jibSail].forEach(m=>wm.addToRenderList(m));
 
   B3={engine,scene,cam,boat,wm,mainSail,jibSail,boomMesh:boom,travCar,jibCar,
       runLines:null,puffs:null,dyeR:null,dyeOn:true,t:0,heelCur:0};
