@@ -388,7 +388,7 @@
         <svg id="windDial" viewBox="0 0 130 130" role="slider" aria-label="Wind direction"
           style="width:min(210px,72%);max-width:100%;display:block;margin:10px auto 6px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;overflow:visible"></svg>
         <div class="twa-big" id="twaBig"></div>
-        <div class="twa-hint">drag the dial to change heading</div>
+        <div class="twa-hint" id="twaHint">drag the dial to change heading</div>
         <div class="aw-card" id="awCard"></div>
       </div>
       <div class="ctl-group" data-g="main">
@@ -494,8 +494,9 @@
   <div class="coach-log" id="coachLog"></div>
   <div class="coach-key" id="coachKey">
     <div style="margin-bottom:8px"><b>Sign in with a Claude subscription (easiest)</b><br>
-      <span style="color:var(--ink3)">Opens claude.ai to approve, shows a code, paste it back. This one-click path needs a relay URL once — a tiny forwarder you deploy free in ~2 minutes (repo README). No relay? Skip it: paste a token below instead — that goes straight to Anthropic, no server needed.</span></div>
-    <input type="text" id="relayIn" placeholder="https://trim-lab-relay.….workers.dev" style="font-size:11px">
+      <span style="color:var(--ink3)">Opens claude.ai to approve, shows a code, paste it back. One step of the sign-in passes through a small relay server that forwards it and keeps nothing — no token is ever stored or logged there. Prefer a purely client-side path? Paste a token or key below instead.</span></div>
+    <a href="#" id="relayAdv" style="font-size:10.5px;color:var(--ink3)">advanced: change relay server</a>
+    <input type="text" id="relayIn" placeholder="https://your-relay.example.com" style="font-size:11px;display:none">
     <div class="row" style="margin-bottom:8px">
       <button id="oauthStart" style="font-size:11px;padding:5px 10px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Connect Claude</button>
       <span id="oauthState" style="font-size:11px;color:var(--ink3)"></span>
@@ -504,8 +505,8 @@
       <input type="text" id="oauthCode" placeholder="Paste the code claude.ai showed">
       <button id="oauthFinish" style="font-size:11px;padding:5px 10px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Finish sign-in</button>
     </div>
-    <div style="margin:10px 0 0;border-top:1px solid var(--line);padding-top:8px">Or paste a credential — an API key, or the token from <code>claude setup-token</code>. Stored only in this browser, sent only to api.anthropic.com.</div>
-    <input type="password" id="keyIn" placeholder="sk-ant-...">
+    <div style="margin:10px 0 0;border-top:1px solid var(--line);padding-top:8px">Or go fully client-side — paste an Anthropic API key, the token from <code>claude setup-token</code>, or an OpenRouter key (<code>sk-or-…</code>). Stored only in this browser, sent only to that provider.</div>
+    <input type="password" id="keyIn" placeholder="sk-ant-… or sk-or-…">
     <div class="row">
       <select id="modelSel"><option value="claude-opus-5">Opus 5 (best)</option><option value="claude-haiku-4-5">Haiku 4.5 (cheap)</option></select>
       <button id="keySave" style="font-size:11px;padding:5px 10px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Save</button>
@@ -8458,9 +8459,11 @@ function renderDial(){
   const el=$("windDial"); if(!el) return;
   const twa=state.twaC||POS[state.posIdx].twa;
   const c=65, R=48;
-  // wind arrow points AT the boat from bearing twa off the bow (starboard held)
-  const ax=c+Math.sin(rad(twa))*R, ay=c-Math.cos(rad(twa))*R;
-  const bx=c+Math.sin(rad(twa))*(R-16), by=c-Math.cos(rad(twa))*(R-16);
+  // needle follows the dragged side all the way around; trim physics is
+  // tack-symmetric, so the model itself always holds starboard
+  const twaS=twa*(state.twaSide||1);
+  const ax=c+Math.sin(rad(twaS))*R, ay=c-Math.cos(rad(twaS))*R;
+  const bx=c+Math.sin(rad(twaS))*(R-16), by=c-Math.cos(rad(twaS))*(R-16);
   // points-of-sail rose: mirrored sector wedges on both tacks, labels once
   const pt=(a,r)=>[c+Math.sin(rad(a))*r, c-Math.cos(rad(a))*r];
   const wedge=(a1,a2,fill,op)=>{
@@ -8489,6 +8492,10 @@ function renderDial(){
     const rot=mode==="flat"?0:(a>90?a-180:a<-90?a+180:a);
     ticks+=`<text x="${tx}" y="${ty+2.5}" font-size="6.5" font-weight="600" fill="var(--ink)" opacity=".85" text-anchor="middle" transform="rotate(${rot} ${tx} ${ty})" style="user-select:none;pointer-events:none">${lab}</text>`;
   }
+  const hint=$("twaHint");
+  if(hint) hint.textContent=(state.twaSide||1)<0
+    ? "wind on the port side — boat views draw the mirror image"
+    : "drag the dial to change heading";
   el.innerHTML=`
     <circle cx="${c}" cy="${c}" r="${R}" fill="var(--panel2)" stroke="var(--line)"/>
     ${zones}${seps}
@@ -8504,7 +8511,8 @@ function renderDial(){
     const rct=el.getBoundingClientRect();
     const x=(e.clientX-rct.left)/rct.width*130-65, y=(e.clientY-rct.top)/rct.height*130-65;
     let a=deg(Math.atan2(x,-y));            // bearing off the bow
-    a=Math.abs(a);                          // port side mirrors to the starboard-tack model
+    state.twaSide=a<0?-1:1;                 // remember which tack was dragged
+    a=Math.abs(a);                          // physics model holds starboard tack
     state.twaC=clamp(a,2,178);
     // snap posIdx to the nearest preset so coach/optimizer labels stay honest
     let best=0,bd=1e9;
@@ -9487,6 +9495,7 @@ const COACH_STORE="trimlab_anth_cred", COACH_MODEL="trimlab_coach_model";
 function detectCred(raw){
   const token=(raw||"").trim();
   if(!token) return null;
+  if(token.startsWith("sk-or-")) return {kind:"openrouter", token};
   return {kind: token.startsWith("sk-ant-")&&!token.startsWith("sk-ant-oat") ? "api-key":"oauth", token};
 }
 function coachInstructions(){
@@ -9546,12 +9555,19 @@ function coachApply(changes){
   return `${applied.join(" · ")}\nresult: speed ${before.speed.toFixed(2)}→${a.speed.toFixed(2)} kt · heel ${before.heel.toFixed(1)}→${a.heel.toFixed(1)}° · main twist ${before.twist.toFixed(1)}→${a.main.twist.toFixed(1)}° · power ${Math.round(before.eff*100)}→${Math.round(a.eff*100)}%`;
 }
 const OAUTH_STORE="trimlab_oauth", RELAY_STORE="trimlab_relay";
+// Default relay baked into the app: any stateless code->token forwarder
+// (relay/worker.js, or a motive server deployment). Users never see this
+// unless they open "advanced". Empty string = one-click disabled until set.
+const RELAY_DEFAULT="";
+function relayUrl(){
+  return ($("relayIn").value.trim()||localStorage.getItem(RELAY_STORE)||RELAY_DEFAULT).replace(/\/$/,"");
+}
 let PKCE=null;
 function b64url(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
 async function oauthBegin(){
-  const relay=($("relayIn").value.trim()||localStorage.getItem(RELAY_STORE)||"").replace(/\/$/,"");
-  if(!relay){ $("oauthState").textContent="relay URL needed first"; return; }
-  localStorage.setItem(RELAY_STORE, relay);
+  const relay=relayUrl();
+  if(!relay){ $("oauthState").textContent="no relay configured — use a token below, or set one under advanced"; return; }
+  if(relay!==RELAY_DEFAULT) localStorage.setItem(RELAY_STORE, relay);
   const raw=new Uint8Array(32); crypto.getRandomValues(raw);
   const verifier=b64url(raw);
   const challenge=b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
@@ -9582,7 +9598,7 @@ async function relayPost(relay, kind, payload){
   throw last||new Error("relay unreachable");
 }
 async function oauthFinish(){
-  const relay=(localStorage.getItem(RELAY_STORE)||"").replace(/\/$/,"");
+  const relay=relayUrl();
   const code=$("oauthCode").value.trim();
   if(!relay||!code||!PKCE){ $("oauthState").textContent="start with Connect Claude first"; return; }
   $("oauthState").textContent="exchanging…";
@@ -9602,7 +9618,7 @@ async function oauthAccess(){
   let saved=null; try{ saved=JSON.parse(localStorage.getItem(OAUTH_STORE)||"null"); }catch(e){}
   if(!saved) return null;
   if(Date.now()<saved.exp) return saved.access;
-  const relay=(localStorage.getItem(RELAY_STORE)||"").replace(/\/$/,"");
+  const relay=(localStorage.getItem(RELAY_STORE)||RELAY_DEFAULT).replace(/\/$/,"");
   if(!relay||!saved.refresh){ return null; }
   let res=null;
   try{ res=await relayPost(relay,"refresh",{refreshToken:saved.refresh}); }catch(e){ return null; }
@@ -9617,6 +9633,20 @@ async function coachAskApi(userMsg){
   const cred=oat?{kind:"oauth",token:oat}:detectCred(localStorage.getItem(COACH_STORE));
   if(!cred) throw {code:"no_key"};
   const model=localStorage.getItem(COACH_MODEL)||"claude-opus-5";
+  if(cred.kind==="openrouter"){
+    // OpenRouter speaks the OpenAI chat shape and allows browser CORS
+    const orModel = model==="claude-haiku-4-5" ? "anthropic/claude-haiku-4.5" : "anthropic/claude-opus-5";
+    const res=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",
+      headers:{"content-type":"application/json","authorization":"Bearer "+cred.token},
+      body:JSON.stringify({model:orModel, max_tokens:1024,
+        messages:[{role:"system",content:coachInstructions()}, ...COACH.turns, {role:"user",content:userMsg}]})});
+    if(!res.ok){
+      let detail=""; try{ detail=(await res.json()).error?.message||""; }catch(e){}
+      throw {code:"http_"+res.status, message:detail};
+    }
+    const data=await res.json();
+    return data.choices?.[0]?.message?.content||"";
+  }
   const headers={
     "content-type":"application/json",
     "anthropic-version":"2023-06-01",
@@ -9685,7 +9715,11 @@ async function coachInit(){
   if(localStorage.getItem(OAUTH_STORE)){ COACH.provider="api"; $("coachProv").textContent="via your subscription"; }
   else if(detectCred(localStorage.getItem(COACH_STORE))){ COACH.provider="api"; $("coachProv").textContent="via your key"; }
   else { $("coachProv").textContent="no credential yet"; }
-  const savedRelay=localStorage.getItem(RELAY_STORE); if(savedRelay&&$("relayIn")) $("relayIn").value=savedRelay;
+  const savedRelay=localStorage.getItem(RELAY_STORE)||RELAY_DEFAULT; if(savedRelay&&$("relayIn")) $("relayIn").value=savedRelay;
+  if($("relayAdv")) $("relayAdv").addEventListener("click",e=>{
+    e.preventDefault();
+    const f=$("relayIn"); f.style.display=f.style.display==="none"?"block":"none";
+  });
 }
 $("railTabs").addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
