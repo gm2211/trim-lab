@@ -386,7 +386,7 @@
           <div class="endcaps"><span>4 kt</span><span>24 kt</span></div>
         </div>
         <svg id="windDial" viewBox="0 0 130 130" role="slider" aria-label="Wind direction"
-          style="width:min(210px,72%);max-width:100%;display:block;margin:10px auto 6px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none"></svg>
+          style="width:min(210px,72%);max-width:100%;display:block;margin:10px auto 6px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;overflow:visible"></svg>
         <div class="twa-big" id="twaBig"></div>
         <div class="twa-hint">drag the dial to change heading</div>
         <div class="aw-card" id="awCard"></div>
@@ -494,7 +494,7 @@
   <div class="coach-log" id="coachLog"></div>
   <div class="coach-key" id="coachKey">
     <div style="margin-bottom:8px"><b>Sign in with a Claude subscription (easiest)</b><br>
-      <span style="color:var(--ink3)">Opens claude.ai to approve, shows a code, paste it back. Needs a relay URL once (see the repo README — a free 2-minute deploy).</span></div>
+      <span style="color:var(--ink3)">Opens claude.ai to approve, shows a code, paste it back. This one-click path needs a relay URL once — a tiny forwarder you deploy free in ~2 minutes (repo README). No relay? Skip it: paste a token below instead — that goes straight to Anthropic, no server needed.</span></div>
     <input type="text" id="relayIn" placeholder="https://trim-lab-relay.….workers.dev" style="font-size:11px">
     <div class="row" style="margin-bottom:8px">
       <button id="oauthStart" style="font-size:11px;padding:5px 10px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Connect Claude</button>
@@ -1248,9 +1248,9 @@ function renderDial(){
   const ax=c+Math.sin(rad(twa))*R, ay=c-Math.cos(rad(twa))*R;
   const bx=c+Math.sin(rad(twa))*(R-16), by=c-Math.cos(rad(twa))*(R-16);
   let ticks="";
-  for(const [a,lab] of [[0,"irons"],[45,"CH"],[62,"CR"],[90,"beam"],[135,"broad"],[178,"run"]]){
-    const tx=c+Math.sin(rad(a))*(R+8), ty=c-Math.cos(rad(a))*(R+8);
-    ticks+=`<text x="${tx}" y="${ty+3}" font-size="12" font-weight="600" fill="var(--ink2)" text-anchor="middle" style="user-select:none;pointer-events:none">${lab}</text>`;
+  for(const [a,lab] of [[0,"in irons"],[45,"close-hauled"],[70,"close reach"],[97,"beam reach"],[135,"broad reach"],[178,"run"]]){
+    const tx=c+Math.sin(rad(a))*(R+9), ty=c-Math.cos(rad(a))*(R+9);
+    ticks+=`<text x="${tx}" y="${ty+3}" font-size="8.5" font-weight="600" fill="var(--ink2)" text-anchor="middle" style="user-select:none;pointer-events:none">${lab}</text>`;
   }
   // no-go zone shading (< 28 deg)
   const nx1=c+Math.sin(rad(-28))*R, ny1=c-Math.cos(rad(-28))*R;
