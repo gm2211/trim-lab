@@ -68,10 +68,14 @@
     font-family:var(--disp);font-size:11.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
     color:var(--ink2);margin:0 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px;
   }
-  .ctl{margin-bottom:5px}
-  .ctl .row1{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-  .ctl label{font-size:13px;font-weight:600}
-  .ctl .val{font-family:var(--mono);font-size:11.5px;color:var(--ink2);font-variant-numeric:tabular-nums;text-align:right}
+  .ctl{display:grid;grid-template-columns:92px minmax(0,1fr) 88px;align-items:center;gap:0 7px;margin-bottom:4px}
+  .ctl .row1{display:contents}
+  .ctl label{font-size:12px;font-weight:600;order:1;line-height:1.15}
+  .ctl>div:not(.row1),.ctl>input{order:2;min-width:0}
+  .ctl .val{font-family:var(--mono);font-size:10px;color:var(--ink2);font-variant-numeric:tabular-nums;text-align:right;order:3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ctl-group h3{margin:0 0 5px}
+  .btnrow{display:flex;gap:6px}
+  .btnrow .gustbtn{flex:1;margin-top:4px;font-size:10.5px;padding:7px 4px}
   input[type=range]{width:100%;accent-color:var(--accent);height:18px;margin:0}
   .opt-tick{position:absolute;top:-3px;width:2.5px;height:8px;border-radius:1px;background:var(--ink3);pointer-events:none}
   .opt-tick[data-cls=good]{background:var(--good)}
@@ -227,11 +231,10 @@
   .dye-btn.on{background:var(--accent);border-color:var(--accent)}
   .dye-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
   /* ============ AI COACH ============ */
-  .coach-fab{position:fixed;bottom:16px;right:16px;z-index:90;font-family:var(--disp);letter-spacing:.08em;
-    text-transform:uppercase;font-size:12px;font-weight:700;padding:10px 16px;border-radius:99px;cursor:pointer;
-    background:var(--accent);color:#fff;border:none;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+  .coach-fab{font-family:var(--disp);letter-spacing:.08em;text-transform:uppercase;font-size:12px;font-weight:700;
+    padding:7px 14px;border-radius:3px;cursor:pointer;background:var(--accent);color:#fff;border:none}
   .coach-fab:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-  .coach-panel{position:fixed;bottom:16px;right:16px;z-index:95;width:min(400px,calc(100vw - 32px));
+  .coach-panel{position:fixed;top:56px;right:16px;z-index:95;width:min(400px,calc(100vw - 32px));
     max-height:min(560px,calc(100vh - 90px));display:none;flex-direction:column;background:var(--panel);
     border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.4);overflow:hidden}
   .coach-panel.open{display:flex}
@@ -282,16 +285,25 @@
     #pane-lines .prose p{font-size:12.5px !important;margin:0 0 8px;max-width:90ch !important}
     #pane-lines .cardgrid{flex:1;min-height:0;display:flex;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;
       gap:12px;scroll-snap-type:x mandatory;padding-bottom:4px}
-    #pane-lines .card{flex:0 0 330px;scroll-snap-align:start;overflow:hidden;display:flex;flex-direction:column}
-    #pane-lines .card p,#pane-lines .card dd{font-size:12.5px}
-    #pane-lines .card .note{margin-top:auto}
+    #pane-lines .card{flex:0 0 320px;scroll-snap-align:start;overflow:hidden;display:flex;flex-direction:column}
+    #pane-lines .card p,#pane-lines .card dd{font-size:12.5px;line-height:1.45}
+    #pane-lines .card dt{border-top:1px solid var(--line);padding-top:7px;margin-top:9px}
+    #pane-lines .card dl{margin-top:6px}
+    #pane-lines .card .note{margin-top:10px}
+    #pane-lines .card .try{margin-top:10px;align-self:flex-start}
     /* Concepts: one per page + pager */
     #pane-concepts.active{height:100%;display:flex;flex-direction:column;min-height:0}
     #pane-concepts .prose h2{margin:4px 0 6px;font-size:15px}
     #concepts{flex:1;min-height:0}
-    #concepts .concept{display:none;height:100%;overflow:hidden;margin:0;column-count:2;column-gap:30px;column-fill:auto}
-    #concepts .concept.cur{display:block}
-    #concepts .concept p{font-size:14px;line-height:1.55}
+    #concepts .concept{display:none;height:100%;overflow:hidden;margin:0}
+    #concepts .concept.cur{display:grid;grid-template-columns:1.05fr 1fr;gap:2px 32px;
+      grid-template-rows:auto auto minmax(0,1fr);align-content:start}
+    #concepts .concept .kicker{grid-column:1/-1}
+    #concepts .concept h3{grid-column:1/-1;margin-bottom:4px}
+    #concepts .concept p{grid-column:1;font-size:14.5px;line-height:1.6;margin:6px 0}
+    #concepts .concept .figrow{grid-column:2;grid-row:3;flex-direction:column;align-items:stretch;margin-top:6px;min-height:0;overflow:hidden}
+    #concepts .concept .figrow svg{max-width:360px;flex:0 0 auto}
+    #concepts .concept .rule2{margin-top:10px}
     .conc-nav{display:flex;gap:10px;align-items:center;justify-content:center;padding:6px 0 0}
     .conc-nav button{font-family:var(--disp);font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
       background:var(--ink);color:var(--bg);border:none;border-radius:3px;padding:7px 14px;cursor:pointer}
@@ -313,6 +325,7 @@
     <button data-tab="concepts">Concepts</button>
     <button data-tab="drills">Drills</button>
     <button data-tab="view3d">3D</button>
+    <button class="coach-fab" id="coachFab" data-notab="1">⚓ Coach</button>
   </nav>
 </header>
 
@@ -327,20 +340,12 @@
           <div class="row1"><label for="tws">True wind</label><span class="val" id="v-tws"></span></div>
           <input type="range" id="tws" min="4" max="24" step="1" value="12">
         </div>
-        <div class="ctl">
-          <div class="row1"><label>Point of sail</label><span class="val" id="v-twa"></span></div>
-          <div class="seg" id="pos-seg"></div>
-          <svg id="windDial" viewBox="0 0 130 130" style="width:112px;display:block;margin:6px auto 0;cursor:grab;touch-action:none" role="slider" aria-label="Wind direction"></svg>
+        <div class="ctl" style="grid-template-columns:92px 1fr"><div class="row1"><label>Point of sail</label><span class="val" id="v-twa" style="order:2"></span></div></div>
+        <svg id="windDial" viewBox="0 0 130 130" style="width:136px;display:block;margin:2px auto 4px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none" role="slider" aria-label="Wind direction"></svg>
+        <div class="btnrow">
+          <button class="gustbtn" id="gust">Gust +6 kt</button>
+          <button class="gustbtn" id="perfect" style="border-style:solid">Perfect trim</button>
         </div>
-        <div class="ctl">
-          <div class="row1"><label>Sea state</label></div>
-          <div class="seg" id="sea-seg">
-            <button data-sea="flat" class="on">Flat water</button>
-            <button data-sea="chop">Chop</button>
-          </div>
-        </div>
-        <button class="gustbtn" id="gust">Gust hits · +6 kt</button>
-        <button class="gustbtn" id="perfect" style="border-style:solid;margin-top:6px">Solve perfect trim</button>
       </div>
       <div class="ctl-group">
         <h3>Mainsail lines</h3>
@@ -432,7 +437,6 @@
 </section>
 </main>
 
-<button class="coach-fab" id="coachFab">⚓ Ask the coach</button>
 <div class="coach-panel" id="coachPanel" role="dialog" aria-label="AI coach">
   <div class="coach-head"><b>AI Coach</b><span class="prov" id="coachProv"></span>
     <button id="coachGear" title="settings">⚙</button><button id="coachClose" title="close">✕</button></div>
@@ -470,20 +474,19 @@ const POS = [
   {name:"Run",          twa:165},
 ];
 const state = {
-  tws:12, posIdx:0, twaC:null, sea:"flat", gust:false,
+  tws:12, posIdx:0, twaC:null, gust:false,
   sheet:.85, trav:0, vang:.40, outhaul:.50, cunn:.25, backstay:.35,
   jsheet:.75, jsheetw:0, jcar:.50, jhal:.55, mainhal:.90,
 };
 
 /* ---------------- physics ---------------- */
-function ideals(tws, sea, awa){
+function ideals(tws, awa){
   let depth, twist;
   if(tws<6){ depth=.120; twist=22; }
   else if(tws<10){ depth=.145; twist=16; }
   else if(tws<14){ depth=.125; twist=13; }
   else if(tws<18){ depth=.105; twist=15; }
   else { depth=.088; twist=19; }
-  if(sea==="chop"){ depth+=.012; twist+=3; }
   const draftPos=.43;
   const aoa = clamp(20 + (awa-32)*.12, 17, 30);
   return {depth, twist, draftPos, aoa};
@@ -617,7 +620,6 @@ function compute(){
   const twsKt = s.tws + (s.gust?6:0);
   const tws = twsKt*KT;
   const twa = s.twaOv || s.twaC || POS[s.posIdx].twa;
-  const chopDrag = s.sea==="chop" ? 1.14 : 1.0;
 
   let V=2.0, heel=8, lee=3, r=null;
   for(let it=0; it<16; it++){
@@ -663,7 +665,10 @@ function compute(){
     const depthJ = .08 + .075*(1 - .45*s.backstay - .40*s.jcar);
     const jTension = clamp((s.jhal-.35)/.65, 0, 1);
     const draftJ = clamp(.41 + .011*(twsKt-8) - .12*jTension, .32, .60);
-    const clewJ  = clamp((awa-8)*(1-s.jsheet)*.85 + 4 - s.jsheetw*30, -25, 80);
+    // fixed sheet length = fixed max clew angle; the wind can luff the jib
+    // (weathervane at awa-4) but can never trim it — only the sheet does that
+    const clewLimit = 4 + (1-s.jsheet)*72;
+    const clewJ  = clamp(Math.min(awa-4, clewLimit) - s.jsheetw*30, -25, 80);
     return {upwind,
       m:{leech:leechM,twist:twistM,depth:depthM,draft:draftM,boom:boomM,slack:sheetSlack},
       j:{leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ}};
@@ -693,9 +698,9 @@ function compute(){
     const leeNew = clamp(deg(Math.max(0,side)/(qw*BOAT.keel.slope)), .3, 14);
     const Di = Math.max(0,side)*Math.tan(rad(leeNew))*.9;               // keel induced drag
     // hull resistance
-    const Rf = .5*RHO_W*V*V*BOAT.wetted*.0033*chopDrag;
+    const Rf = .5*RHO_W*V*V*BOAT.wetted*.0033;
     const Fn = V/Math.sqrt(G*BOAT.lwl);
-    const Rr = BOAT.disp*G*.045*Math.pow(Fn/.40, 8)*chopDrag;
+    const Rr = BOAT.disp*G*.045*Math.pow(Fn/.40, 8);
     const Rheel = (Rf+Rr)*.3*Math.pow(Math.sin(heelR),1.5);
     const Rtot = Rf+Rr+Rheel+Di+2;
     const Vnew = clamp(V*Math.pow(Math.max(drive,0.1)/Rtot, .28), .05, 4.2);
@@ -707,7 +712,7 @@ function compute(){
     const off = awa>90;
     const aoaM = awa - sh.m.boom - sh.m.twist*.5;
     const aoaJ = awa - sh.j.boom - sh.j.twist*.5;
-    const idl = ideals(twsKt, s.sea, awa);
+    const idl = ideals(twsKt, awa);
     function sailEff(sp, aoa, aoaIdl){
       if(off){
         const proj = clamp(Math.sin(rad(clamp(sh.m.boom+sh.m.twist*.4,0,95)+8))*1.05,0,1);
@@ -743,18 +748,19 @@ function coachAdvice(r){
   if(state.jsheetw>.25) push(26, "<b>Windward jib sheet is hauled — the jib is backed.</b> That's how you heave-to on purpose; release it to sail normally.");
   if(r.heel>26) push(10+(r.heel-26), "<b>Overpowered.</b> First move: traveler down. Then flatten — backstay and outhaul on — and let the top twist open (ease mainsheet a touch, keep vang moderate).");
   if(off){
-    if(r.main.boom < 45) push(6, "Off the wind, <b>ease the mainsheet</b> well out — the sail should hang square to the apparent wind. The boom can go close to the shrouds.");
+    if(r.main.boom < 45) push(6, "Off the wind, <b>ease the mainsheet</b> well out — the sail should hang square to the apparent wind. The boom can go out until it nearly touches the side wires holding the mast.");
     if(r.main.twist>30) push(4, "Boom lifting and the top of the main spilling? <b>Vang on</b> — off the wind the vang, not the sheet, holds the leech.");
     if(r.main.twist<12) push(3, "Leech clamped shut for a run — <b>ease the vang</b> a little so the top can breathe.");
   } else {
     // twist
-    const dT = r.main.twist - idl.twist;
-    if(dT < -6) push(Math.abs(dT)*.6, `Main leech is hooked — too little twist (${fmt1(r.main.twist)}° vs ~${idl.twist}°). <b>Ease mainsheet</b> an inch or two${state.vang>.6?" and <b>ease vang</b>":""}. A closed leech drags and heels more than it drives.`);
-    if(dT > 7) push(dT*.5, `Top of the main is spilling — too much twist (${fmt1(r.main.twist)}° vs ~${idl.twist}°). <b>Sheet on</b> until the top batten lines up with the boom.`);
+    const T=tgt(r);
+    const dT = r.main.twist - T.mt;
+    if(dT < -6) push(Math.abs(dT)*.6, `Main leech is hooked — too little twist (${fmt1(r.main.twist)}° vs ~${fmt1(T.mt)}°). <b>Ease mainsheet</b> an inch or two${state.vang>.6?" and <b>ease vang</b>":""}. A closed leech drags and heels more than it drives.`);
+    if(dT > 7) push(dT*.5, `Top of the main is spilling — too much twist (${fmt1(r.main.twist)}° vs ~${fmt1(T.mt)}°). <b>Sheet on</b> until the top batten lines up with the boom.`);
     // depth
-    const dD = r.main.depth - idl.depth;
-    if(dD > .022) push(dD*220, `Main too full for this breeze (${(r.main.depth*100).toFixed(0)}% vs ~${(idl.depth*100).toFixed(0)}%). <b>Outhaul on</b>, <b>backstay on</b> — flatten before you fight heel with the rudder.`);
-    if(dD < -.022) push(Math.abs(dD)*200, `Main stretched flat while you need power (${(r.main.depth*100).toFixed(0)}% vs ~${(idl.depth*100).toFixed(0)}%). <b>Ease outhaul</b> and <b>ease backstay</b> to give it belly.`);
+    const dD = r.main.depth - T.md;
+    if(dD > .022) push(dD*220, `Main too full for this breeze (${(r.main.depth*100).toFixed(0)}% vs ~${(T.md*100).toFixed(0)}%). <b>Outhaul on</b>, <b>backstay on</b> — flatten before you fight heel with the rudder.`);
+    if(dD < -.022) push(Math.abs(dD)*200, `Main stretched flat while you need power (${(r.main.depth*100).toFixed(0)}% vs ~${(T.md*100).toFixed(0)}%). <b>Ease outhaul</b> and <b>ease backstay</b> to give it belly.`);
     // draft position
     if(r.main.draft > .50) push((r.main.draft-.5)*40, `Draft has blown aft to ${(r.main.draft*100).toFixed(0)}% — the sail gets round-backed and heely. <b>Cunningham on</b> until the luff wrinkles just disappear.`);
     if(r.main.draft < .36) push(4, "Draft dragged too far forward — <b>ease the cunningham</b>; you only need enough to remove luff wrinkles.");
@@ -764,11 +770,11 @@ function coachAdvice(r){
       ? "Main is stalled — strapped in past the wind. <b>Ease the mainsheet</b> until flow re-attaches."
       : "Main is stalled — trimmed past the wind. <b>Drop the traveler</b> to re-align the sail with the apparent wind without changing course.");
     // jib
-    const dTJ = r.jib.twist - idl.twist;
+    const dTJ = r.jib.twist - T.jt;
     if(dTJ > 8) push(dTJ*.4, "Jib top is falling open — <b>car forward</b> (more leech tension) or sheet on a touch.");
     if(dTJ < -7) push(Math.abs(dTJ)*.4, "Jib leech hooked closed and backwinding the main — <b>car aft</b> or crack the sheet.");
-    const dDJ = r.jib.depth - idl.depth;
-    if(dDJ > .02) push(dDJ*180, `Jib too full for this breeze (${(r.jib.depth*100).toFixed(0)}% vs ~${(idl.depth*100).toFixed(0)}%). <b>Car aft</b> and <b>backstay on</b> (a tight forestay flattens the jib's entry).`);
+    const dDJ = r.jib.depth - T.jd;
+    if(dDJ > .02) push(dDJ*180, `Jib too full for this breeze (${(r.jib.depth*100).toFixed(0)}% vs ~${(T.md*100).toFixed(0)}%). <b>Car aft</b> and <b>backstay on</b> (a tight forestay flattens the jib's entry).`);
     if(dDJ < -.02) push(Math.abs(dDJ)*160, "Jib board-flat while you need power — <b>car forward</b> and <b>ease the backstay</b> to let the forestay sag a touch.");
     if(r.jib.draft > .50) push(3.5, "Jib draft aft, entry gone round — <b>jib halyard on</b> to pull it forward.");
     if(r.jib.luff) push(8, "Jib luffing — <b>sheet on</b>.");
@@ -787,13 +793,14 @@ function renderTiles(r){
   const heelTxt = r.heel>28?"✕ overpowered":r.heel>22?"! too much":r.heel>=10?"✓ in band":"flat";
   const helmCls = r.helm>8?"crit":r.helm>5.5?"warn":r.helm>=1?"good":"mut";
   const helmTxt = r.helm>8?"✕ heavy":r.helm>5.5?"! building":r.helm>=1?"✓ light":"neutral";
-  const effCls = r.eff>.8?"good":r.eff>.55?"warn":"crit";
-  const effTxt = r.eff>.8?"✓ in the groove":r.eff>.55?"! trim off":"✕ way off";
+  const effV = OPT_R ? clamp(r.speed/Math.max(OPT_R.speed,.1),0,1) : r.eff;
+  const effCls = effV>.92?"good":effV>.75?"warn":"crit";
+  const effTxt = effV>.92?"✓ in the groove":effV>.75?"! trim off":"✕ way off";
   $("tiles").innerHTML = `
     <div class="tile"><div class="lbl">Speed over water</div><div class="num">${fmt1(r.speed)}<small> kt</small></div>${pill("hull max 6.2","mut")}</div>
     <div class="tile"><div class="lbl">Heel</div><div class="num">${fmt1(r.heel)}<small> °</small></div>${pill(heelTxt,heelCls)}</div>
     <div class="tile"><div class="lbl">Weather helm</div><div class="num">${fmt1(r.helm)}<small> ° rudder</small></div>${pill(helmTxt,helmCls)}</div>
-    <div class="tile"><div class="lbl">Sail efficiency</div><div class="num">${Math.round(r.eff*100)}<small> %</small></div>${pill(effTxt,effCls)}</div>`;
+    <div class="tile"><div class="lbl">% of best speed</div><div class="num">${Math.round(effV*100)}<small> %</small></div>${pill(effTxt,effCls)}</div>`;
 }
 
 function renderCoach(r){
@@ -815,15 +822,16 @@ function delta(x, ideal, tolGood, tolWarn, fmt){
   return `<td class="n">${fmt(x)}</td><td class="n">${fmt(ideal)}</td><td>${pill(a<=tolGood?"✓ on target":sign+fmt(a).replace("−",""),cls)}</td>`;
 }
 function renderTable(r){
+  const T=tgt(r);
   const pc = x=>(x*100).toFixed(0)+"%";
   const dg = x=>fmt1(x)+"°";
   $("shape-table").innerHTML = `
     <tr><th></th><th>Now</th><th>Target</th><th>Δ</th></tr>
-    <tr><td>Main twist</td>${delta(r.main.twist, r.idl.twist, 4, 8, dg)}</tr>
-    <tr><td>Main depth</td>${delta(r.main.depth, r.idl.depth, .015, .03, pc)}</tr>
-    <tr><td>Main draft pos.</td>${delta(r.main.draft, r.idl.draftPos, .05, .09, pc)}</tr>
-    <tr><td>Jib twist</td>${delta(r.jib.twist, r.idl.twist, 5, 9, dg)}</tr>
-    <tr><td>Jib depth</td>${delta(r.jib.depth, r.idl.depth, .015, .03, pc)}</tr>`;
+    <tr><td>Main twist</td>${delta(r.main.twist, T.mt, 4, 8, dg)}</tr>
+    <tr><td>Main depth</td>${delta(r.main.depth, T.md, .015, .03, pc)}</tr>
+    <tr><td>Main draft pos.</td>${delta(r.main.draft, T.mdr, .05, .09, pc)}</tr>
+    <tr><td>Jib twist</td>${delta(r.jib.twist, T.jt, 5, 9, dg)}</tr>
+    <tr><td>Jib depth</td>${delta(r.jib.depth, T.jd, .015, .03, pc)}</tr>`;
 }
 
 /* ---------------- render: sail sections ---------------- */
@@ -888,25 +896,26 @@ function renderSections(r){
     // twist reads as progressive droop up the rows
     const tw = f => f.twist*(Math.pow(row.h,1.15)-Math.pow(.15,1.15));
     const mAng = tw(r.main), jAng = tw(r.jib);
-    const mIdl = idl.twist*(Math.pow(row.h,1.15)-Math.pow(.15,1.15));
+    const T=tgt(r);
+    const mIdl = T.mt*(Math.pow(row.h,1.15)-Math.pow(.15,1.15));
     const depthTaper = 1-0.25*row.h;
     const awaLocal = r.awa + 7*row.h - (r.main.boom + r.main.twist*.15); // wind relative to foot chord
     out += `<line x1="24" y1="${row.y}" x2="616" y2="${row.y}" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"/>
       <text x="24" y="${row.y-8}" font-size="10" fill="var(--ink3)" letter-spacing="1.5">${row.lab}</text>
       <text x="238" y="${row.y-8}" font-size="10" fill="var(--ink2)" font-family="var(--mono)">+${fmt1(mAng)}° twist</text>`;
     out += hArrow(xm+34, row.y-14, clamp(awaLocal,12,150), 40, "var(--teal)", ri===0?"apparent wind":"");
-    out += `<path class="sailpath" d="${hSection(xm,row.y,mIdl,row.Lm,idl.depth*depthTaper,idl.draftPos)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
+    out += `<path class="sailpath" d="${hSection(xm,row.y,mIdl,row.Lm,T.md*depthTaper,T.mdr)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
     { const g=hSectionGeom(xm,row.y,mAng,row.Lm,r.main.depth*depthTaper,r.main.draft);
       out += `<path class="sailpath" d="${g.d}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
-      const [dx2,dy2]=g.at(r.main.draft), [tx2,ty2]=g.at(r.idl.draftPos);
+      const [dx2,dy2]=g.at(r.main.draft), [tx2,ty2]=g.at(T.mdr);
       out += `<circle cx="${tx2}" cy="${ty2}" r="4" fill="none" stroke="var(--ghost)" stroke-width="1.4"/>`;
       out += `<circle cx="${dx2}" cy="${dy2}" r="3.2" fill="var(--accent)" stroke="var(--bg)" stroke-width="1"/>`; }
     out += `<circle cx="${xm}" cy="${row.y}" r="3" fill="var(--ink)"/>`;
-    const jIdl = mIdl;
-    out += `<path class="sailpath" d="${hSection(xj,row.y,jIdl,row.Lj,idl.depth*depthTaper,idl.draftPos)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
+    const jIdl = T.jt*(Math.pow(row.h,1.15)-Math.pow(.15,1.15));
+    out += `<path class="sailpath" d="${hSection(xj,row.y,jIdl,row.Lj,T.jd*depthTaper,T.mdr)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
     { const g=hSectionGeom(xj,row.y,jAng,row.Lj,r.jib.depth*depthTaper,r.jib.draft);
       out += `<path class="sailpath" d="${g.d}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
-      const [dx2,dy2]=g.at(r.jib.draft), [tx2,ty2]=g.at(r.idl.draftPos);
+      const [dx2,dy2]=g.at(r.jib.draft), [tx2,ty2]=g.at(T.mdr);
       out += `<circle cx="${tx2}" cy="${ty2}" r="4" fill="none" stroke="var(--ghost)" stroke-width="1.4"/>`;
       out += `<circle cx="${dx2}" cy="${dy2}" r="3.2" fill="var(--accent)" stroke="var(--bg)" stroke-width="1"/>`; }
     out += `<circle cx="${xj}" cy="${row.y}" r="3" fill="var(--ink)"/>`;
@@ -989,7 +998,7 @@ function renderTwist(r){
     return out;
   }
   // main: solid vs ideal-twist ghost (same boom angle so the difference IS twist)
-  out += leechPath(r.main.boom, idl.twist, 190, .90, "var(--ghost)", 1.6, true);
+  out += leechPath(r.main.boom, tgt(r).mt, 190, .90, "var(--ghost)", 1.6, true);
   out += leechPath(r.main.boom, r.main.twist, 190, .90, "var(--accent)", 3, false);
   // jib (drawn smaller, inboard)
   out += leechPath(r.jib.clew, r.jib.twist, 120, .94, "var(--teal)", 2.2, false);
@@ -1037,11 +1046,11 @@ function renderHeel(r){
 }
 
 /* ---------------- slider value labels ---------------- */
-const easeWords = ["fully eased","eased","cracked","firm","hard on"];
+const easeWords = ["fully eased","eased","eased a bit","firm","hard on"];
 function word(v){ return easeWords[clamp(Math.floor(v*4.999),0,4)]; }
 function renderVals(){
   $("v-tws").textContent = state.tws+" kt"+(state.gust?" (+6 gust)":"");
-  $("v-twa").textContent = Math.round(state.twaC||POS[state.posIdx].twa)+"\u00B0 true";
+  $("v-twa").textContent = Math.round(state.twaC||POS[state.posIdx].twa)+"\u00B0 \u00B7 "+POS[state.posIdx].name;
   renderDial();
   $("v-sheet").textContent = word(state.sheet);
   $("v-trav").textContent = state.trav===0?"centered":(state.trav>0?"up (windward) "+Math.round(state.trav*100)+"%":"down (leeward) "+Math.round(-state.trav*100)+"%");
@@ -1071,7 +1080,6 @@ const LINEMETA = {
   jsheetw:{name:"Windward jib sheet",job:"backs the jib when hauled"},
   tws:{name:"True wind",job:"conditions changed"},
   pos:{name:"Point of sail",job:"conditions changed"},
-  sea:{name:"Sea state",job:"conditions changed"},
   gust:{name:"Gust",job:"+6 kt on top of true wind"},
   perfect:{name:"Perfect trim",job:"physics optimum (close-hauled: best VMG)"},
 };
@@ -1120,14 +1128,14 @@ function update(src){
 function renderDial(){
   const el=$("windDial"); if(!el) return;
   const twa=state.twaC||POS[state.posIdx].twa;
-  const c=65, R=52;
+  const c=65, R=48;
   // wind arrow points AT the boat from bearing twa off the bow (starboard held)
   const ax=c+Math.sin(rad(twa))*R, ay=c-Math.cos(rad(twa))*R;
   const bx=c+Math.sin(rad(twa))*(R-16), by=c-Math.cos(rad(twa))*(R-16);
   let ticks="";
-  for(const [a,lab] of [[0,"irons"],[45,"CH"],[90,"beam"],[135,"broad"],[180,"run"]]){
+  for(const [a,lab] of [[0,"irons"],[45,"CH"],[62,"CR"],[90,"beam"],[135,"broad"],[178,"run"]]){
     const tx=c+Math.sin(rad(a))*(R+8), ty=c-Math.cos(rad(a))*(R+8);
-    ticks+=`<text x="${tx}" y="${ty+3}" font-size="7.5" fill="var(--ink3)" text-anchor="middle">${lab}</text>`;
+    ticks+=`<text x="${tx}" y="${ty+3}" font-size="9.5" font-weight="600" fill="var(--ink2)" text-anchor="middle" style="user-select:none;pointer-events:none">${lab}</text>`;
   }
   // no-go zone shading (< 28 deg)
   const nx1=c+Math.sin(rad(-28))*R, ny1=c-Math.cos(rad(-28))*R;
@@ -1153,7 +1161,6 @@ function renderDial(){
     let best=0,bd=1e9;
     POS.forEach((p,i)=>{const d=Math.abs(p.twa-state.twaC); if(d<bd){bd=d;best=i;}});
     state.posIdx=best;
-    [...$("pos-seg").children].forEach((cb,j)=>cb.classList.toggle("on",j===best));
     update("pos");
   };
   let drag=false;
@@ -1170,21 +1177,6 @@ function renderDial(){
  ["jhal",v=>state.jhal=v/100]].forEach(([id,fn])=>{
   $(id).addEventListener("input",e=>{fn(e.target.value);update(id);});
 });
-POS.forEach((p,i)=>{
-  const b=document.createElement("button");
-  b.textContent=p.name; if(i===0)b.classList.add("on");
-  b.addEventListener("click",()=>{
-    state.posIdx=i; state.twaC=null;
-    [...$("pos-seg").children].forEach((c,j)=>c.classList.toggle("on",j===i));
-    update("pos");
-  });
-  $("pos-seg").appendChild(b);
-});
-[...$("sea-seg").children].forEach(b=>b.addEventListener("click",()=>{
-  state.sea=b.dataset.sea;
-  [...$("sea-seg").children].forEach(c=>c.classList.toggle("on",c===b));
-  update("sea");
-}));
 $("gust").addEventListener("click",()=>{
   state.gust=!state.gust;
   $("gust").classList.toggle("on",state.gust);
@@ -1193,7 +1185,14 @@ $("gust").addEventListener("click",()=>{
 });
 
 /* ---------------- per-slider optimality ticks (debounced optimizer) ---------------- */
-let OPT=null, optTimer=null;
+let OPT=null, OPT_R=null, optTimer=null;
+// targets shown everywhere: the optimizer's solved shape when fresh, textbook rules otherwise
+function tgt(r){
+  if(OPT_R) return {mt:OPT_R.main.twist, md:OPT_R.main.depth, mdr:OPT_R.main.draft,
+                    jt:OPT_R.jib.twist, jd:OPT_R.jib.depth};
+  const i=(r||lastR).idl;
+  return {mt:i.twist, md:i.depth, mdr:i.draftPos, jt:i.twist, jd:i.depth};
+}
 function renderOptims(){
   if(!OPT) return;
   for(const k of TRIM_KEYS){
@@ -1215,7 +1214,11 @@ function renderOptims(){
 }
 function scheduleOptims(){
   clearTimeout(optTimer);
-  optTimer=setTimeout(()=>{ OPT=solvePerfectTrim(true); renderOptims(); }, 500);
+  optTimer=setTimeout(()=>{ OPT=solvePerfectTrim(true);
+    try{ OPT_R=computeWith(OPT); }catch(e){ OPT_R=null; }
+    renderOptims();
+    if(lastR){ renderTiles(lastR); renderTable(lastR); renderSections(lastR); renderTwist(lastR); }
+  }, 500);
 }
 
 /* ---------------- perfect trim: coordinate descent on the real solver ---------------- */
@@ -1268,6 +1271,9 @@ $("perfect").addEventListener("click",()=>{
   $("perfect").textContent="Solving…"; $("perfect").disabled=true;
   setTimeout(()=>{
     const p=solvePerfectTrim();
+    // close-hauled VMG optimum includes the pointing angle — apply it to the
+    // dial, otherwise the trim lands on a heading it was not solved for
+    if(p.__twa){ state.twaC=p.__twa; }
     for(const k of TRIM_KEYS){
       state[k]=p[k];
       $(k).value=k==="trav"?Math.round(p[k]*100):Math.round(p[k]*100);
@@ -1289,7 +1295,7 @@ function showTab(name){
 }
 document.querySelector("main").classList.add("lock");
 $("tabs").addEventListener("click",e=>{
-  const b=e.target.closest("button"); if(!b)return;
+  const b=e.target.closest("button"); if(!b||b.dataset.notab)return;
   showTab(b.dataset.tab);
 });
 
@@ -1318,7 +1324,7 @@ function demo(id){
 const LINES = [
  {n:"Mainsheet", tag:"twist + angle", t:"Pulls the boom down and in. Close-hauled it mostly tensions the leech — your main twist control. Off the wind it mostly changes the sail's angle.",
   tight:"Leech closes, twist disappears, top batten parallel to boom. More point, more heel.", ease:"Top opens, spills breeze aloft, forgiving in gusts.",
-  when:"Every puff and lull. Upwind: trim until the top batten is roughly parallel to the boom, then play it.",
+  when:"Every time the wind rises or fades. Upwind: pull in until the top batten (the stiff strip at the top of the sail) lines up with the boom, then keep adjusting with every wind change.",
   c26:"Mid-boom sheeting on the Colgate 26 — small movements matter; think in inches, not armfuls."},
  {n:"Traveler", tag:"angle, not shape", t:"Slides the mainsheet block across the cockpit, changing the boom's angle without touching leech tension. It re-aims the whole sail at the wind while the shape stays put.",
   tight:"Car up to windward: boom to centerline in light air without strangling the leech.", ease:"Car down: instant depower in a gust — same twist, less angle of attack.",
@@ -1349,7 +1355,7 @@ const LINES = [
   when:"Rough guide: sheet should bisect the clew angle. Top telltale breaks first → car forward. Overpowered → car aft.",
   c26:"Track on the side deck with pin stops — set it before the tack on the new side. Common trap: car aft is NOT the fast setting — it is the depower setting. In moderate air an open top costs power and pointing; go aft only when overpowered."},
  {n:"Jib halyard", tag:"jib draft position", t:"Luff tension for the jib — the jib's cunningham. More wind stretches the luff and lets draft slide aft; halyard tension pulls it forward.",
-  tight:"Draft forward, fine entry, points well.", ease:"Scallops between hanks; draft aft, round entry.",
+  tight:"Draft forward, fine entry, points well.", ease:"Sagging arcs between the clips that hold the sail to the wire; draft aft, round entry.",
   when:"Set for the day's breeze; snug it when the wind builds.",
   c26:"Led aft to the cabin-top clutch — easy to tweak without leaving the cockpit."},
 ];
@@ -1388,8 +1394,8 @@ const CONCEPTS = [
   `Depth — “belly”, “fullness”, camber — is how curved the sail is. A deep sail is a big engine: more lift, more acceleration, and more heel and drag. A flat sail is a small efficient engine: less power, less heel, better pointing.`,
   `<b>The rule of thirds:</b> very light air wants a <i>moderately</i> flat sail (weak flow can't bend around a deep curve without separating); building breeze wants full power; once you're overpowered, flatten progressively — outhaul and backstay for the main, backstay and car aft for the jib.`,
   `Flatten <i>before</i> you reef, and flatten before you fight the heel with rudder.`],
-  want:["Full: powering through chop, light-to-medium breeze, after a tack to accelerate","Flat: overpowered, flat-water pointing, drifter conditions under ~5 kt"],
-  avoid:["Deep sails block-to-block in 20 kt — that's the round-up recipe","Board-flat sails in 8 kt and slop — no punch, boat stops"],
+  want:["Full: powering through chop, light-to-medium breeze, after a turn through the wind, to speed back up","Flat: overpowered, flat-water pointing, almost-no-wind days (under ~5 kt)"],
+  avoid:["Full, curvy sails pulled in as tight as they go in 20 kt of wind — the boat will heel hard and try to spin up into the wind","Completely flat sails in 8 kt with leftover waves — not enough power to push through, so the boat stops"],
   svg:`<svg viewBox="0 0 300 170"><path d="M 40 60 Q 150 130 260 60" stroke="var(--accent)" stroke-width="3" fill="none"/><line x1="40" y1="60" x2="260" y2="60" stroke="var(--line)" stroke-dasharray="3 4"/><line x1="150" y1="60" x2="150" y2="95" stroke="var(--ink2)" stroke-width="1.5"/><text x="158" y="86" font-size="11" fill="var(--ink2)">depth</text><path d="M 40 140 Q 150 168 260 140" stroke="var(--ghost)" stroke-width="2.5" fill="none"/><text x="120" y="35" font-size="11" fill="var(--ink2)">full — power</text><text x="120" y="132" font-size="11" fill="var(--ink3)">flat — control</text></svg>`},
  {k:"Shape", h:"Draft position", body:[
   `Not just how deep, but <i>where</i> the deepest point sits. Target roughly 40–45% back from the luff. As breeze builds, cloth stretches and the draft slides aft — the sail goes “round-backed”: the leech hooks, heel and weather helm grow, pointing dies.`,
@@ -1454,7 +1460,7 @@ const DRILLS = [
  {s:"Beating in 18 kt. Heel hits 28°, the tiller is tugging hard, speed is dropping. First move?",
   o:["Ease the mainsheet all the way","Drop the traveler down to leeward","Steer up sharply to feather","Tighten the vang"], a:1,
   e:"Traveler down reduces the main's angle of attack instantly — heel eases while twist, leech tension and course all stay put. Dumping the sheet also works but throws away leech control; feathering trades speed and stalls the keel. Then flatten: backstay and outhaul on. (Concept: Traveler, not tiller.)"},
- {s:"5 kt of breeze, leftover chop. Everything is sheeted block-to-block and the boat is dead in the water. Best fix?",
+ {s:"5 kt of breeze, leftover chop. Everything is pulled in as hard as they go and the boat is barely moving. Best fix?",
   o:["Sheet the jib harder","Ease sheets, add twist, ease the outhaul for belly","Cunningham on hard","Backstay on hard"], a:1,
   e:"Light air can't stay attached to a strangled sail. Ease everything a touch: open twist keeps weak flow attached aloft, belly gives punch through the slop. Cunningham and backstay hard are heavy-air tools. (Concepts: Twist, Belly.)"},
  {s:"The breeze has built all afternoon. Deep horizontal wrinkles have vanished from the main's luff, the leech looks hooked, helm is heavy, pointing is poor. Which line?",
@@ -2124,7 +2130,7 @@ function coachInstructions(){
 CONTROLS (slider key: what it does; range; current value):
 ${lines}
 
-CONDITIONS: true wind ${state.tws} kt, ${POS[state.posIdx].name}, ${state.sea} water${state.gust?", gust active":""}.
+CONDITIONS: true wind ${state.tws} kt, ${POS[state.posIdx].name}${state.gust?", gust active":""}.
 CURRENT PHYSICS RESULT: speed ${r.speed.toFixed(2)} kt, heel ${r.heel.toFixed(1)} deg, weather helm ${r.helm.toFixed(1)} deg, main twist ${r.main.twist.toFixed(1)} deg (target ${r.idl.twist}), main depth ${(r.main.depth*100).toFixed(0)}% (target ${(r.idl.depth*100).toFixed(0)}%), jib twist ${r.jib.twist.toFixed(1)} deg, boom ${r.main.boom.toFixed(1)} deg off centerline.
 ${o?`OPTIMIZER'S CURRENT BEST TRIM: ${JSON.stringify(o)}`:""}
 
