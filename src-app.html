@@ -517,6 +517,12 @@
     <button id="coachSend">Ask</button></div>
 </div>
 
+<script>
+// capture anything that dies during engine-bundle execution so the 3D tab can
+// say WHAT failed instead of guessing "script blocked"
+window.__bootErrs=[];
+window.addEventListener("error",e=>{ if(window.__bootErrs.length<5) window.__bootErrs.push((e.message||"?")+(e.lineno?" @"+e.lineno:"")); });
+</script>
 <script id="lib-slot"></script>
 <script>
 "use strict";
@@ -1741,7 +1747,8 @@ function ensure3D(){
   const hud=$("hud3d");
   if(typeof BABYLON==="undefined"){
     if(hud) hud.innerHTML=window.__WATER_NORMALS
-      ?"3D engine failed to load (script blocked). Try reloading the page."
+      ?"3D engine failed to load. Try reloading the page."+
+        (window.__bootErrs&&window.__bootErrs.length?"<br>Detail: "+window.__bootErrs.join(" · "):"")
       :"This is the raw source file (src-app.html) — the 3D engine gets added at build time. Open the built app instead: run build.py, or use the GitHub Pages site / the artifact.";
     return;
   }
