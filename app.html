@@ -8969,7 +8969,7 @@ function ensure3Dinner(canvas){
   wm.bumpTexture = window.__WATER_NORMALS
     ? new BABYLON.Texture(window.__WATER_NORMALS, scene)
     : makeNoiseNormal(scene);
-  wm.windForce=-1.4; wm.waveHeight=.015; wm.bumpHeight=.10; wm.waveLength=1.6; wm.waveSpeed=.11;
+  wm.windForce=-1.0; wm.waveHeight=.015; wm.bumpHeight=.10; wm.waveLength=1.6; wm.waveSpeed=.08;
   wm.windDirection=new BABYLON.Vector2(.4,-1);
   wm.waterColor=new BABYLON.Color3(.02,.14,.14); wm.colorBlendFactor=.16;
   water.material=wm;
@@ -9290,9 +9290,6 @@ function tick3D(){
     B3.boomMesh.rotation.y=d;                       // swing boom to port with the foot
     B3.boomMesh.position=V3(.72,1.42,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(1.7));
     B3.boomMesh.rotation.z=Math.PI/2; B3.boomMesh.rotation.x=0;
-    // sea state follows the 2D toggle: flat water is FLAT
-    if(state.sea==="flat"){ B3.wm.waveHeight=.03; B3.wm.bumpHeight=.16; B3.wm.windForce=-2.5; }
-    else { B3.wm.waveHeight=.2; B3.wm.bumpHeight=.55; B3.wm.windForce=-7; }
     // deck hardware follows the lines
     B3.travCar.position=V3(-.95,1.0,-state.trav*.75);
     B3.jibCar.position=V3(2.0-.8*state.jcar,.98,.95);
