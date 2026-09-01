@@ -1,0 +1,6 @@
+build-tools/node_modules/
+build-tools/package*.json
+babylon.slim.js
+waternormals.jpg
+waternormals.b64
+trim-lab.html
