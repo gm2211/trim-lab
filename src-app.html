@@ -2350,7 +2350,7 @@ const OAUTH_STORE="trimlab_oauth", RELAY_STORE="trimlab_relay";
 // Default relay baked into the app: any stateless code->token forwarder
 // (relay/worker.js, or a motive server deployment). Users never see this
 // unless they open "advanced". Empty string = one-click disabled until set.
-const RELAY_DEFAULT="";
+const RELAY_DEFAULT="https://motive-vp3s.onrender.com";
 function relayUrl(){
   return ($("relayIn").value.trim()||localStorage.getItem(RELAY_STORE)||RELAY_DEFAULT).replace(/\/$/,"");
 }
