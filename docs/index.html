@@ -9085,20 +9085,26 @@ scheduleOptims();
 <script>
 (function(){const iv=setInterval(function(){
   try{
-    if(window.clothStep&&!window.__turb){ window.__turb=true;
-      const _cs=window.clothStep;
-      // atmospheric turbulence: real wind is never steady — ~10% speed modulation
-      // and a few degrees of direction wander at sub-Hz frequencies
-      window.clothStep=function(kind,r,dt,t){
-        const g=1+.10*Math.sin(t*1.3)+.05*Math.sin(t*3.1+1.7)+.04*Math.sin(t*.55+4);
-        const dj=2.2*Math.sin(t*.9+2)+1.2*Math.sin(t*2.3);
-        const r2=Object.assign({},r); r2.aws=r.aws*g; r2.awa=r.awa+dj;
-        return _cs(kind,r2,dt,t);
-      };
+    // atmospheric turbulence: real wind is never steady — modulate the live
+    // result's apparent wind (~10% speed, a few degrees of wander) so the
+    // sail cloth breathes instead of sitting rigid in laboratory-steady air.
+    // note: lastR is a top-level `let` (lexical global), not window.lastR.
+    if(!window.__turb && typeof lastR!=="undefined"){ window.__turb=true;
+      let ref=null, base=0, baseA=0;
+      setInterval(function(){
+        try{
+          if(!lastR) return;
+          if(lastR!==ref){ ref=lastR; base=ref.aws; baseA=ref.awa; }
+          const t=performance.now()/1000;
+          const g=1+.10*Math.sin(t*1.3)+.05*Math.sin(t*3.1+1.7)+.04*Math.sin(t*.55+4);
+          ref.aws=base*g;
+          ref.awa=baseA+2.2*Math.sin(t*.9+2)+1.2*Math.sin(t*2.3);
+        }catch(e){}
+      },33);
     }
     if(window.BABYLON&&BABYLON.EngineStore.LastCreatedScene){
       const wm=BABYLON.EngineStore.LastCreatedScene.getMaterialByName("wm");
-      if(wm){ wm.waveSpeed=.32; wm.waveLength=.9; if(window.__turb) clearInterval(iv); } } }catch(e){ clearInterval(iv); }
+      if(wm){ wm.waveSpeed=.32; wm.waveLength=.9; if(window.__turb) clearInterval(iv); } } }catch(e){}
 },500);})();
 </script>
 </body></html>
