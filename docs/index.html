@@ -7757,9 +7757,9 @@ function ideals(tws, awa){
   else if(tws<14){ depth=.125; twist=13; }
   else if(tws<18){ depth=.105; twist=15; }
   else { depth=.088; twist=19; }
-  const draftPos=.43;
+  const draftPos=.45, draftPosJ=.38;   // sailmaker targets: main 45-50%, jib 35-40%
   const aoa = clamp(20 + (awa-32)*.12, 17, 30);
-  return {depth, twist, draftPos, aoa};
+  return {depth, twist, draftPos, draftPosJ, aoa};
 }
 // gaussian closeness score
 const score = (x, ideal, tol)=>Math.exp(-Math.pow((x-ideal)/tol,2));
@@ -7983,7 +7983,7 @@ function compute(){
     const aoaM = awa - sh.m.boom - sh.m.twist*.5;
     const aoaJ = awa - sh.j.boom - sh.j.twist*.5;
     const idl = ideals(twsKt, awa);
-    function sailEff(sp, aoa, aoaIdl){
+    function sailEff(sp, aoa, aoaIdl, dpIdl){
       if(off){
         const proj = clamp(Math.sin(rad(clamp(sh.m.boom+sh.m.twist*.4,0,95)+8))*1.05,0,1);
         return {eff: clamp(proj*score(sp.twist, 24, 14),0,1), luff:false, stall:false};
@@ -7994,11 +7994,11 @@ function compute(){
       const eff = clamp(Math.pow(
         score(sp.depth, idl.depth, .035) *
         score(sp.twist, idl.twist, 9) *
-        score(sp.draft, idl.draftPos, .09) * lift, .65), 0, 1);
+        score(sp.draft, dpIdl, .09) * lift, .65), 0, 1);
       return {eff, luff, stall};
     }
-    const M = sailEff(sh.m, aoaM, idl.aoa);
-    const J = sailEff(sh.j, aoaJ, idl.aoa-4);
+    const M = sailEff(sh.m, aoaM, idl.aoa, idl.draftPos);
+    const J = sailEff(sh.j, aoaJ, idl.aoa-4, idl.draftPosJ);
     const eff = M.eff*.58 + J.eff*.42;
     const helm = clamp(-1 + Math.max(0,heel-8)*.42 + (sh.m.draft-.43)*28 + Math.max(0,s.trav)*1.2 + (sh.m.depth-.11)*30*sh.upwind, -4, 15);
     return {tws:twsKt, twa, aws:aws/KT, awa, upwind:sh.upwind, off,
@@ -8782,28 +8782,28 @@ $("concepts").innerHTML = CONCEPTS.map(c=>`
 
 /* ================= DRILLS CONTENT ================= */
 const DRILLS = [
- {s:"Beating in 14 kt, backstay and outhaul already snugged, crew on the rail. A 19-kt puff hits: heel jumps to 28\u00B0, the tiller tugs hard. Your hand is on the full-width traveler. First move, right now?",
+ {s:"Close-hauled (about 45\u00B0 to the wind) in 14 kt of true wind, backstay and outhaul already snugged, crew on the rail. A puff builds the wind to 19 kt: heel jumps to 28\u00B0, the tiller tugs hard. Your hand is on the full-width traveler. First move, right now?",
   o:["Ease the mainsheet a foot or two","Drop the traveler down to leeward","Steer up sharply to feather through it","Tighten the vang"], a:1,
   e:"On a keelboat with a full-width traveler at hand, dropping the car is the classic puff response: it swings the whole boom to leeward, cutting the main's angle of attack instantly, while twist and leech tension stay exactly as you set them \u2014 and one pull restores everything when the puff passes. Easing the sheet also depowers (and plenty of good sailors do it, especially in shifty air or on boats without a good traveler), but it opens the leech too, so you're re-trimming shape, not just power. Feathering works in flat water but stalls the keel if overdone. If the heel is constant rather than puff-driven, the real fix is flattening the sail and, eventually, a reef. (Concept: Traveler = angle of attack.)"},
- {s:"5 kt of breeze, leftover chop from a dying seabreeze. Sheets are cranked in hard, the boat is barely making 2 kt and every wave stops it dead. Best fix?",
+ {s:"Close-hauled in 5 kt of true wind, leftover chop from a dying seabreeze. Sheets are cranked in hard, the boat is barely making 2 kt and every wave stops it dead. Best fix?",
   o:["Sheet the jib in even harder","Ease sheets for twist, ease the outhaul for belly","Cunningham on hard","Backstay on hard"], a:1,
   e:"Light wind can't stay attached to a strangled sail \u2014 over-trimming stalls what little flow there is. Ease everything a touch: extra twist keeps the weak breeze attached up high, and a deeper (fuller) sail gives the punch to keep the boat moving through the chop. Cunningham and backstay are heavy-air flattening tools; here they'd make things worse. (Concepts: Twist, Belly.)"},
- {s:"The breeze has built all afternoon. The soft horizontal wrinkles along the main's luff have disappeared, the deepest part of the sail looks like it's drifted back toward the leech, the helm is heavy and pointing has gone soft. Which line fixes this?",
+ {s:"Close-hauled while the breeze has built all afternoon, from 8 to 16 kt. The soft horizontal wrinkles along the main's luff have disappeared, the deepest part of the sail looks like it's drifted back toward the leech, the helm is heavy and pointing has gone soft. Which line fixes this?",
   o:["Outhaul","Traveler","Cunningham","Jib halyard"], a:2,
   e:"Classic draft-blown-aft: building wind pressure has stretched the luff and let the sail's deepest point slide aft, loading the leech and the helm. Cunningham tension pulls the draft back forward to around 40\u201345% of the way aft, frees the back of the sail, and lightens the helm. Outhaul flattens the bottom but doesn't move the draft; the traveler changes angle, not shape. (Concept: Draft position.)"},
- {s:"You bear away from a beat to a broad reach and ease the mainsheet well out. The boom rises, the top of the main twists wide open and starts to flog. Which line owns this problem now?",
+ {s:"In 12 kt of true wind you bear away from close-hauled to a broad reach (wind well behind the beam) and ease the mainsheet well out. The boom rises, the top of the main twists wide open and starts to flog. Which line owns this problem now?",
   o:["Mainsheet back in","Boom vang","Backstay","Outhaul"], a:1,
   e:"Upwind the mainsheet pulls mostly down, so it controls the leech. Eased way out on a reach it pulls mostly sideways \u2014 it can no longer hold the boom down, so the leech goes slack and the top twists off. Off the wind, the vang takes over the job of holding the boom down and setting twist. Sheeting back in would fix the flogging but point the sail at the wrong angle and stall it. (Concept: Twist; Line: Vang.)"},
- {s:"Flat water, 12 kt, boat at full speed on a beat. You want to squeeze up to a mark without an extra tack. How do you buy pointing?",
+ {s:"Flat water, 12 kt of true wind, boat at full speed close-hauled. You want to squeeze up to a mark without an extra tack. How do you buy pointing?",
   o:["Ease the outhaul for power","Backstay on, traveler up, sheet firm \u2014 flatten and close the leech","Add twist everywhere","Bear away to build speed and hope"], a:1,
   e:"Pointing mode \u2014 but only from full speed. Backstay tension tightens the forestay so the jib gets a flatter, finer entry that lets you sail closer to the wind; traveler up brings the boom to the centerline; a firm sheet closes the leech so the sail bends the wind harder. You'll give up a little speed for the height \u2014 flat water is exactly when that trade pays, because no waves are there to knock the speed away. (Concepts: The gears, Pointing mode.)"},
- {s:"Upwind, steering slowly toward the wind to test the jib: the top pair of telltales lifts and breaks long before the lower pairs. What's the adjustment?",
+ {s:"Close-hauled in 10 kt of true wind, steering slowly toward the wind to test the jib: the top pair of telltales lifts and breaks long before the lower pairs. What's the adjustment?",
   o:["Move the fairlead car forward","Move the fairlead car aft","More jib halyard","Ease the jib sheet"], a:0,
   e:"Top breaking early means the head of the jib is too open \u2014 too much twist, spilling wind aloft. Moving the car forward aims the sheet's pull more downward, tensioning the leech and closing the top, so all pairs break together. (If the bottom pair broke first, you'd go the other way.) (Line: Fairlead car; Concept: Twist.)"},
- {s:"Gusty 16\u201322 kt beat, short-handed \u2014 nobody free to play the jib sheet in every puff. How do you set the jib up to absorb the gusts on its own?",
+ {s:"Close-hauled in gusty true wind, 16 kt with puffs to 22, short-handed \u2014 nobody free to play the jib sheet in every puff. How do you set the jib up to absorb the gusts on its own?",
   o:["Car forward, sheet hard","Car aft a few holes \u2014 flatter foot, open top","Ease the halyard soft","Ease the sheet a foot and leave it"], a:1,
   e:"Sliding the car aft points the sheet's pull more along the foot: the bottom of the sail flattens and the top is free to twist open. Each gust then spills from the head automatically and the boat stays on its feet \u2014 a built-in shock absorber. It costs a little pointing, which is the right trade when nobody can work the sheet. (Concept: Twist as gust response.)"},
- {s:"You tack. Coming out of it the boat is slow and the apparent wind has gone soft and moved aft. What's the right gear?",
+ {s:"You tack through the wind in 12 kt, close-hauled on the new side. Coming out of it the boat is slow and the apparent wind has gone soft and moved aft. What's the right gear?",
   o:["Point high immediately and trim hard","Aim slightly low, sails a touch fuller and more twisted, trim up as speed builds","Backstay on to flatten","Cleat everything \u2014 it was right before the tack"], a:1,
   e:"First gear. At low speed you make less of your own wind, so the apparent wind is lighter and further aft \u2014 and the keel can't grip until water is flowing over it. Aim a few degrees low of close-hauled with forgiving, slightly full and twisted sails, let the boat accelerate, then shift up: sheet on, flatten, point. Trimming hard and pointing immediately just stalls everything at low speed. (Concepts: The gears, Apparent wind.)"},
 ];
