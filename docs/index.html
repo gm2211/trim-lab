@@ -282,7 +282,7 @@
       <div class="ctl-group">
         <h3>Mainsail lines</h3>
         <div class="ctl"><div class="row1"><label for="sheet">Mainsheet</label><span class="val" id="v-sheet"></span></div>
-          <input type="range" id="sheet" min="0" max="100" value="75"></div>
+          <input type="range" id="sheet" min="0" max="100" value="85"></div>
         <div class="ctl"><div class="row1"><label for="trav">Traveler</label><span class="val" id="v-trav"></span></div>
           <input type="range" id="trav" min="-100" max="100" value="0"></div>
         <div class="ctl"><div class="row1"><label for="vang">Boom vang</label><span class="val" id="v-vang"></span></div>
@@ -7595,7 +7595,7 @@ const POS = [
 ];
 const state = {
   tws:12, posIdx:0, sea:"flat", gust:false,
-  sheet:.75, trav:0, vang:.40, outhaul:.50, cunn:.25, backstay:.35,
+  sheet:.85, trav:0, vang:.40, outhaul:.50, cunn:.25, backstay:.35,
   jsheet:.75, jsheetw:0, jcar:.50, jhal:.55, mainhal:.90,
 };
 
@@ -7754,13 +7754,34 @@ function compute(){
   updatePanel(out.main, {...out.jib, boom:out.jib.clew}, out.awa);
   return out;
 
+  // The mainsheet is an inextensible line: its paid-out length plus the traveler
+  // car position bound how far the boom can swing. Wind pressure carries the boom
+  // out only as far as the sheet allows; a short sheet with the car to windward
+  // drags the boom past centerline, exactly like the real tackle.
+  function sheetGeom(Ls, zc){
+    const dist=d=>{const dr=rad(d);
+      const bx=.72-Math.cos(dr)*1.7, bz=Math.sin(dr)*1.7;
+      return Math.hypot(bx+.95, .46, bz-zc)};
+    let best=null, bd=1e9, argmin=0;
+    for(let d=-30; d<=88; d+=.5){
+      const dd=dist(d);
+      if(dd<bd){bd=dd; argmin=d;}
+      if(dd<=Ls) best=d;
+    }
+    const ang=best===null?argmin:best;
+    return {ang, dist};
+  }
   function shapes(awa){
     const upwind = clamp(1-(awa-35)/80, 0, 1);
     const leechM = clamp(s.sheet*upwind*0.95 + s.vang*0.6*(1-0.4*upwind), 0, 1.15);
     const twistM = clamp(36 - 27*leechM, 4, 38);
     const depthM = .08 + .08*(1 - .55*s.outhaul - .45*s.backstay);
     const draftM = clamp(.42 + .010*(twsKt-8) + .04*s.backstay - .13*s.cunn, .32, .60);
-    const boomM = clamp(clamp(awa-12,5,88)*(1-s.sheet) - s.trav*12, -6, 88);
+    const Lsheet = .46 + Math.pow(1-s.sheet,2)*2.0;
+    const sg = sheetGeom(Lsheet, -s.trav*.75);
+    const boomWind = clamp(awa-5, -5, 88);                 // weathervane limit
+    const boomM = clamp(Math.min(boomWind, sg.ang), -28, 88);
+    const sheetSlack = Math.max(0, Lsheet - sg.dist(boomM));
     const leechJ = clamp(s.jsheet*(1-.5*s.jcar)*1.05 + .05*(1-s.jcar), 0, 1.1);
     const twistJ = clamp(34 - 30*leechJ, 5, 40);
     const depthJ = .08 + .075*(1 - .45*s.backstay - .40*s.jcar);
@@ -7768,7 +7789,7 @@ function compute(){
     const draftJ = clamp(.41 + .011*(twsKt-8) - .12*jTension, .32, .60);
     const clewJ  = clamp((awa-8)*(1-s.jsheet)*.85 + 4 - s.jsheetw*30, -25, 80);
     return {upwind,
-      m:{leech:leechM,twist:twistM,depth:depthM,draft:draftM,boom:boomM},
+      m:{leech:leechM,twist:twistM,depth:depthM,draft:draftM,boom:boomM,slack:sheetSlack},
       j:{leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ}};
   }
 
@@ -7832,7 +7853,7 @@ function compute(){
     return {tws:twsKt, twa, aws:aws/KT, awa, upwind:sh.upwind, off,
       main:{...sh.m, aoa:aoaM, eff:M.eff, luff:M.luff, stall:M.stall},
       jib:{...sh.j, clew:sh.j.boom, aoa:aoaJ, eff:J.eff, luff:J.luff, stall:J.stall},
-      idl, eff, heel:clamp(heel,0,40), helm, leeway:lee, speed:V/KT};
+      idl, eff, heel:clamp(heel,0,40), helm, leeway:lee, sheetSlack:sh.m.slack, speed:V/KT};
   }
 }
 
@@ -8043,21 +8064,37 @@ function renderDeck(r){
 
 /* ---------------- render: twist from astern ---------------- */
 function renderTwist(r){
+  const EX=2.3;   // display exaggeration — angles are small; labeled below
   // looking at the boat from dead astern: mast vertical, each height's chord
   // sticks out to leeward (left) by sin(local angle) * chord length
   const baseX=250, footY=300, headY=30, H=footY-headY;
   const idl=r.idl;
   let out=`<line x1="${baseX}" y1="${headY-8}" x2="${baseX}" y2="${footY+8}" stroke="var(--ink2)" stroke-width="2.5"/>
     <text x="${baseX+8}" y="${headY+2}" font-size="10" fill="var(--ink3)">mast</text>`;
+  function airColor(hf, boom, twist){
+    const aoa=r.awa + 7*hf - (boom + twist*Math.pow(hf,1.15));
+    if(aoa<6) return "var(--ink3)";                 // spilling / luffing
+    if(aoa<r.idl.aoa-6) return "var(--warn)";       // soft
+    if(aoa>r.idl.aoa+13) return "var(--crit)";      // stalled
+    return "var(--good)";                            // driving
+  }
   function leechPath(boom, twist, footLen, taper, color, w, dash){
-    let pts=[];
+    const px=[];
     for(let i=0;i<=10;i++){
       const hf=i/10, y=footY-H*hf*.92;
-      const ang=boom+twist*Math.pow(hf,1.15);
+      const ang=(boom+twist*Math.pow(hf,1.15))*EX;
       const len=footLen*(1-taper*Math.pow(hf,1.05));
-      pts.push(`${baseX-Math.sin(rad(ang))*len},${y}`);
+      px.push([baseX-Math.sin(rad(ang))*len, y, hf]);
     }
-    return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="${w}" ${dash?'stroke-dasharray="5 5"':''} stroke-linecap="round"/>`;
+    if(dash){
+      return `<polyline points="${px.map(p=>p[0]+','+p[1]).join(' ')}" fill="none" stroke="${color}" stroke-width="${w}" stroke-dasharray="5 5" stroke-linecap="round"/>`;
+    }
+    // solid curves are drawn per-segment, colored by what the air does there
+    let out="";
+    for(let i=0;i<10;i++){
+      out+=`<line x1="${px[i][0]}" y1="${px[i][1]}" x2="${px[i+1][0]}" y2="${px[i+1][1]}" stroke="${airColor((px[i][2]+px[i+1][2])/2,boom,twist)}" stroke-width="${w}" stroke-linecap="round"/>`;
+    }
+    return out;
   }
   // main: solid vs ideal-twist ghost (same boom angle so the difference IS twist)
   out += leechPath(r.main.boom, idl.twist, 190, .90, "var(--ghost)", 1.6, true);
@@ -8067,9 +8104,13 @@ function renderTwist(r){
   // horizontal reference marks each quarter height
   for(let i=1;i<4;i++){ const y=footY-H*.92*i/4;
     out += `<line x1="60" y1="${y}" x2="${baseX}" y2="${y}" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"/>`; }
-  out += `<text x="20" y="${footY+16}" font-size="10.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° · head opens +${fmt1(r.main.twist)}°</text>
-    <text x="60" y="${headY+2}" font-size="10" fill="var(--accent)">main</text>
-    <text x="60" y="${headY+16}" font-size="10" fill="var(--teal)">jib</text>`;
+  const topAoa=r.awa+7-(r.main.boom+r.main.twist);
+  out += `<text x="20" y="${footY+16}" font-size="10.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° · head opens +${fmt1(r.main.twist)}° · angles ×${EX}</text>
+    <text x="40" y="${headY+2}" font-size="10" fill="var(--good)">■ driving</text>
+    <text x="40" y="${headY+16}" font-size="10" fill="var(--ink3)">■ spilling</text>
+    <text x="40" y="${headY+30}" font-size="10" fill="var(--warn)">■ soft</text>
+    <text x="40" y="${headY+44}" font-size="10" fill="var(--crit)">■ stalled</text>`;
+  if(topAoa<6) out += `<text x="${baseX-160}" y="${headY+8}" font-size="11" font-weight="700" fill="var(--ink3)">SPILLING AT THE HEAD ◢</text>`;
   $("svg-twist").innerHTML=out;
 }
 
@@ -8256,7 +8297,7 @@ function solvePerfectTrim(quick){
   };
   const seeds=[
     Object.fromEntries(TRIM_KEYS.map(k=>[k,state[k]])),
-    {sheet:.7,trav:0,vang:.4,outhaul:.5,cunn:.3,backstay:.4,mainhal:.95,jsheet:.7,jsheetw:0,jcar:.5,jhal:.6},
+    {sheet:.85,trav:0,vang:.4,outhaul:.5,cunn:.3,backstay:.4,mainhal:.95,jsheet:.7,jsheetw:0,jcar:.5,jhal:.6},
   ];
   let bestP=null, bestS=-1e9, bestTwa=null;
   const twas = upwindMode ? [40,43,46,49,52] : [null];
@@ -8634,7 +8675,7 @@ function ensure3Dinner(canvas){
   wm.bumpTexture = window.__WATER_NORMALS
     ? new BABYLON.Texture(window.__WATER_NORMALS, scene)
     : makeNoiseNormal(scene);
-  wm.windForce=-2.5; wm.waveHeight=.03; wm.bumpHeight=.16; wm.waveLength=.55;
+  wm.windForce=-2.5; wm.waveHeight=.03; wm.bumpHeight=.16; wm.waveLength=.9; wm.waveSpeed=.32;
   wm.windDirection=new BABYLON.Vector2(.4,-1);
   wm.waterColor=new BABYLON.Color3(.02,.14,.14); wm.colorBlendFactor=.16;
   water.material=wm;
@@ -8977,14 +9018,23 @@ function tick3D(){
     const cunSag=(1-state.cunn)*.10;
     const cunTop=V3(.72,1.78,.09), cunBot=V3(.70,1.02,.09);
     const cunMid=cunTop.add(cunBot).scale(.5).add(V3(-.02,0,cunSag+.03));
+    function sagLine(a,b,slack,parts){
+      if(!slack||slack<.02) return [a,b];
+      parts=parts||6; const pts=[];
+      for(let i=0;i<=parts;i++){const q=i/parts;
+        const pt=BABYLON.Vector3.Lerp(a,b,q); pt.y-=Math.sin(Math.PI*q)*slack*.6; pts.push(pt);}
+      return pts;
+    }
     const car=B3.travCar.position;
     const boomMid2=V3(.72,1.42,0).add(boomDir.scale(1.95));
     const mastBase=V3(.66,1.0,0);
     const ropes={
       // mainsheet: 3-part tackle boom->car->boom->car, tail to the helm
-      sheet:[[boomMid, car.add(V3(0,.10,0)), boomMid2, car.add(V3(0,.10,0)), V3(-2.2,.75,.3)]],
+      sheet:[sagLine(boomMid, car.add(V3(0,.10,0)), r.sheetSlack).concat(
+             sagLine(car.add(V3(0,.10,0)), V3(-2.2,.75,.3), .08).slice(1))],
       jsheet:[[clew, B3.jibCar.position.clone(), V3(-.7,.72,.8)]],
-      jsheetw:[[clew, V3(2.0-.8*state.jcar,.98,-.95), V3(-.7,.72,-.8)]],
+      jsheetw:[sagLine(clew, V3(2.0-.8*state.jcar,.98,-.95), (1-state.jsheetw)*.5).concat(
+               sagLine(V3(2.0-.8*state.jcar,.98,-.95), V3(-.7,.72,-.8), (1-state.jsheetw)*.15).slice(1))],
       jcar:[[V3(2.0-.8*state.jcar,1.02,.95), V3(2.0-.8*state.jcar,.90,.95)]],
       // vang: 2-part cascade boom bale <-> mast step, tail aft
       vang:[[boomVangPt.add(V3(0,-.02,.04)), mastBase.add(V3(0,.04,.06)), boomVangPt.add(V3(-.06,-.06,.02)), mastBase.add(V3(0,0,.10)), V3(-.2,.78,.20)]],
@@ -9059,8 +9109,13 @@ function tick3D(){
   // cloth dynamics every frame
   if(CLOTH.main){
     const cdt=Math.min(dt,.033);
-    const rowsM=clothStep("main", r, cdt, B3.t);
-    const rowsJ=clothStep("jib", r, cdt, B3.t);
+    // atmospheric turbulence: ~10% speed modulation + direction wander, so the
+    // cloth breathes — laboratory-steady wind would hold a trimmed sail rigid
+    const g=1+.10*Math.sin(B3.t*1.3)+.05*Math.sin(B3.t*3.1+1.7)+.04*Math.sin(B3.t*.55+4);
+    const rT=Object.assign({},r);
+    rT.aws=r.aws*g; rT.awa=r.awa+2.2*Math.sin(B3.t*.9+2)+1.2*Math.sin(B3.t*2.3);
+    const rowsM=clothStep("main", rT, cdt, B3.t);
+    const rowsJ=clothStep("jib", rT, cdt, B3.t);
     if(rowsM) B3.mainSail=BABYLON.MeshBuilder.CreateRibbon("mainSail",{pathArray:rowsM,instance:B3.mainSail});
     if(rowsJ) B3.jibSail =BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:rowsJ,instance:B3.jibSail});
   }
@@ -9082,29 +9137,5 @@ scheduleOptims();
 </script>
 
 
-<script>
-(function(){const iv=setInterval(function(){
-  try{
-    // atmospheric turbulence: real wind is never steady — modulate the live
-    // result's apparent wind (~10% speed, a few degrees of wander) so the
-    // sail cloth breathes instead of sitting rigid in laboratory-steady air.
-    // note: lastR is a top-level `let` (lexical global), not window.lastR.
-    if(!window.__turb && typeof lastR!=="undefined"){ window.__turb=true;
-      let ref=null, base=0, baseA=0;
-      setInterval(function(){
-        try{
-          if(!lastR) return;
-          if(lastR!==ref){ ref=lastR; base=ref.aws; baseA=ref.awa; }
-          const t=performance.now()/1000;
-          const g=1+.10*Math.sin(t*1.3)+.05*Math.sin(t*3.1+1.7)+.04*Math.sin(t*.55+4);
-          ref.aws=base*g;
-          ref.awa=baseA+2.2*Math.sin(t*.9+2)+1.2*Math.sin(t*2.3);
-        }catch(e){}
-      },33);
-    }
-    if(window.BABYLON&&BABYLON.EngineStore.LastCreatedScene){
-      const wm=BABYLON.EngineStore.LastCreatedScene.getMaterialByName("wm");
-      if(wm){ wm.waveSpeed=.32; wm.waveLength=.9; if(window.__turb) clearInterval(iv); } } }catch(e){}
-},500);})();
-</script>
+
 </body></html>

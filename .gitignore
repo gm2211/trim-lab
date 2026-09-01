@@ -1,6 +1,6 @@
 build-tools/node_modules/
 build-tools/package*.json
-babylon.slim.js
+# babylon.lib.js is committed on purpose: recovered canonical bundle
 waternormals.jpg
 waternormals.b64
 trim-lab.html

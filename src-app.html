@@ -1,0 +1,1935 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}</style></head><body>
+<meta charset="utf-8">
+<title>Trim Lab — Colgate 26</title>
+<style>
+  :root{
+    --bg:#ECF0EE; --panel:#F7F9F7; --panel2:#E3E9E6; --ink:#1B2A32; --ink2:#51646D; --ink3:#7C8E95;
+    --line:#C9D4D2; --accent:#E4572E; --accent-soft:#F8DED4; --teal:#0E8480;
+    --good:#2E7D46; --good-soft:#DDEBDF; --warn:#B57614; --warn-soft:#F3E7CE; --crit:#B3382C; --crit-soft:#F4DAD5;
+    --ghost:#8FA0A6;
+    --disp:"Futura","Avenir Next","Century Gothic","Trebuchet MS",sans-serif;
+    --body:-apple-system,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0C161C; --panel:#132028; --panel2:#1A2B34; --ink:#DCE7E6; --ink2:#8DA3A8; --ink3:#64797F;
+      --line:#24363E; --accent:#F26430; --accent-soft:#3A2118; --teal:#3FBCB4;
+      --good:#58B276; --good-soft:#16281C; --warn:#D89A3D; --warn-soft:#2E2311; --crit:#E06555; --crit-soft:#331512;
+      --ghost:#5E7278;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0C161C; --panel:#132028; --panel2:#1A2B34; --ink:#DCE7E6; --ink2:#8DA3A8; --ink3:#64797F;
+    --line:#24363E; --accent:#F26430; --accent-soft:#3A2118; --teal:#3FBCB4;
+    --good:#58B276; --good-soft:#16281C; --warn:#D89A3D; --warn-soft:#2E2311; --crit:#E06555; --crit-soft:#331512;
+    --ghost:#5E7278;
+  }
+  :root[data-theme="light"]{
+    --bg:#ECF0EE; --panel:#F7F9F7; --panel2:#E3E9E6; --ink:#1B2A32; --ink2:#51646D; --ink3:#7C8E95;
+    --line:#C9D4D2; --accent:#E4572E; --accent-soft:#F8DED4; --teal:#0E8480;
+    --good:#2E7D46; --good-soft:#DDEBDF; --warn:#B57614; --warn-soft:#F3E7CE; --crit:#B3382C; --crit-soft:#F4DAD5;
+    --ghost:#8FA0A6;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--body);line-height:1.5;font-size:15px}
+  svg text{font-family:var(--body)}
+
+  header.masthead{
+    position:sticky;top:0;z-index:50;background:var(--bg);border-bottom:2px solid var(--ink);
+    display:flex;align-items:baseline;gap:16px;padding:7px 16px 6px;flex-wrap:wrap;
+  }
+  .brand{font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:.12em;text-transform:uppercase;white-space:nowrap}
+  .brand .flag{color:var(--accent)}
+  .brand small{display:block;font-family:var(--body);font-weight:400;font-size:10px;letter-spacing:.18em;color:var(--ink2)}
+  nav.tabs{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
+  nav.tabs button{
+    font-family:var(--disp);letter-spacing:.10em;text-transform:uppercase;font-size:12.5px;font-weight:600;
+    background:none;border:1px solid transparent;color:var(--ink2);padding:7px 14px;cursor:pointer;border-radius:2px;
+  }
+  nav.tabs button:hover{color:var(--ink)}
+  nav.tabs button.active{background:var(--ink);color:var(--bg)}
+  nav.tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  main{max-width:1240px;margin:0 auto;padding:12px 16px 80px}
+  section.tabpane{display:none}
+  section.tabpane.active{display:block}
+
+  /* ============ SIMULATOR ============ */
+  .sim-grid{display:grid;grid-template-columns:300px 1fr;gap:18px;align-items:start}
+  @media(max-width:759px){.sim-grid{grid-template-columns:1fr}}
+
+  .controls{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:10px 14px 12px;position:sticky;top:52px}
+  @media(max-width:759px){.controls{position:static}}
+  .ctl-group{margin-bottom:10px}
+  .ctl-group h3{
+    font-family:var(--disp);font-size:11.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--ink2);margin:0 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px;
+  }
+  .ctl{margin-bottom:5px}
+  .ctl .row1{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .ctl label{font-size:13px;font-weight:600}
+  .ctl .val{font-family:var(--mono);font-size:11.5px;color:var(--ink2);font-variant-numeric:tabular-nums;text-align:right}
+  input[type=range]{width:100%;accent-color:var(--accent);height:18px;margin:0}
+  .opt-tick{position:absolute;top:-3px;width:2.5px;height:8px;border-radius:1px;background:var(--ink3);pointer-events:none}
+  .opt-tick[data-cls=good]{background:var(--good)}
+  .opt-tick[data-cls=warn]{background:var(--warn)}
+  .opt-tick[data-cls=crit]{background:var(--crit)}
+  .ctl .val::after{content:"";display:inline-block;width:7px;height:7px;border-radius:99px;margin-left:6px;vertical-align:1px}
+  .ctl .val[data-opt=good]::after{background:var(--good)}
+  .ctl .val[data-opt=warn]::after{background:var(--warn)}
+  .ctl .val[data-opt=crit]::after{background:var(--crit)}
+  input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .seg{display:flex;flex-wrap:wrap;gap:4px}
+  .seg button{
+    flex:1 1 auto;font-size:11.5px;font-weight:600;padding:5px 6px;border:1px solid var(--line);background:var(--panel);
+    color:var(--ink2);cursor:pointer;border-radius:2px;white-space:nowrap;
+  }
+  .seg button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .gustbtn{
+    width:100%;margin-top:4px;font-family:var(--disp);letter-spacing:.08em;text-transform:uppercase;font-weight:700;font-size:12px;
+    padding:8px;border:1.5px dashed var(--accent);color:var(--accent);background:none;cursor:pointer;border-radius:3px;
+  }
+  .gustbtn.on{background:var(--accent);color:var(--bg);border-style:solid}
+  .gustbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}
+  @media(max-width:700px){.tiles{grid-template-columns:repeat(2,1fr)}}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:7px 10px 6px}
+  .tile .lbl{font-family:var(--disp);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink2)}
+  .tile .num{font-family:var(--mono);font-size:21px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1;margin:1px 0}
+  .tile .num small{font-size:13px;color:var(--ink2);font-weight:400}
+  .pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px;letter-spacing:.03em}
+  .pill.good{background:var(--good-soft);color:var(--good)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.crit{background:var(--crit-soft);color:var(--crit)}
+  .pill.mut{background:var(--panel2);color:var(--ink2)}
+
+  .coach{
+    background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);
+    border-radius:4px;padding:7px 12px;margin-bottom:8px;
+  }
+  .coach.groove{border-left-color:var(--good)}
+  .coach h3{margin:0 0 4px;font-family:var(--disp);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2)}
+  .coach ul{margin:0;padding-left:18px}
+  .coach li{margin:2px 0;font-size:12.5px}
+  .coach li b{color:var(--accent)}
+  .coach.groove li b{color:var(--good)}
+
+  .viz-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:980px){.viz-grid{grid-template-columns:1fr}}
+  figure.viz{background:var(--panel);border:1px solid var(--line);border-radius:4px;margin:0;padding:10px 12px}
+  figure.viz figcaption{
+    font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--ink2);
+    margin-bottom:6px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;
+  }
+  figure.viz figcaption .hint{font-family:var(--body);font-weight:400;text-transform:none;letter-spacing:0;font-size:11.5px;color:var(--ink3)}
+  figure.viz svg{width:100%;height:auto;display:block}
+
+  table.shape{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:2px}
+  table.shape th{font-family:var(--disp);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink2);text-align:left;padding:2px 5px;border-bottom:1px solid var(--line)}
+  table.shape td{padding:2px 5px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+  table.shape td.n{font-family:var(--mono);font-size:11.5px}
+  table.shape tr:last-child td{border-bottom:none}
+
+  /* ============ CARDS (lines / concepts) ============ */
+  .cardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:16px 18px}
+  .card h3{font-family:var(--disp);font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 2px}
+  .card .tag{font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .card dl{margin:10px 0 0}
+  .card dt{font-family:var(--disp);font-size:10.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink2);margin-top:8px}
+  .card dd{margin:2px 0 0;font-size:13.5px}
+  .card p{font-size:13.5px;margin:8px 0 0}
+  .note{background:var(--panel2);border-radius:3px;padding:7px 10px;font-size:12.5px;margin-top:10px;color:var(--ink2)}
+  .note b{color:var(--ink)}
+
+  .prose{max-width:70ch}
+  .prose h2{font-family:var(--disp);letter-spacing:.1em;text-transform:uppercase;font-size:18px;border-bottom:2px solid var(--ink);padding-bottom:6px}
+  .concept{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:20px 24px;margin-bottom:16px}
+  .concept h3{font-family:var(--disp);font-size:17px;letter-spacing:.08em;text-transform:uppercase;margin:0}
+  .concept .kicker{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+  .concept p{font-family:var(--serif);font-size:15.5px;line-height:1.65;max-width:66ch;margin:10px 0}
+  .concept p b{font-family:var(--body);font-size:14px}
+  .concept .figrow{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;margin-top:10px}
+  .concept .figrow svg{background:var(--panel2);border-radius:4px;flex:1 1 240px;max-width:340px;height:auto}
+  .rule2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+  @media(max-width:620px){.rule2{grid-template-columns:1fr}}
+  .rule2 .box{border:1px solid var(--line);border-radius:3px;padding:10px 12px;font-size:13px}
+  .rule2 .box h4{margin:0 0 4px;font-family:var(--disp);font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+  .rule2 .box.want h4{color:var(--good)} .rule2 .box.avoid h4{color:var(--crit)}
+  .rule2 .box ul{margin:0;padding-left:16px}
+  .rule2 .box li{margin:2px 0}
+
+  /* ============ DRILLS ============ */
+  .drill{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:18px 22px;max-width:760px}
+  .drill .scen{font-family:var(--serif);font-size:16px;line-height:1.6;margin:6px 0 14px}
+  .drill .qnum{font-family:var(--disp);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2)}
+  .opts{display:grid;gap:8px}
+  .opts button{
+    text-align:left;font-size:14px;padding:10px 14px;border:1px solid var(--line);background:var(--bg);
+    color:var(--ink);border-radius:3px;cursor:pointer;line-height:1.45;
+  }
+  .opts button:hover:not(:disabled){border-color:var(--ink2)}
+  .opts button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .opts button:disabled{cursor:default;opacity:.92}
+  .opts button.right{border-color:var(--good);background:var(--good-soft)}
+  .opts button.wrong{border-color:var(--crit);background:var(--crit-soft)}
+  .expl{margin-top:12px;padding:12px 14px;border-radius:3px;background:var(--panel2);font-size:14px;display:none}
+  .expl.show{display:block}
+  .expl .verdict{font-family:var(--disp);font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:700}
+  .drillnav{display:flex;justify-content:space-between;align-items:center;margin-top:14px}
+  .drillnav button{
+    font-family:var(--disp);letter-spacing:.08em;text-transform:uppercase;font-size:12px;font-weight:700;
+    background:var(--ink);color:var(--bg);border:none;padding:9px 18px;border-radius:3px;cursor:pointer;
+  }
+  .drillnav button:disabled{opacity:.4;cursor:default}
+  .drillnav .score{font-family:var(--mono);font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums}
+
+  /* live effect bar */
+  .fx{
+    background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    padding:6px 12px;margin-bottom:8px;font-size:12px;
+    display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;min-height:20px;
+  }
+  .fx .src{font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);white-space:nowrap}
+  .fx .job{color:var(--ink3);font-size:11px;white-space:nowrap}
+  .fx .chip{font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums;padding:1px 7px;border-radius:99px;white-space:nowrap}
+  .fx .chip.good{background:var(--good-soft);color:var(--good)}
+  .fx .chip.bad{background:var(--crit-soft);color:var(--crit)}
+  .fx .chip.mut{background:var(--panel2);color:var(--ink2)}
+  .fx .idle{color:var(--ink3);font-size:12px}
+
+  .card button.try{
+    margin-top:10px;font-family:var(--disp);letter-spacing:.08em;text-transform:uppercase;font-size:11px;font-weight:700;
+    background:none;border:1.5px solid var(--accent);color:var(--accent);padding:6px 12px;border-radius:3px;cursor:pointer;
+  }
+  .card button.try:hover{background:var(--accent);color:var(--bg)}
+  .card button.try:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  @media (prefers-reduced-motion: no-preference){
+    .sailpath,.needle,.heelboat,.windarrow{transition:all .25s ease}
+  }
+
+  .threed-wrap{position:relative;border:1px solid var(--line);border-radius:4px;overflow:hidden;min-height:420px;height:70vh;background:#0a141a}
+  #bab{width:100%;height:100%;display:block;touch-action:none;outline:none}
+  .threed-hud{position:absolute;top:10px;left:12px;font-family:var(--mono);font-size:12.5px;color:#fff;
+    background:rgba(8,16,22,.62);padding:7px 12px;border-radius:6px;backdrop-filter:blur(2px);
+    max-width:calc(100% - 200px);pointer-events:none;font-variant-numeric:tabular-nums;line-height:1.55}
+  .threed-tip{position:absolute;bottom:8px;right:12px;font-size:11px;color:rgba(255,255,255,.75);
+    text-shadow:0 1px 3px rgba(0,0,0,.7);pointer-events:none}
+  .dye-btn{position:absolute;top:10px;right:12px;font-family:var(--disp);letter-spacing:.08em;text-transform:uppercase;
+    font-size:11px;font-weight:700;padding:6px 12px;border-radius:3px;cursor:pointer;
+    background:rgba(10,20,26,.65);color:#fff;border:1.5px solid rgba(255,255,255,.5)}
+  .dye-btn.on{background:var(--accent);border-color:var(--accent)}
+  .dye-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  /* ===== desktop: whole Helm tab fits one viewport, no page scroll ===== */
+  @media(min-width:760px) and (min-height:520px){
+    main.lock{height:calc(100dvh - 60px);padding:8px 16px;overflow:hidden}
+    #pane-sim.active{height:100%}
+    #pane-sim .sim-grid{height:100%;grid-template-columns:min(272px,26vw) minmax(0,1fr);gap:10px}
+    #pane-sim .controls{position:static;height:100%;overflow-y:auto}
+    #pane-sim .stage{height:100%;display:flex;flex-direction:column;min-width:0}
+    #pane-sim .viz-grid{flex:1;min-height:0;display:grid;grid-template-columns:1.25fr 1fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:8px}
+    #fig-sections{grid-row:auto}
+    #pane-sim figure.viz{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;padding:8px 10px}
+    #pane-sim figure.viz svg{flex:1 1 0;min-height:0;width:100%;height:100%}
+    #pane-view3d .sim-grid{height:100%;grid-template-columns:min(272px,26vw) minmax(0,1fr);gap:10px}
+    #pane-view3d #dock3d{height:100%;overflow-y:auto;min-width:0}
+    #pane-view3d .threed-wrap{height:100%;min-height:0}
+  }
+</style>
+
+<header class="masthead">
+  <div class="brand"><span class="flag">▲</span> Trim Lab<small>Colgate 26 · sail-trim trainer</small></div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="sim" class="active">Helm</button>
+    <button data-tab="lines">The Lines</button>
+    <button data-tab="concepts">Concepts</button>
+    <button data-tab="drills">Drills</button>
+    <button data-tab="view3d">3D</button>
+  </nav>
+</header>
+
+<main>
+<!-- ================= SIMULATOR ================= -->
+<section class="tabpane active" id="pane-sim">
+  <div class="sim-grid">
+    <aside class="controls" id="controls">
+      <div class="ctl-group">
+        <h3>Conditions</h3>
+        <div class="ctl">
+          <div class="row1"><label for="tws">True wind</label><span class="val" id="v-tws"></span></div>
+          <input type="range" id="tws" min="4" max="24" step="1" value="12">
+        </div>
+        <div class="ctl">
+          <div class="row1"><label>Point of sail</label></div>
+          <div class="seg" id="pos-seg"></div>
+        </div>
+        <div class="ctl">
+          <div class="row1"><label>Sea state</label></div>
+          <div class="seg" id="sea-seg">
+            <button data-sea="flat" class="on">Flat water</button>
+            <button data-sea="chop">Chop</button>
+          </div>
+        </div>
+        <button class="gustbtn" id="gust">Gust hits · +6 kt</button>
+        <button class="gustbtn" id="perfect" style="border-style:solid;margin-top:6px">Solve perfect trim</button>
+      </div>
+      <div class="ctl-group">
+        <h3>Mainsail lines</h3>
+        <div class="ctl"><div class="row1"><label for="sheet">Mainsheet</label><span class="val" id="v-sheet"></span></div>
+          <input type="range" id="sheet" min="0" max="100" value="85"></div>
+        <div class="ctl"><div class="row1"><label for="trav">Traveler</label><span class="val" id="v-trav"></span></div>
+          <input type="range" id="trav" min="-100" max="100" value="0"></div>
+        <div class="ctl"><div class="row1"><label for="vang">Boom vang</label><span class="val" id="v-vang"></span></div>
+          <input type="range" id="vang" min="0" max="100" value="40"></div>
+        <div class="ctl"><div class="row1"><label for="outhaul">Outhaul</label><span class="val" id="v-outhaul"></span></div>
+          <input type="range" id="outhaul" min="0" max="100" value="50"></div>
+        <div class="ctl"><div class="row1"><label for="cunn">Cunningham</label><span class="val" id="v-cunn"></span></div>
+          <input type="range" id="cunn" min="0" max="100" value="25"></div>
+        <div class="ctl"><div class="row1"><label for="backstay">Backstay</label><span class="val" id="v-backstay"></span></div>
+          <input type="range" id="backstay" min="0" max="100" value="35"></div>
+        <div class="ctl"><div class="row1"><label for="mainhal">Main halyard</label><span class="val" id="v-mainhal"></span></div>
+          <input type="range" id="mainhal" min="0" max="100" value="90"></div>
+      </div>
+      <div class="ctl-group">
+        <h3>Jib lines</h3>
+        <div class="ctl"><div class="row1"><label for="jsheet">Jib sheet · leeward</label><span class="val" id="v-jsheet"></span></div>
+          <input type="range" id="jsheet" min="0" max="100" value="75"></div>
+        <div class="ctl"><div class="row1"><label for="jsheetw">Jib sheet · windward</label><span class="val" id="v-jsheetw"></span></div>
+          <input type="range" id="jsheetw" min="0" max="100" value="0"></div>
+        <div class="ctl"><div class="row1"><label for="jcar">Fairlead car</label><span class="val" id="v-jcar"></span></div>
+          <input type="range" id="jcar" min="0" max="100" value="50"></div>
+        <div class="ctl"><div class="row1"><label for="jhal">Jib halyard</label><span class="val" id="v-jhal"></span></div>
+          <input type="range" id="jhal" min="0" max="100" value="40"></div>
+      </div>
+    </aside>
+
+    <div class="stage">
+      <div class="tiles" id="tiles"></div>
+      <div class="fx" id="fx"><span class="idle">Pull any line — what it changes shows up here, live.</span></div>
+      <div class="coach" id="coach"></div>
+      <div class="viz-grid">
+        <figure class="viz" id="fig-sections">
+          <figcaption>Sail sections — twist &amp; belly <span class="hint">solid = your trim · dashed = target · arrows = apparent wind at that height</span></figcaption>
+          <svg id="svg-sections" viewBox="0 0 640 360" role="img" aria-label="Main and jib cross-sections at head, mid and foot"></svg>
+          <table class="shape" id="shape-table"></table>
+        </figure>
+        <figure class="viz">
+          <figcaption>Deck view <span class="hint">wind held on starboard side</span></figcaption>
+          <svg id="svg-deck" viewBox="0 0 360 330" role="img" aria-label="Top-down view of boat, sails and wind"></svg>
+        </figure>
+        <figure class="viz">
+          <figcaption>Twist from astern <span class="hint">leech opening with height · dashed = target</span></figcaption>
+          <svg id="svg-twist" viewBox="0 0 360 330" role="img" aria-label="Vertical twist projection seen from astern"></svg>
+        </figure>
+        <figure class="viz">
+          <figcaption>Heel <span class="hint">target band 12–22°</span></figcaption>
+          <svg id="svg-heel" viewBox="0 0 360 205" role="img" aria-label="Heel angle gauge"></svg>
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= LINES ================= -->
+<section class="tabpane" id="pane-lines">
+  <div class="prose"><h2>Every line, one job</h2>
+  <p style="font-family:var(--serif);font-size:15.5px;max-width:66ch">Each control changes one thing about sail shape. Learn the one thing, and “what do I pull now?” answers itself: name the problem (too much twist, too much belly, draft too far aft, sail stalled or luffing), then reach for the line that owns that problem.</p></div>
+  <div class="cardgrid" id="linecards"></div>
+</section>
+
+<!-- ================= CONCEPTS ================= -->
+<section class="tabpane" id="pane-concepts">
+  <div class="prose"><h2>The ideas behind the lines</h2></div>
+  <div id="concepts"></div>
+</section>
+
+<!-- ================= DRILLS ================= -->
+<section class="tabpane" id="pane-drills">
+  <div class="prose"><h2>Drills</h2>
+  <p style="font-family:var(--serif);font-size:15.5px;max-width:66ch">Real situations from the cockpit. Pick your first move — the answer explains the why, and points back to the concept it trains.</p></div>
+  <div class="drill" id="drill"></div>
+</section>
+<!-- ================= 3D ================= -->
+<section class="tabpane" id="pane-view3d">
+  <div class="sim-grid">
+    <div id="dock3d"></div>
+    <div class="threed-wrap">
+      <canvas id="bab"></canvas>
+      <div class="threed-hud" id="hud3d"></div>
+      <button id="dyeBtn" class="dye-btn on">wind dye: on</button>
+      <div class="threed-tip">drag to orbit &middot; scroll to zoom &middot; lines live on the left</div>
+    </div>
+  </div>
+</section>
+</main>
+
+<script id="lib-slot"></script>
+<script>
+"use strict";
+/* ---------------- helpers ---------------- */
+const $ = id => document.getElementById(id);
+const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
+const rad = d=>d*Math.PI/180, deg = r=>r*180/Math.PI;
+const lerp = (a,b,t)=>a+(b-a)*t;
+const fmt1 = x=>x.toFixed(1);
+
+/* ---------------- state ---------------- */
+const POS = [
+  {name:"Close-hauled", twa:45},
+  {name:"Close reach",  twa:60},
+  {name:"Beam reach",   twa:90},
+  {name:"Broad reach",  twa:125},
+  {name:"Run",          twa:165},
+];
+const state = {
+  tws:12, posIdx:0, sea:"flat", gust:false,
+  sheet:.85, trav:0, vang:.40, outhaul:.50, cunn:.25, backstay:.35,
+  jsheet:.75, jsheetw:0, jcar:.50, jhal:.55, mainhal:.90,
+};
+
+/* ---------------- physics ---------------- */
+function ideals(tws, sea, awa){
+  let depth, twist;
+  if(tws<6){ depth=.120; twist=22; }
+  else if(tws<10){ depth=.145; twist=16; }
+  else if(tws<14){ depth=.125; twist=13; }
+  else if(tws<18){ depth=.105; twist=15; }
+  else { depth=.088; twist=19; }
+  if(sea==="chop"){ depth+=.012; twist+=3; }
+  const draftPos=.43;
+  const aoa = clamp(20 + (awa-32)*.12, 17, 30);
+  return {depth, twist, draftPos, aoa};
+}
+// gaussian closeness score
+const score = (x, ideal, tol)=>Math.exp(-Math.pow((x-ideal)/tol,2));
+
+/* ---- two-element vortex panel method (thin-airfoil, lumped vortex) ----
+   Solves the jib+main circulation system each trim change. Gives real slot
+   interaction factors for the force model and the solved flow field for the
+   3D wind dye. Inviscid; stall/viscous drag handled empirically downstream. */
+const PANEL={fM:1,fJ:1,vor:[],g:[],ok:false};
+function gauss(A,b){
+  const n=b.length, x=new Float64Array(n);
+  for(let c=0;c<n;c++){
+    let p=c; for(let r0=c+1;r0<n;r0++) if(Math.abs(A[r0][c])>Math.abs(A[p][c])) p=r0;
+    [A[c],A[p]]=[A[p],A[c]]; [b[c],b[p]]=[b[p],b[c]];
+    if(Math.abs(A[c][c])<1e-12) return null;
+    for(let r0=c+1;r0<n;r0++){ const f=A[r0][c]/A[c][c];
+      for(let k=c;k<n;k++) A[r0][k]-=f*A[c][k]; b[r0]-=f*b[c]; }
+  }
+  for(let r0=n-1;r0>=0;r0--){ let sum=b[r0];
+    for(let k=r0+1;k<n;k++) sum-=A[r0][k]*x[k]; x[r0]=sum/A[r0][r0]; }
+  return x;
+}
+function panelElement(luffX, chord, ang, depth, draft, N){
+  const d=rad(ang), k=Math.log(.5)/Math.log(clamp(draft,.32,.6));
+  const cdx=-Math.cos(d), cdz=Math.sin(d), ndx=Math.sin(d), ndz=Math.cos(d);
+  const pts=[];
+  for(let i=0;i<=N;i++){ const cf=i/N, off=depth*chord*Math.sin(Math.PI*Math.pow(cf,k));
+    pts.push([luffX+cdx*chord*cf+ndx*off, cdz*chord*cf+ndz*off]); }
+  return pts;
+}
+function panelSolve(els, awa){
+  const vor=[], col=[], nrm=[], elIdx=[];
+  els.forEach((el,e)=>{ for(let i=0;i<el.length-1;i++){
+    const [x0,z0]=el[i],[x1,z1]=el[i+1];
+    vor.push([x0+(x1-x0)*.25, z0+(z1-z0)*.25]);
+    col.push([x0+(x1-x0)*.75, z0+(z1-z0)*.75]);
+    const dx=x1-x0,dz=z1-z0,l=Math.hypot(dx,dz)||1e-6;
+    nrm.push([-dz/l,dx/l]); elIdx.push(e);
+  }});
+  const n=vor.length, A=[], b=[];
+  const U=[-Math.cos(rad(awa)), Math.sin(rad(awa))];
+  for(let i=0;i<n;i++){
+    const row=new Float64Array(n);
+    for(let j=0;j<n;j++){
+      const dx=col[i][0]-vor[j][0], dz=col[i][1]-vor[j][1];
+      const r2=Math.max(dx*dx+dz*dz,1e-4);
+      row[j]=(-dz/(2*Math.PI*r2))*nrm[i][0]+(dx/(2*Math.PI*r2))*nrm[i][1];
+    }
+    A.push(row); b.push(-(U[0]*nrm[i][0]+U[1]*nrm[i][1]));
+  }
+  const g=gauss(A,b); if(!g) return null;
+  const sums=els.map(()=>0);
+  for(let j=0;j<n;j++) sums[elIdx[j]]+=g[j];
+  return {vor,g,sums};
+}
+function updatePanel(shM, shJ, awa){
+  const hf=.5, chM=3.3*(1-.9*hf), chJ=2.9*(1-.9*hf);
+  const angM=shM.boom+shM.twist*Math.pow(hf,1.15);
+  const angJ=shJ.boom+shJ.twist*Math.pow(hf,1.15);
+  const elM=panelElement(.72, chM, angM, shM.depth, shM.draft, 20);
+  const elJ=panelElement(2.26, chJ, angJ, shJ.depth, shJ.draft, 20);
+  const both=panelSolve([elM,elJ],awa), mOnly=panelSolve([elM],awa), jOnly=panelSolve([elJ],awa);
+  if(!both||!mOnly||!jOnly){ PANEL.ok=false; return; }
+  PANEL.fM=clamp(Math.abs(both.sums[0])/Math.max(Math.abs(mOnly.sums[0]),1e-6), .75, 1.25);
+  PANEL.fJ=clamp(Math.abs(both.sums[1])/Math.max(Math.abs(jOnly.sums[0]),1e-6), .75, 1.25);
+  PANEL.vor=both.vor; PANEL.g=[...both.g]; PANEL.ok=true;
+  // per-height solutions for the dye field (geometry matches the drawn sail)
+  PANEL.H=[];
+  for(const y of [2.2,5,7.8]){
+    const hfM=clamp((y-1.45)/9.35,0,.98), hfJ=clamp((y-1.05)/9,0,.98);
+    const cM=3.3*(1-.90*Math.pow(hfM,1.05)), cJ=2.9*(1-.94*Math.pow(hfJ,1.05));
+    const aM=shM.boom+shM.twist*Math.pow(hfM,1.15), aJ=shJ.boom+shJ.twist*Math.pow(hfJ,1.15);
+    const eM=panelElement(.72, cM, aM, shM.depth*(1-.25*hfM), shM.draft, 16);
+    const eJ=panelElement(3.72+(0.80-3.72)*hfJ, cJ, aJ, shJ.depth*(1-.25*hfJ), shJ.draft, 16);
+    const sol=panelSolve([eM,eJ],awa);
+    if(sol) PANEL.H.push({y, vor:sol.vor, g:[...sol.g], polys:[eM,eJ]});
+  }
+}
+
+/* ===== VPP-grade force model =====
+   Segment aerodynamics (5 strips per sail, wind gradient aloft, camber-dependent
+   lift curve + stall), righting-moment heel equilibrium with crew hiking,
+   leeway + keel induced drag, viscous + residuary hull resistance.
+   Solved by damped fixed-point iteration over (V, heel, leeway).            */
+const KT=0.5144, RHO_A=1.225, RHO_W=1025, G=9.81;
+const BOAT={
+  lwl:6.55, disp:1180, gm:1.12, hikeMax:2600, wetted:14.5,
+  main:{area:17.6, span:9.8,  z0:1.3, ar:5.4},
+  jib :{area:13.9, span:8.2,  z0:1.0, ar:4.6},
+  keel:{area:1.55, slope:3.6, effDepth:1.15},
+};
+function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale){
+  // sh: {twist,depth,draft,boom}  geom: BOAT.main/jib  → {drive, side, hm}
+  let drive=0, side=0, hm=0;
+  const heelEff = Math.pow(Math.cos(heelR), 1.3);
+  const clFac = clamp(1 - 4*Math.pow(sh.draft-.43,2)*(sh.draft>.43?2.2:1.0), .55, 1);
+  const hookCd = clamp((sh.draft-.455)*.9, 0, .16);          // round-backed sail = hooked leech drag
+  for(let i=0;i<5;i++){
+    const hf=(i+.5)/5;
+    const z = geom.z0 + geom.span*hf;
+    const Vt = tws*Math.pow(Math.max(z,1)/10, .11);          // gradient aloft
+    const awx = Vt*Math.cos(rad(twa)) + V;
+    const awy = Vt*Math.sin(rad(twa))*Math.cos(heelR);
+    const aws = Math.hypot(awx,awy);
+    const awa = clamp(deg(Math.atan2(awy,awx)), 2, 178);
+    const delta = sh.boom + sh.twist*Math.pow(hf,1.15);      // local chord angle
+    const aoa = awa - delta;
+    const c = sh.depth*(1-.25*hf);                           // local camber
+    const stallA = 11 + 55*c;
+    const clmax = (0.95 + 2.5*c)*clFac;
+    let cl, cd = .012 + 1.1*c*c + hookCd;
+    if(aoa < 1){ cl = 0; cd += .05; }                        // flogging
+    else if(aoa <= stallA){ cl = Math.min(clmax, .078*aoa*(1+1.8*c))*clFac; }
+    else { const p = clamp((aoa-stallA)/28, 0, 1);           // separated flow
+           cl = clmax*(1-.55*p); cd += 1.1*p*p + .3*p; }
+    cl *= slotF;                                             // solved slot interaction
+    cd += cl*cl/(Math.PI*geom.ar*.8);                        // induced
+    const q = .5*RHO_A*aws*aws*(geom.area/5)*heelEff*blanket*.80*(aScale===undefined?1:aScale);
+    const L=q*cl, D=q*cd, sA=Math.sin(rad(awa)), cA=Math.cos(rad(awa));
+    drive += L*sA - D*cA;
+    side  += L*cA + D*sA;
+    hm    += (L*cA + D*sA)*z;
+  }
+  return {drive, side, hm};
+}
+function compute(){
+  const s = state;
+  const twsKt = s.tws + (s.gust?6:0);
+  const tws = twsKt*KT;
+  const twa = s.twaOv || POS[s.posIdx].twa;
+  const chopDrag = s.sea==="chop" ? 1.14 : 1.0;
+
+  let V=2.0, heel=8, lee=3, r=null;
+  for(let it=0; it<16; it++){
+    r = step(V, heel, lee);
+    V    = clamp(V*.55 + r.Vnew*.45, .05, 4.2);
+    heel = heel*.55 + r.heelNew*.45;
+    lee  = lee*.55 + r.leeNew*.45;
+  }
+  const out=finish(r, V, heel, lee);
+  updatePanel(out.main, {...out.jib, boom:out.jib.clew}, out.awa);
+  return out;
+
+  // The mainsheet is an inextensible line: its paid-out length plus the traveler
+  // car position bound how far the boom can swing. Wind pressure carries the boom
+  // out only as far as the sheet allows; a short sheet with the car to windward
+  // drags the boom past centerline, exactly like the real tackle.
+  function sheetGeom(Ls, zc){
+    const dist=d=>{const dr=rad(d);
+      const bx=.72-Math.cos(dr)*1.7, bz=Math.sin(dr)*1.7;
+      return Math.hypot(bx+.95, .46, bz-zc)};
+    let best=null, bd=1e9, argmin=0;
+    for(let d=-30; d<=88; d+=.5){
+      const dd=dist(d);
+      if(dd<bd){bd=dd; argmin=d;}
+      if(dd<=Ls) best=d;
+    }
+    const ang=best===null?argmin:best;
+    return {ang, dist};
+  }
+  function shapes(awa){
+    const upwind = clamp(1-(awa-35)/80, 0, 1);
+    const leechM = clamp(s.sheet*upwind*0.95 + s.vang*0.6*(1-0.4*upwind), 0, 1.15);
+    const twistM = clamp(36 - 27*leechM, 4, 38);
+    const depthM = .08 + .08*(1 - .55*s.outhaul - .45*s.backstay);
+    const draftM = clamp(.42 + .010*(twsKt-8) + .04*s.backstay - .13*s.cunn, .32, .60);
+    const Lsheet = .46 + Math.pow(1-s.sheet,2)*2.0;
+    const sg = sheetGeom(Lsheet, -s.trav*.75);
+    const boomWind = clamp(awa-5, -5, 88);                 // weathervane limit
+    const boomM = clamp(Math.min(boomWind, sg.ang), -28, 88);
+    const sheetSlack = Math.max(0, Lsheet - sg.dist(boomM));
+    const leechJ = clamp(s.jsheet*(1-.5*s.jcar)*1.05 + .05*(1-s.jcar), 0, 1.1);
+    const twistJ = clamp(34 - 30*leechJ, 5, 40);
+    const depthJ = .08 + .075*(1 - .45*s.backstay - .40*s.jcar);
+    const jTension = clamp((s.jhal-.35)/.65, 0, 1);
+    const draftJ = clamp(.41 + .011*(twsKt-8) - .12*jTension, .32, .60);
+    const clewJ  = clamp((awa-8)*(1-s.jsheet)*.85 + 4 - s.jsheetw*30, -25, 80);
+    return {upwind,
+      m:{leech:leechM,twist:twistM,depth:depthM,draft:draftM,boom:boomM,slack:sheetSlack},
+      j:{leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ}};
+  }
+
+  function step(V, heel, lee){
+    const heelR = rad(clamp(heel,0,45));
+    // deck-level apparent wind (for shapes, coach, display)
+    const awx = tws*Math.cos(rad(twa)) + V;
+    const awy = tws*Math.sin(rad(twa))*Math.cos(heelR);
+    const aws = Math.hypot(awx,awy);
+    const awa = clamp(deg(Math.atan2(awy,awx)), 8, 178);
+    const sh = shapes(awa);
+    const blanketJ = awa>140 ? clamp(1-(awa-140)/40*.65, .35, 1) : 1;  // jib in main's shadow on a run
+    const hoistM = clamp(s.mainhal/.35, 0, 1), hoistJ = clamp(s.jhal/.35, 0, 1);
+    const FM = segForces(sh.m, BOAT.main, tws, twa, V, heelR, 1, PANEL.ok?PANEL.fM:1, Math.pow(hoistM,1.6));
+    const FJ = segForces(sh.j, BOAT.jib,  tws, twa, V, heelR, blanketJ, PANEL.ok?PANEL.fJ:1, Math.pow(hoistJ,1.6));
+    const drive = FM.drive + FJ.drive;
+    const side  = FM.side + FJ.side;
+    const hm    = FM.hm + FJ.hm;
+    // heel equilibrium: RM(φ) = heeling moment, crew hikes against it
+    const hike = Math.min(BOAT.hikeMax, Math.max(0,hm)*.55);
+    const gz = clamp((hm - hike)/(BOAT.disp*G*BOAT.gm), 0, .82);
+    const heelNew = deg(Math.asin(gz))*(1-.18*Math.pow(deg(Math.asin(gz))/45,2));
+    // leeway: keel must generate `side` at speed V
+    const qw = .5*RHO_W*Math.max(V,.4)**2*BOAT.keel.area;
+    const leeNew = clamp(deg(Math.max(0,side)/(qw*BOAT.keel.slope)), .3, 14);
+    const Di = Math.max(0,side)*Math.tan(rad(leeNew))*.9;               // keel induced drag
+    // hull resistance
+    const Rf = .5*RHO_W*V*V*BOAT.wetted*.0033*chopDrag;
+    const Fn = V/Math.sqrt(G*BOAT.lwl);
+    const Rr = BOAT.disp*G*.045*Math.pow(Fn/.40, 8)*chopDrag;
+    const Rheel = (Rf+Rr)*.3*Math.pow(Math.sin(heelR),1.5);
+    const Rtot = Rf+Rr+Rheel+Di+2;
+    const Vnew = clamp(V*Math.pow(Math.max(drive,0.1)/Rtot, .28), .05, 4.2);
+    return {aws,awa,sh,heelNew,leeNew,Vnew,drive,side};
+  }
+
+  function finish(rr, V, heel, lee){
+    const {aws,awa,sh} = rr;
+    const off = awa>90;
+    const aoaM = awa - sh.m.boom - sh.m.twist*.5;
+    const aoaJ = awa - sh.j.boom - sh.j.twist*.5;
+    const idl = ideals(twsKt, s.sea, awa);
+    function sailEff(sp, aoa, aoaIdl){
+      if(off){
+        const proj = clamp(Math.sin(rad(clamp(sh.m.boom+sh.m.twist*.4,0,95)+8))*1.05,0,1);
+        return {eff: clamp(proj*score(sp.twist, 24, 14),0,1), luff:false, stall:false};
+      }
+      const luff = aoa < 8, stall = aoa > aoaIdl+13;
+      let lift = aoa<=aoaIdl ? clamp(aoa/aoaIdl,0,1) : clamp(1-(aoa-aoaIdl)/26, .25, 1);
+      if(luff) lift *= clamp((aoa-2)/6,0,1)*.5;
+      const eff = clamp(Math.pow(
+        score(sp.depth, idl.depth, .035) *
+        score(sp.twist, idl.twist, 9) *
+        score(sp.draft, idl.draftPos, .09) * lift, .65), 0, 1);
+      return {eff, luff, stall};
+    }
+    const M = sailEff(sh.m, aoaM, idl.aoa);
+    const J = sailEff(sh.j, aoaJ, idl.aoa-4);
+    const eff = M.eff*.58 + J.eff*.42;
+    const helm = clamp(-1 + Math.max(0,heel-8)*.42 + (sh.m.draft-.43)*28 + Math.max(0,s.trav)*1.2 + (sh.m.depth-.11)*30*sh.upwind, -4, 15);
+    return {tws:twsKt, twa, aws:aws/KT, awa, upwind:sh.upwind, off,
+      main:{...sh.m, aoa:aoaM, eff:M.eff, luff:M.luff, stall:M.stall},
+      jib:{...sh.j, clew:sh.j.boom, aoa:aoaJ, eff:J.eff, luff:J.luff, stall:J.stall},
+      idl, eff, heel:clamp(heel,0,40), helm, leeway:lee, sheetSlack:sh.m.slack, speed:V/KT};
+  }
+}
+
+/* ---------------- coach ---------------- */
+function coachAdvice(r){
+  const tips=[]; const idl=r.idl; const off=r.off;
+  const push=(sev,html)=>tips.push({sev,html});
+
+  if(state.mainhal<.35) push(30, "<b>Main halyard released — the main is coming down.</b> Hoist it back up (halyard to the top of its range) before trimming anything else.");
+  if(state.jhal<.35) push(28, "<b>Jib halyard released — the jib is dropping.</b> Hoist first, then set luff tension.");
+  if(state.jsheetw>.25) push(26, "<b>Windward jib sheet is hauled — the jib is backed.</b> That's how you heave-to on purpose; release it to sail normally.");
+  if(r.heel>26) push(10+(r.heel-26), "<b>Overpowered.</b> First move: traveler down. Then flatten — backstay and outhaul on — and let the top twist open (ease mainsheet a touch, keep vang moderate).");
+  if(off){
+    if(r.main.boom < 45) push(6, "Off the wind, <b>ease the mainsheet</b> well out — the sail should hang square to the apparent wind. The boom can go close to the shrouds.");
+    if(r.main.twist>30) push(4, "Boom lifting and the top of the main spilling? <b>Vang on</b> — off the wind the vang, not the sheet, holds the leech.");
+    if(r.main.twist<12) push(3, "Leech clamped shut for a run — <b>ease the vang</b> a little so the top can breathe.");
+  } else {
+    // twist
+    const dT = r.main.twist - idl.twist;
+    if(dT < -6) push(Math.abs(dT)*.6, `Main leech is hooked — too little twist (${fmt1(r.main.twist)}° vs ~${idl.twist}°). <b>Ease mainsheet</b> an inch or two${state.vang>.6?" and <b>ease vang</b>":""}. A closed leech drags and heels more than it drives.`);
+    if(dT > 7) push(dT*.5, `Top of the main is spilling — too much twist (${fmt1(r.main.twist)}° vs ~${idl.twist}°). <b>Sheet on</b> until the top batten lines up with the boom.`);
+    // depth
+    const dD = r.main.depth - idl.depth;
+    if(dD > .022) push(dD*220, `Main too full for this breeze (${(r.main.depth*100).toFixed(0)}% vs ~${(idl.depth*100).toFixed(0)}%). <b>Outhaul on</b>, <b>backstay on</b> — flatten before you fight heel with the rudder.`);
+    if(dD < -.022) push(Math.abs(dD)*200, `Main stretched flat while you need power (${(r.main.depth*100).toFixed(0)}% vs ~${(idl.depth*100).toFixed(0)}%). <b>Ease outhaul</b> and <b>ease backstay</b> to give it belly.`);
+    // draft position
+    if(r.main.draft > .50) push((r.main.draft-.5)*40, `Draft has blown aft to ${(r.main.draft*100).toFixed(0)}% — the sail gets round-backed and heely. <b>Cunningham on</b> until the luff wrinkles just disappear.`);
+    if(r.main.draft < .36) push(4, "Draft dragged too far forward — <b>ease the cunningham</b>; you only need enough to remove luff wrinkles.");
+    // angle of attack
+    if(r.main.luff) push(9, "Main is luffing — it's pointing into the wind, making no power. <b>Traveler up</b> or sheet in to re-attach flow (or bear away slightly).");
+    else if(r.main.aoa > idl.aoa+9) push((r.main.aoa-idl.aoa)*.45, state.sheet>.85
+      ? "Main is stalled — strapped in past the wind. <b>Ease the mainsheet</b> until flow re-attaches."
+      : "Main is stalled — trimmed past the wind. <b>Drop the traveler</b> to re-align the sail with the apparent wind without changing course.");
+    // jib
+    const dTJ = r.jib.twist - idl.twist;
+    if(dTJ > 8) push(dTJ*.4, "Jib top is falling open — <b>car forward</b> (more leech tension) or sheet on a touch.");
+    if(dTJ < -7) push(Math.abs(dTJ)*.4, "Jib leech hooked closed and backwinding the main — <b>car aft</b> or crack the sheet.");
+    const dDJ = r.jib.depth - idl.depth;
+    if(dDJ > .02) push(dDJ*180, `Jib too full for this breeze (${(r.jib.depth*100).toFixed(0)}% vs ~${(idl.depth*100).toFixed(0)}%). <b>Car aft</b> and <b>backstay on</b> (a tight forestay flattens the jib's entry).`);
+    if(dDJ < -.02) push(Math.abs(dDJ)*160, "Jib board-flat while you need power — <b>car forward</b> and <b>ease the backstay</b> to let the forestay sag a touch.");
+    if(r.jib.draft > .50) push(3.5, "Jib draft aft, entry gone round — <b>jib halyard on</b> to pull it forward.");
+    if(r.jib.luff) push(8, "Jib luffing — <b>sheet on</b>.");
+    else if(r.jib.aoa > idl.aoa+9) push(3.5, "Jib stalled — <b>ease the sheet</b> until the leeward telltale flies again.");
+    if(r.helm>7) push(r.helm*.5, `Heavy weather helm (${fmt1(r.helm)}° rudder). That rudder is a brake. Depower the main: traveler down, flatten, twist open.`);
+  }
+  tips.sort((a,b)=>b.sev-a.sev);
+  return tips.slice(0,3);
+}
+
+/* ---------------- render: tiles + coach + table ---------------- */
+function pill(txt, cls){ return `<span class="pill ${cls}">${txt}</span>`; }
+
+function renderTiles(r){
+  const heelCls = r.heel>28?"crit":r.heel>22?"warn":r.heel>=10?"good":"mut";
+  const heelTxt = r.heel>28?"✕ overpowered":r.heel>22?"! too much":r.heel>=10?"✓ in band":"flat";
+  const helmCls = r.helm>8?"crit":r.helm>5.5?"warn":r.helm>=1?"good":"mut";
+  const helmTxt = r.helm>8?"✕ heavy":r.helm>5.5?"! building":r.helm>=1?"✓ light":"neutral";
+  const effCls = r.eff>.8?"good":r.eff>.55?"warn":"crit";
+  const effTxt = r.eff>.8?"✓ in the groove":r.eff>.55?"! trim off":"✕ way off";
+  $("tiles").innerHTML = `
+    <div class="tile"><div class="lbl">Speed over water</div><div class="num">${fmt1(r.speed)}<small> kt</small></div>${pill("hull max 6.2","mut")}</div>
+    <div class="tile"><div class="lbl">Heel</div><div class="num">${fmt1(r.heel)}<small> °</small></div>${pill(heelTxt,heelCls)}</div>
+    <div class="tile"><div class="lbl">Weather helm</div><div class="num">${fmt1(r.helm)}<small> ° rudder</small></div>${pill(helmTxt,helmCls)}</div>
+    <div class="tile"><div class="lbl">Sail efficiency</div><div class="num">${Math.round(r.eff*100)}<small> %</small></div>${pill(effTxt,effCls)}</div>`;
+}
+
+function renderCoach(r){
+  const tips = coachAdvice(r);
+  const el = $("coach");
+  if(tips.length===0){
+    el.className="coach groove";
+    el.innerHTML = `<h3>Coach</h3><ul><li><b>In the groove.</b> Shape matches the breeze — hold this and watch the telltales. Try the gust button, or change the wind, and re-trim.</li></ul>`;
+  } else {
+    el.className="coach";
+    el.innerHTML = `<h3>Coach</h3><ul>${tips.map(t=>`<li>${t.html}</li>`).join("")}</ul>`;
+  }
+}
+
+function delta(x, ideal, tolGood, tolWarn, fmt){
+  const d = x-ideal, a=Math.abs(d);
+  const cls = a<=tolGood?"good":a<=tolWarn?"warn":"crit";
+  const sign = d>0?"+":"−";
+  return `<td class="n">${fmt(x)}</td><td class="n">${fmt(ideal)}</td><td>${pill(a<=tolGood?"✓ on target":sign+fmt(a).replace("−",""),cls)}</td>`;
+}
+function renderTable(r){
+  const pc = x=>(x*100).toFixed(0)+"%";
+  const dg = x=>fmt1(x)+"°";
+  $("shape-table").innerHTML = `
+    <tr><th></th><th>Now</th><th>Target</th><th>Δ</th></tr>
+    <tr><td>Main twist</td>${delta(r.main.twist, r.idl.twist, 4, 8, dg)}</tr>
+    <tr><td>Main depth</td>${delta(r.main.depth, r.idl.depth, .015, .03, pc)}</tr>
+    <tr><td>Main draft pos.</td>${delta(r.main.draft, r.idl.draftPos, .05, .09, pc)}</tr>
+    <tr><td>Jib twist</td>${delta(r.jib.twist, r.idl.twist, 5, 9, dg)}</tr>
+    <tr><td>Jib depth</td>${delta(r.jib.depth, r.idl.depth, .015, .03, pc)}</tr>`;
+}
+
+/* ---------------- render: sail sections ---------------- */
+function sectionPath(x0,y0,ang,L,depth,draftPos){
+  // chord from luff (x0,y0), aft is straight down, ang rotates it to port (left);
+  // wind from starboard (right), so camber bulges to leeward (left of chord)
+  const cx=-Math.sin(rad(ang)), cy=Math.cos(rad(ang));   // chord unit vector
+  const nx=-cy, ny=cx;                                    // leeward normal (90° CW on screen)
+  const px = x0 + cx*L*draftPos + nx*depth*L*2;
+  const py = y0 + cy*L*draftPos + ny*depth*L*2;
+  const ex = x0 + cx*L, ey = y0 + cy*L;
+  return `M ${x0} ${y0} Q ${px} ${py} ${ex} ${ey}`;
+}
+function arrow(x,y,angDeg,len,color,label,dash){
+  // arrow flying TOWARD (x,y) from direction angDeg (deg from up-axis, positive = from starboard/right)
+  const ux = x + Math.sin(rad(angDeg))*len;
+  const uy = y - Math.cos(rad(angDeg))*len;
+  const hx1 = x + Math.sin(rad(angDeg+22))*9, hy1 = y - Math.cos(rad(angDeg+22))*9;
+  const hx2 = x + Math.sin(rad(angDeg-22))*9, hy2 = y - Math.cos(rad(angDeg-22))*9;
+  return `<g class="windarrow"><line x1="${ux}" y1="${uy}" x2="${x}" y2="${y}" stroke="${color}" stroke-width="2" ${dash?`stroke-dasharray="5 4"`:""}/>
+    <path d="M ${x} ${y} L ${hx1} ${hy1} M ${x} ${y} L ${hx2} ${hy2}" stroke="${color}" stroke-width="2" fill="none"/>
+    ${label?`<text x="${ux+4}" y="${uy-4}" font-size="10" fill="${color}" font-weight="700">${label}</text>`:""}</g>`;
+}
+
+// horizontal section: luff at (x0,y0), bow to the LEFT, chord runs right and droops
+// down (leeward) by ang degrees; camber bulges leeward (down)
+function hSection(x0,y0,ang,L,depth,draftPos){
+  const a=clamp(ang,-5,40);
+  const cx=Math.cos(rad(a)), cy=Math.sin(rad(a));
+  const nx=-cy, ny=cx; // 90° CW = leeward
+  const px = x0 + cx*L*draftPos + nx*depth*L*2;
+  const py = y0 + cy*L*draftPos + ny*depth*L*2;
+  return `M ${x0} ${y0} Q ${px} ${py} ${x0+cx*L} ${y0+cy*L}`;
+}
+// wind arrow for section view: bow points left, awa measured off the bow toward the top
+function hArrow(tx,ty,awa,len,color,label){
+  const ux=-Math.cos(rad(awa)), uy=-Math.sin(rad(awa));
+  const sx=tx+ux*len, sy=ty+uy*len;
+  const bx=-ux, by=-uy;
+  const h1x=tx-(bx*Math.cos(rad(24))-by*Math.sin(rad(24)))*9, h1y=ty-(bx*Math.sin(rad(24))+by*Math.cos(rad(24)))*9;
+  const h2x=tx-(bx*Math.cos(rad(-24))-by*Math.sin(rad(-24)))*9, h2y=ty-(bx*Math.sin(rad(-24))+by*Math.cos(rad(-24)))*9;
+  return `<g class="windarrow"><line x1="${sx}" y1="${sy}" x2="${tx}" y2="${ty}" stroke="${color}" stroke-width="2"/>
+    <path d="M ${tx} ${ty} L ${h1x} ${h1y} M ${tx} ${ty} L ${h2x} ${h2y}" stroke="${color}" stroke-width="2" fill="none"/>
+    ${label?`<text x="${sx-2}" y="${sy-6}" font-size="10" fill="${color}" font-weight="700">${label}</text>`:""}</g>`;
+}
+function renderSections(r){
+  const rows=[
+    {lab:"HEAD", h:1.0, y:78,  Lm:120, Lj:84},
+    {lab:"MID",  h:.55, y:186, Lm:172, Lj:120},
+    {lab:"FOOT", h:.15, y:294, Lm:205, Lj:145},
+  ];
+  const xm=40, xj=406; // luff x for main, jib columns
+  const idl=r.idl;
+  let out=`<text x="14" y="22" font-size="11" fill="var(--ink3)" letter-spacing="2">LOOKING DOWN THE MAST · BOW ◀</text>
+    <text x="${xm+70}" y="42" font-size="11" font-weight="700" fill="var(--ink2)">MAIN</text>
+    <text x="${xj+50}" y="42" font-size="11" font-weight="700" fill="var(--ink2)">JIB</text>`;
+  rows.forEach((row,ri)=>{
+    // screen angle = extra ease relative to the FOOT, so foot sits flat and
+    // twist reads as progressive droop up the rows
+    const tw = f => f.twist*(Math.pow(row.h,1.15)-Math.pow(.15,1.15));
+    const mAng = tw(r.main), jAng = tw(r.jib);
+    const mIdl = idl.twist*(Math.pow(row.h,1.15)-Math.pow(.15,1.15));
+    const depthTaper = 1-0.25*row.h;
+    const awaLocal = r.awa + 7*row.h - (r.main.boom + r.main.twist*.15); // wind relative to foot chord
+    out += `<line x1="24" y1="${row.y}" x2="616" y2="${row.y}" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"/>
+      <text x="24" y="${row.y-8}" font-size="10" fill="var(--ink3)" letter-spacing="1.5">${row.lab}</text>
+      <text x="238" y="${row.y-8}" font-size="10" fill="var(--ink2)" font-family="var(--mono)">+${fmt1(mAng)}° twist</text>`;
+    out += hArrow(xm+34, row.y-14, clamp(awaLocal,12,150), 40, "var(--teal)", ri===0?"apparent wind":"");
+    out += `<path class="sailpath" d="${hSection(xm,row.y,mIdl,row.Lm,idl.depth*depthTaper,idl.draftPos)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
+    out += `<path class="sailpath" d="${hSection(xm,row.y,mAng,row.Lm,r.main.depth*depthTaper,r.main.draft)}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
+    out += `<circle cx="${xm}" cy="${row.y}" r="3" fill="var(--ink)"/>`;
+    const jIdl = mIdl;
+    out += `<path class="sailpath" d="${hSection(xj,row.y,jIdl,row.Lj,idl.depth*depthTaper,idl.draftPos)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
+    out += `<path class="sailpath" d="${hSection(xj,row.y,jAng,row.Lj,r.jib.depth*depthTaper,r.jib.draft)}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
+    out += `<circle cx="${xj}" cy="${row.y}" r="3" fill="var(--ink)"/>`;
+  });
+  out += `<text x="14" y="348" font-size="11" fill="var(--ink3)">Head sits ${fmt1(r.main.twist)}° more open than the foot — wind aloft is stronger and further aft, so the arrows lean with height.</text>`;
+  $("svg-sections").innerHTML = out;
+}
+
+/* ---------------- render: deck view ---------------- */
+function renderDeck(r){
+  const cx=150, bowY=38, sternY=300, mastY=180, tackY=64;
+  const hull = `M ${cx} ${bowY} C ${cx+34} ${bowY+50} ${cx+42} ${sternY-70} ${cx+34} ${sternY}
+                L ${cx-34} ${sternY} C ${cx-42} ${sternY-70} ${cx-34} ${bowY+50} ${cx} ${bowY} Z`;
+  let out = `<path d="${hull}" fill="var(--panel2)" stroke="var(--ink2)" stroke-width="1.5"/>
+    <line x1="${cx}" y1="${bowY}" x2="${cx}" y2="${sternY}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 4"/>`;
+  // traveler track + car position
+  out += `<line x1="${cx-30}" y1="${mastY+76}" x2="${cx+30}" y2="${mastY+76}" stroke="var(--ink2)" stroke-width="2.5"/>
+          <circle cx="${cx + state.trav*24}" cy="${mastY+76}" r="4.5" fill="var(--accent)"/>
+          <text x="${cx}" y="${mastY+94}" font-size="9.5" fill="var(--ink3)" text-anchor="middle">traveler</text>`;
+  // sail feet: aft is down, boom/clew swing to port (left), belly to leeward
+  out += `<path class="sailpath" d="${sectionPath(cx,mastY,r.main.boom,118,r.main.depth,r.main.draft)}" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round"/>`;
+  out += `<path class="sailpath" d="${sectionPath(cx,tackY,r.jib.clew,92,r.jib.depth,r.jib.draft)}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
+  out += `<circle cx="${cx}" cy="${mastY}" r="4" fill="var(--ink)"/><circle cx="${cx}" cy="${tackY}" r="3" fill="var(--ink)"/>`;
+  // jib fairlead tracks + car + working sheet (port = leeward side)
+  const trkTop=tackY+52, trkBot=tackY+96;
+  const carY=trkTop+(trkBot-trkTop)*state.jcar;
+  out += `<line x1="${cx-22}" y1="${trkTop}" x2="${cx-22}" y2="${trkBot}" stroke="var(--ink2)" stroke-width="2.5"/>
+          <line x1="${cx+22}" y1="${trkTop}" x2="${cx+22}" y2="${trkBot}" stroke="var(--ink2)" stroke-width="2.5"/>
+          <circle cx="${cx-22}" cy="${carY}" r="4" fill="var(--accent)"/>
+          <circle cx="${cx+22}" cy="${carY}" r="3" fill="var(--ink3)"/>
+          <text x="${cx-30}" y="${trkBot+12}" font-size="9.5" fill="var(--ink3)" text-anchor="end">fairlead car</text>`;
+  { const a=rad(r.jib.clew), clewX=cx-Math.sin(a)*92, clewY=tackY+Math.cos(a)*92;
+    out += `<line x1="${clewX}" y1="${clewY}" x2="${cx-22}" y2="${carY}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
+  { const a=rad(r.main.boom), endX=cx-Math.sin(a)*118, endY=mastY+Math.cos(a)*118;
+    out += `<line x1="${endX}" y1="${endY}" x2="${cx + state.trav*24}" y2="${mastY+76}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
+  // wind arrows from starboard (right side); direction from bow = twa/awa
+  out += arrow(258, 84, r.twa, 60, "var(--ink2)", "true "+fmt1(r.tws)+" kt", true);
+  out += arrow(258, 168, r.awa, 60, "var(--teal)", "apparent "+fmt1(r.aws)+" kt", false);
+  out += `<text x="16" y="318" font-size="11" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° off centerline · ${POS[state.posIdx].name} (${r.twa}° true)</text>`;
+  $("svg-deck").innerHTML = out;
+}
+
+/* ---------------- render: twist from astern ---------------- */
+function renderTwist(r){
+  const EX=2.3;   // display exaggeration — angles are small; labeled below
+  // looking at the boat from dead astern: mast vertical, each height's chord
+  // sticks out to leeward (left) by sin(local angle) * chord length
+  const baseX=250, footY=300, headY=30, H=footY-headY;
+  const idl=r.idl;
+  let out=`<line x1="${baseX}" y1="${headY-8}" x2="${baseX}" y2="${footY+8}" stroke="var(--ink2)" stroke-width="2.5"/>
+    <text x="${baseX+8}" y="${headY+2}" font-size="10" fill="var(--ink3)">mast</text>`;
+  function airColor(hf, boom, twist){
+    const aoa=r.awa + 7*hf - (boom + twist*Math.pow(hf,1.15));
+    if(aoa<6) return "var(--ink3)";                 // spilling / luffing
+    if(aoa<r.idl.aoa-6) return "var(--warn)";       // soft
+    if(aoa>r.idl.aoa+13) return "var(--crit)";      // stalled
+    return "var(--good)";                            // driving
+  }
+  function leechPath(boom, twist, footLen, taper, color, w, dash){
+    const px=[];
+    for(let i=0;i<=10;i++){
+      const hf=i/10, y=footY-H*hf*.92;
+      const ang=(boom+twist*Math.pow(hf,1.15))*EX;
+      const len=footLen*(1-taper*Math.pow(hf,1.05));
+      px.push([baseX-Math.sin(rad(ang))*len, y, hf]);
+    }
+    if(dash){
+      return `<polyline points="${px.map(p=>p[0]+','+p[1]).join(' ')}" fill="none" stroke="${color}" stroke-width="${w}" stroke-dasharray="5 5" stroke-linecap="round"/>`;
+    }
+    // solid curves are drawn per-segment, colored by what the air does there
+    let out="";
+    for(let i=0;i<10;i++){
+      out+=`<line x1="${px[i][0]}" y1="${px[i][1]}" x2="${px[i+1][0]}" y2="${px[i+1][1]}" stroke="${airColor((px[i][2]+px[i+1][2])/2,boom,twist)}" stroke-width="${w}" stroke-linecap="round"/>`;
+    }
+    return out;
+  }
+  // main: solid vs ideal-twist ghost (same boom angle so the difference IS twist)
+  out += leechPath(r.main.boom, idl.twist, 190, .90, "var(--ghost)", 1.6, true);
+  out += leechPath(r.main.boom, r.main.twist, 190, .90, "var(--accent)", 3, false);
+  // jib (drawn smaller, inboard)
+  out += leechPath(r.jib.clew, r.jib.twist, 120, .94, "var(--teal)", 2.2, false);
+  // horizontal reference marks each quarter height
+  for(let i=1;i<4;i++){ const y=footY-H*.92*i/4;
+    out += `<line x1="60" y1="${y}" x2="${baseX}" y2="${y}" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"/>`; }
+  const topAoa=r.awa+7-(r.main.boom+r.main.twist);
+  out += `<text x="20" y="${footY+16}" font-size="10.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° · head opens +${fmt1(r.main.twist)}° · angles ×${EX}</text>
+    <text x="40" y="${headY+2}" font-size="10" fill="var(--good)">■ driving</text>
+    <text x="40" y="${headY+16}" font-size="10" fill="var(--ink3)">■ spilling</text>
+    <text x="40" y="${headY+30}" font-size="10" fill="var(--warn)">■ soft</text>
+    <text x="40" y="${headY+44}" font-size="10" fill="var(--crit)">■ stalled</text>`;
+  if(topAoa<6) out += `<text x="${baseX-160}" y="${headY+8}" font-size="11" font-weight="700" fill="var(--ink3)">SPILLING AT THE HEAD ◢</text>`;
+  $("svg-twist").innerHTML=out;
+}
+
+/* ---------------- render: heel gauge ---------------- */
+function heelArc(cx,cy,R,a0,a1,color,w){
+  const p = a=>[cx - R*Math.sin(rad(a)), cy - R*Math.cos(rad(a))];
+  const [x0,y0]=p(a0), [x1,y1]=p(a1);
+  return `<path d="M ${x0} ${y0} A ${R} ${R} 0 0 0 ${x1} ${y1}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linecap="butt"/>`;
+}
+function renderHeel(r){
+  const cx=205, cy=185, R=140;
+  let out = "";
+  out += heelArc(cx,cy,R, 0,12, "var(--panel2)", 10);
+  out += heelArc(cx,cy,R, 12,22, "var(--good)", 10);
+  out += heelArc(cx,cy,R, 22,30, "var(--warn)", 10);
+  out += heelArc(cx,cy,R, 30,40, "var(--crit)", 10);
+  [0,10,20,30,40].forEach(a=>{
+    const x=cx-(R+14)*Math.sin(rad(a)), y=cy-(R+14)*Math.cos(rad(a));
+    out += `<text x="${x}" y="${y}" font-size="10" fill="var(--ink3)" text-anchor="middle" font-family="var(--mono)">${a}°</text>`;
+  });
+  // boat stern silhouette rotated by heel (heels to port = left)
+  out += `<g class="heelboat" transform="rotate(${-r.heel} ${cx} ${cy})">
+    <path d="M ${cx-46} ${cy-12} Q ${cx} ${cy+16} ${cx+46} ${cy-12} L ${cx+38} ${cy-26} L ${cx-38} ${cy-26} Z" fill="var(--panel2)" stroke="var(--ink2)" stroke-width="1.5"/>
+    <line x1="${cx}" y1="${cy-26}" x2="${cx}" y2="${cy-118}" stroke="var(--ink)" stroke-width="2.5"/>
+    <line x1="${cx}" y1="${cy+14}" x2="${cx}" y2="${cy+44}" stroke="var(--ink2)" stroke-width="4"/>
+  </g>`;
+  const cls = r.heel>28?"var(--crit)":r.heel>22?"var(--warn)":"var(--ink)";
+  out += `<text x="30" y="178" font-size="30" font-weight="600" fill="${cls}" font-family="var(--mono)">${fmt1(r.heel)}°</text>
+    <text x="30" y="194" font-size="10.5" fill="var(--ink3)" letter-spacing="1.5">HEEL</text>
+    <text x="${cx+62}" y="${cy+8}" font-size="10.5" fill="var(--ink3)">keel</text>`;
+  $("svg-heel").innerHTML = out;
+}
+
+/* ---------------- slider value labels ---------------- */
+const easeWords = ["fully eased","eased","cracked","firm","hard on"];
+function word(v){ return easeWords[clamp(Math.floor(v*4.999),0,4)]; }
+function renderVals(){
+  $("v-tws").textContent = state.tws+" kt"+(state.gust?" (+6 gust)":"");
+  $("v-sheet").textContent = word(state.sheet);
+  $("v-trav").textContent = state.trav===0?"centered":(state.trav>0?"up (windward) "+Math.round(state.trav*100)+"%":"down (leeward) "+Math.round(-state.trav*100)+"%");
+  $("v-vang").textContent = word(state.vang);
+  $("v-outhaul").textContent = state.outhaul<.33?"eased · belly":state.outhaul<.7?"medium":"tight · flat";
+  $("v-cunn").textContent = state.cunn<.2?"slack":state.cunn<.6?"snug":"hard";
+  $("v-backstay").textContent = state.backstay<.25?"soft · sag":state.backstay<.65?"medium":"hard · bent mast";
+  $("v-jsheet").textContent = word(state.jsheet);
+  $("v-jsheetw").textContent = state.jsheetw<.08?"slack (lazy)":state.jsheetw<.5?"taking up — backing!":"hauled — jib backed";
+  $("v-mainhal").textContent = state.mainhal<.35?"DROPPED "+Math.round(state.mainhal/.35*100)+"%":state.mainhal<.7?"hoisted · soft":"hoisted · tight";
+  $("v-jcar").textContent = state.jcar<.33?"forward · power":state.jcar<.7?"middle":"aft · twist";
+  $("v-jhal").textContent = state.jhal<.35?"DROPPED "+Math.round(state.jhal/.35*100)+"%":state.jhal<.7?"hoisted · snug":"hoisted · hard";
+}
+
+/* ---------------- live effect bar ---------------- */
+const LINEMETA = {
+  sheet:{name:"Mainsheet",job:"leech tension → twist + angle"},
+  trav:{name:"Traveler",job:"angle of attack, shape untouched"},
+  vang:{name:"Boom vang",job:"leech tension off the wind"},
+  outhaul:{name:"Outhaul",job:"belly in the lower main"},
+  cunn:{name:"Cunningham",job:"main draft position"},
+  backstay:{name:"Backstay",job:"flattens main + jib entry"},
+  jsheet:{name:"Jib sheet",job:"jib angle + leech"},
+  jcar:{name:"Fairlead car",job:"jib twist vs foot"},
+  jhal:{name:"Jib halyard",job:"hoist, then jib draft position"},
+  mainhal:{name:"Main halyard",job:"hoist, then main luff tension"},
+  jsheetw:{name:"Windward jib sheet",job:"backs the jib when hauled"},
+  tws:{name:"True wind",job:"conditions changed"},
+  pos:{name:"Point of sail",job:"conditions changed"},
+  sea:{name:"Sea state",job:"conditions changed"},
+  gust:{name:"Gust",job:"+6 kt on top of true wind"},
+  perfect:{name:"Perfect trim",job:"physics optimum (close-hauled: best VMG)"},
+};
+function renderFx(src,a,b){
+  const M=LINEMETA[src]; if(!M) return;
+  const distBand=(x,lo,hi)=>x<lo?lo-x:x>hi?x-hi:0;
+  const chips=[];
+  const add=(label,ov,nv,eps,f,dOld,dNew)=>{
+    if(Math.abs(nv-ov)<eps) return;
+    const cls = dNew<dOld-1e-9 ? "good" : dNew>dOld+1e-9 ? "bad" : "mut";
+    chips.push({mag:Math.abs(nv-ov)/eps, html:`<span class="chip ${cls}">${label} ${f(ov)}→${f(nv)}</span>`});
+  };
+  const dg=v=>fmt1(v)+"°", pc=v=>(v*100).toFixed(0)+"%", kt=v=>fmt1(v)+" kt";
+  add("main twist",a.main.twist,b.main.twist,.8,dg,Math.abs(a.main.twist-a.idl.twist),Math.abs(b.main.twist-b.idl.twist));
+  add("main belly",a.main.depth,b.main.depth,.004,pc,Math.abs(a.main.depth-a.idl.depth),Math.abs(b.main.depth-b.idl.depth));
+  add("main draft",a.main.draft,b.main.draft,.012,pc,Math.abs(a.main.draft-a.idl.draftPos),Math.abs(b.main.draft-b.idl.draftPos));
+  add("boom angle",a.main.boom,b.main.boom,1.5,dg,0,0);
+  add("jib twist",a.jib.twist,b.jib.twist,.8,dg,Math.abs(a.jib.twist-a.idl.twist),Math.abs(b.jib.twist-b.idl.twist));
+  add("jib belly",a.jib.depth,b.jib.depth,.004,pc,Math.abs(a.jib.depth-a.idl.depth),Math.abs(b.jib.depth-b.idl.depth));
+  add("jib draft",a.jib.draft,b.jib.draft,.012,pc,Math.abs(a.jib.draft-a.idl.draftPos),Math.abs(b.jib.draft-b.idl.draftPos));
+  add("heel",a.heel,b.heel,.5,dg,distBand(a.heel,12,22),distBand(b.heel,12,22));
+  add("helm",a.helm,b.helm,.5,dg,distBand(a.helm,1,4),distBand(b.helm,1,4));
+  add("speed",a.speed,b.speed,.05,kt,-a.speed,-b.speed);
+  add("power",a.eff,b.eff,.02,v=>Math.round(v*100)+"%",-a.eff,-b.eff);
+  chips.sort((x,y)=>y.mag-x.mag);
+  $("fx").innerHTML = `<span class="src">${M.name}</span><span class="job">${M.job}</span>` +
+    (chips.length ? chips.slice(0,5).map(c=>c.html).join("")
+                  : `<span class="idle">no measurable change — try a bigger pull</span>`);
+}
+
+/* ---------------- main update ---------------- */
+let lastR=null;
+function update(src){
+  renderVals();
+  const r = compute();
+  renderTiles(r); renderCoach(r); renderTable(r);
+  renderSections(r); renderDeck(r); renderHeel(r); renderTwist(r);
+  if(src && lastR) renderFx(src,lastR,r);
+  if(src && B3 && TRIM_KEYS.includes(src)) B3.hiKey=src;
+  lastR=r;
+  B3dirty=true;
+  if(src){ renderOptims(); scheduleOptims(); }
+}
+
+/* ---------------- wire controls ---------------- */
+[["tws",v=>state.tws=+v],["sheet",v=>state.sheet=v/100],["trav",v=>state.trav=v/100],
+ ["vang",v=>state.vang=v/100],["outhaul",v=>state.outhaul=v/100],["cunn",v=>state.cunn=v/100],
+ ["backstay",v=>state.backstay=v/100],["mainhal",v=>state.mainhal=v/100],
+ ["jsheet",v=>state.jsheet=v/100],["jsheetw",v=>state.jsheetw=v/100],["jcar",v=>state.jcar=v/100],
+ ["jhal",v=>state.jhal=v/100]].forEach(([id,fn])=>{
+  $(id).addEventListener("input",e=>{fn(e.target.value);update(id);});
+});
+POS.forEach((p,i)=>{
+  const b=document.createElement("button");
+  b.textContent=p.name; if(i===0)b.classList.add("on");
+  b.addEventListener("click",()=>{
+    state.posIdx=i;
+    [...$("pos-seg").children].forEach((c,j)=>c.classList.toggle("on",j===i));
+    update("pos");
+  });
+  $("pos-seg").appendChild(b);
+});
+[...$("sea-seg").children].forEach(b=>b.addEventListener("click",()=>{
+  state.sea=b.dataset.sea;
+  [...$("sea-seg").children].forEach(c=>c.classList.toggle("on",c===b));
+  update("sea");
+}));
+$("gust").addEventListener("click",()=>{
+  state.gust=!state.gust;
+  $("gust").classList.toggle("on",state.gust);
+  $("gust").textContent = state.gust ? "Gust on · ease or dump!" : "Gust hits · +6 kt";
+  update("gust");
+});
+
+/* ---------------- per-slider optimality ticks (debounced optimizer) ---------------- */
+let OPT=null, optTimer=null;
+function renderOptims(){
+  if(!OPT) return;
+  for(const k of TRIM_KEYS){
+    const input=$(k); if(!input) return;
+    const wrap=input.parentElement;
+    let tick=wrap.querySelector(".opt-tick");
+    if(!tick){ tick=document.createElement("div"); tick.className="opt-tick"; wrap.appendChild(tick);
+      wrap.style.position="relative"; }
+    const lo=+input.min, hi=+input.max;
+    const pct=(OPT[k]*100-lo)/(hi-lo)*100;
+    tick.style.left=`calc(${clamp(pct,1,99)}% - 1px)`;
+    const span=(hi-lo)/100;
+    const dist=Math.abs(state[k]-OPT[k])/span;
+    const cls=dist<.12?"good":dist<.28?"warn":"crit";
+    tick.dataset.cls=cls;
+    const val=wrap.parentElement.querySelector(".val");
+    if(val){ val.dataset.opt=cls; }
+  }
+}
+function scheduleOptims(){
+  clearTimeout(optTimer);
+  optTimer=setTimeout(()=>{ OPT=solvePerfectTrim(true); renderOptims(); }, 500);
+}
+
+/* ---------------- perfect trim: coordinate descent on the real solver ---------------- */
+function computeWith(params){
+  const saved={}; for(const k in params){ saved[k]=state[k]; state[k]=params[k]; }
+  const r=compute();
+  for(const k in saved) state[k]=saved[k];
+  return r;
+}
+const TRIM_KEYS=["sheet","trav","vang","outhaul","cunn","backstay","mainhal","jsheet","jsheetw","jcar","jhal"];
+function solvePerfectTrim(quick){
+  // objective, evaluated by the same physics solver as the simulator:
+  // close-hauled -> true upwind VMG (the solver may also choose how high to
+  // point); other legs -> speed on the set heading. light helm-balance penalty.
+  const upwindMode = state.posIdx===0 && !quick;
+  const obj=r=>{
+    const base = upwindMode ? r.speed*Math.cos(rad((state.twaOv||45)+r.leeway)) : r.speed;
+    return base - Math.max(0,r.helm-5)*.06 - Math.max(0,-r.helm-2)*.06;
+  };
+  const seeds=[
+    Object.fromEntries(TRIM_KEYS.map(k=>[k,state[k]])),
+    {sheet:.85,trav:0,vang:.4,outhaul:.5,cunn:.3,backstay:.4,mainhal:.95,jsheet:.7,jsheetw:0,jcar:.5,jhal:.6},
+  ];
+  let bestP=null, bestS=-1e9, bestTwa=null;
+  const twas = upwindMode ? [40,43,46,49,52] : [null];
+  for(const tw of twas){
+    state.twaOv=tw;
+    for(const seed of seeds){
+      const p={...seed};
+      let cur=obj(computeWith(p));
+      for(let sweep=0;sweep<3;sweep++){
+        for(const k of TRIM_KEYS){
+          const lo=k==="trav"?-1:0;
+          let bv=p[k], bs=cur;
+          for(let n=0;n<=8;n++){ const v=lo+(1-lo)*n/8;
+            p[k]=v; const sc=obj(computeWith(p)); if(sc>bs){bs=sc;bv=v;} }
+          for(const dv of [-.06,-.03,.03,.06]){ const v=clamp(bv+dv,lo,1);
+            p[k]=v; const sc=obj(computeWith(p)); if(sc>bs){bs=sc;bv=v;} }
+          p[k]=bv; cur=bs;
+        }
+      }
+      if(cur>bestS){ bestS=cur; bestP={...p}; bestTwa=tw; }
+    }
+  }
+  state.twaOv=null;
+  bestP.__twa=bestTwa;
+  return bestP;
+}
+$("perfect").addEventListener("click",()=>{
+  $("perfect").textContent="Solving…"; $("perfect").disabled=true;
+  setTimeout(()=>{
+    const p=solvePerfectTrim();
+    for(const k of TRIM_KEYS){
+      state[k]=p[k];
+      $(k).value=k==="trav"?Math.round(p[k]*100):Math.round(p[k]*100);
+    }
+    update("perfect");
+    $("perfect").textContent="Solve perfect trim"; $("perfect").disabled=false;
+  },30);
+});
+
+/* ---------------- tabs ---------------- */
+function showTab(name){
+  [...$("tabs").children].forEach(c=>c.classList.toggle("active",c.dataset.tab===name));
+  document.querySelectorAll(".tabpane").forEach(p=>p.classList.toggle("active",p.id==="pane-"+name));
+  document.querySelector("main").classList.toggle("lock", name==="sim"||name==="view3d");
+  // the one controls rail moves between Helm and 3D so state stays in sync
+  if(name==="view3d"){ $("dock3d").appendChild($("controls")); ensure3D(); setTimeout(()=>{ if(B3) B3.engine.resize(); },60); }
+  else if(name==="sim"){ document.querySelector("#pane-sim .sim-grid").prepend($("controls")); }
+  window.scrollTo(0,0);
+}
+document.querySelector("main").classList.add("lock");
+$("tabs").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b)return;
+  showTab(b.dataset.tab);
+});
+
+/* ---------------- demo sweep: pull a line and watch ---------------- */
+function demo(id){
+  const el=$(id); if(!el) return;
+  const start=+el.value, min=+el.min, max=+el.max;
+  const setV=v=>{el.value=v; el.dispatchEvent(new Event("input"));};
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches){
+    setV(max); setTimeout(()=>setV(min),800); setTimeout(()=>setV(start),1600);
+    return;
+  }
+  const dur=2600, t0=performance.now();
+  const seq=t=> t<.33 ? lerp(start,max,t/.33)
+             : t<.66 ? lerp(max,min,(t-.33)/.33)
+             : lerp(min,start,(t-.66)/.34);
+  const tick=now=>{
+    const t=Math.min(1,(now-t0)/dur);
+    setV(Math.round(seq(t)));
+    if(t<1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/* ================= LINES CONTENT ================= */
+const LINES = [
+ {n:"Mainsheet", tag:"twist + angle", t:"Pulls the boom down and in. Close-hauled it mostly tensions the leech — your main twist control. Off the wind it mostly changes the sail's angle.",
+  tight:"Leech closes, twist disappears, top batten parallel to boom. More point, more heel.", ease:"Top opens, spills breeze aloft, forgiving in gusts.",
+  when:"Every puff and lull. Upwind: trim until the top batten is roughly parallel to the boom, then play it.",
+  c26:"Mid-boom sheeting on the Colgate 26 — small movements matter; think in inches, not armfuls."},
+ {n:"Traveler", tag:"angle, not shape", t:"Slides the mainsheet block across the cockpit, changing the boom's angle without touching leech tension. It re-aims the whole sail at the wind while the shape stays put.",
+  tight:"Car up to windward: boom to centerline in light air without strangling the leech.", ease:"Car down: instant depower in a gust — same twist, less angle of attack.",
+  when:"Gust hits on a beat: traveler down first. Light air: traveler up, sheet eased.",
+  c26:"Full-width track by the companionway. Fastest depower on the boat — keep the line in hand in breeze."},
+ {n:"Boom vang", tag:"twist off the wind", t:"Holds the boom down when the sheet can't. On a reach or run the sheet is eased way out and only the vang controls the leech.",
+  tight:"Boom stays down, leech stands, twist under control off the wind.", ease:"Top of the sail opens and spills.",
+  when:"Set it as you bear away — the moment you ease the sheet, the vang inherits the twist job.",
+  c26:"Cascade vang on most C26s. Snug upwind, working-tight reaching, eased before you head back up."},
+ {n:"Outhaul", tag:"belly, lower third", t:"Stretches the foot of the main along the boom. Controls depth in the bottom third of the sail — the part that heels you most.",
+  tight:"Flat foot: less power, less heel, less drag. Heavy air and flat water.", ease:"Belly: acceleration and punch through chop, light-to-medium air.",
+  when:"Breeze up → on. Chop or light air → ease. Cheap to adjust, often ignored.",
+  c26:"Internal boom purchase. Ease it off the wind for power; snug it back before hardening up."},
+ {n:"Cunningham", tag:"draft position", t:"Tensions the main's luff just above the tack. As wind builds, the draft (deepest point) blows aft — the cunningham drags it back forward.",
+  tight:"Draft forward ~40–45%, rounder entry, opens the leech a touch, calms helm.", ease:"Draft drifts aft; fine in light air.",
+  when:"When horizontal wrinkles appear at the luff under load: pull until they just fade — no more.",
+  c26:"Simple hook-and-tackle at the mast base. The forgotten line — check it every time the breeze changes."},
+ {n:"Backstay", tag:"flatten both sails", t:"Bends the mast and tensions the forestay at the same time. One pull flattens the main (mast bend) and flattens the jib entry (less forestay sag) — the master depower lever.",
+  tight:"Flat main, tight forestay, higher pointing, less heel.", ease:"Straight mast, sagging forestay, both sails get fuller — power for light air.",
+  when:"Overpowered upwind: on. Light air or reaching: off.",
+  c26:"Split backstay with an adjuster at the transom apex — crew can play it from the rail."},
+ {n:"Jib sheet", tag:"jib angle + leech", t:"The jib's mainsheet: sets angle of attack and, through the clew, leech tension. Trim to the telltales — windward lifting means sheet on or head up; leeward stalling means ease.",
+  tight:"Closes the slot, points higher, risks backwinding the main.", ease:"Opens the slot, twists the top, forgiving.",
+  when:"Constantly upwind. Both telltale pairs streaming aft = trimmed.",
+  c26:"Non-overlapping jib — it sheets inside the shrouds and responds instantly. Two-inch adjustments."},
+ {n:"Jib fairlead car", tag:"jib twist + foot", t:"Where the sheet turns down to the deck. Moves the pull between leech (car forward) and foot (car aft).",
+  tight:"Forward: leech tensions, foot bellies — power, but closes the top.", ease:"Aft: foot flattens, top twists open — depower for breeze.",
+  when:"Rough guide: sheet should bisect the clew angle. Top telltale breaks first → car forward. Overpowered → car aft.",
+  c26:"Track on the side deck with pin stops — set it before the tack on the new side. Common trap: car aft is NOT the fast setting — it is the depower setting. In moderate air an open top costs power and pointing; go aft only when overpowered."},
+ {n:"Jib halyard", tag:"jib draft position", t:"Luff tension for the jib — the jib's cunningham. More wind stretches the luff and lets draft slide aft; halyard tension pulls it forward.",
+  tight:"Draft forward, fine entry, points well.", ease:"Scallops between hanks; draft aft, round entry.",
+  when:"Set for the day's breeze; snug it when the wind builds.",
+  c26:"Led aft to the cabin-top clutch — easy to tweak without leaving the cockpit."},
+];
+const LINE_CTL=["sheet","trav","vang","outhaul","cunn","backstay","jsheet","jcar","jhal"];
+$("linecards").innerHTML = LINES.map((l,i)=>`
+ <div class="card"><span class="tag">${l.tag}</span><h3>${l.n}</h3>
+  <p>${l.t}</p>
+  <dl><dt>Tighten →</dt><dd>${l.tight}</dd><dt>Ease →</dt><dd>${l.ease}</dd><dt>Reach for it when</dt><dd>${l.when}</dd></dl>
+  <div class="note"><b>On the Colgate 26:</b> ${l.c26}</div>
+  <button class="try" data-ctl="${LINE_CTL[i]}">Pull it in the simulator →</button>
+ </div>`).join("");
+$("linecards").addEventListener("click",e=>{
+  const b=e.target.closest(".try"); if(!b) return;
+  showTab("sim");
+  demo(b.dataset.ctl);
+});
+
+/* ================= CONCEPTS CONTENT ================= */
+const CONCEPTS = [
+ {k:"Shape", h:"Twist", body:[
+  `Twist is the difference in angle between the bottom of the sail and the top — the head always sits a few degrees more open than the foot. It is not a defect; it is a setting.`,
+  `<b>Why it exists:</b> wind is stronger aloft (less surface friction), and stronger true wind swings the <i>apparent</i> wind further aft. So the top of your sail lives in a slightly different wind than the bottom, and it should be angled differently to match. That's why the arrows in the simulator lean over with height.`,
+  `<b>Your twist controls:</b> mainsheet upwind, vang off the wind, jib car for the jib.`],
+  want:["Light air — an open leech keeps lazy flow attached","Overpowered — spill the top, where the heeling arm is longest","Chop and gusts — twist is a shock absorber"],
+  avoid:["Flat water, medium breeze, pointing high — a firm, closed leech points best","Never let the top flog: that's not twist, that's flapping"],
+  svg:`<svg viewBox="0 0 300 170"><line x1="60" y1="30" x2="60" y2="140" stroke="var(--line)" stroke-dasharray="3 4"/><path d="M 60 40 Q 95 46 122 62" stroke="var(--accent)" stroke-width="3" fill="none"/><path d="M 60 88 Q 100 92 138 102" stroke="var(--accent)" stroke-width="3" fill="none"/><path d="M 60 136 Q 105 137 150 141" stroke="var(--accent)" stroke-width="3" fill="none"/><text x="160" y="60" font-size="11" fill="var(--ink2)">head — open</text><text x="160" y="104" font-size="11" fill="var(--ink2)">mid</text><text x="160" y="144" font-size="11" fill="var(--ink2)">foot — closed</text><text x="20" y="20" font-size="10" fill="var(--ink3)">viewed from masthead</text></svg>`},
+ {k:"Shape", h:"Belly & flat (depth)", body:[
+  `Depth — “belly”, “fullness”, camber — is how curved the sail is. A deep sail is a big engine: more lift, more acceleration, and more heel and drag. A flat sail is a small efficient engine: less power, less heel, better pointing.`,
+  `<b>The rule of thirds:</b> very light air wants a <i>moderately</i> flat sail (weak flow can't bend around a deep curve without separating); building breeze wants full power; once you're overpowered, flatten progressively — outhaul and backstay for the main, backstay and car aft for the jib.`,
+  `Flatten <i>before</i> you reef, and flatten before you fight the heel with rudder.`],
+  want:["Full: powering through chop, light-to-medium breeze, after a tack to accelerate","Flat: overpowered, flat-water pointing, drifter conditions under ~5 kt"],
+  avoid:["Deep sails block-to-block in 20 kt — that's the round-up recipe","Board-flat sails in 8 kt and slop — no punch, boat stops"],
+  svg:`<svg viewBox="0 0 300 170"><path d="M 40 60 Q 150 130 260 60" stroke="var(--accent)" stroke-width="3" fill="none"/><line x1="40" y1="60" x2="260" y2="60" stroke="var(--line)" stroke-dasharray="3 4"/><line x1="150" y1="60" x2="150" y2="95" stroke="var(--ink2)" stroke-width="1.5"/><text x="158" y="86" font-size="11" fill="var(--ink2)">depth</text><path d="M 40 140 Q 150 168 260 140" stroke="var(--ghost)" stroke-width="2.5" fill="none"/><text x="120" y="35" font-size="11" fill="var(--ink2)">full — power</text><text x="120" y="132" font-size="11" fill="var(--ink3)">flat — control</text></svg>`},
+ {k:"Shape", h:"Draft position", body:[
+  `Not just how deep, but <i>where</i> the deepest point sits. Target roughly 40–45% back from the luff. As breeze builds, cloth stretches and the draft slides aft — the sail goes “round-backed”: the leech hooks, heel and weather helm grow, pointing dies.`,
+  `<b>Fix:</b> luff tension. Cunningham for the main, halyard for the jib. Pull until the horizontal wrinkles at the luff just disappear — that resets the draft forward. Ease again when the breeze drops.`],
+  want:["Draft ~40–45%: fine entry, easy helm, good pointing"],
+  avoid:["Draft past ~50%: hooked leech, heavy helm — cunningham is the cure, not more rudder"],
+  svg:`<svg viewBox="0 0 300 170"><path d="M 40 80 Q 130 150 260 80" stroke="var(--accent)" stroke-width="3" fill="none"/><line x1="40" y1="80" x2="260" y2="80" stroke="var(--line)" stroke-dasharray="3 4"/><line x1="118" y1="80" x2="118" y2="116" stroke="var(--ink2)"/><text x="70" y="132" font-size="11" fill="var(--ink2)">draft ~43%</text><text x="42" y="66" font-size="10" fill="var(--ink3)">luff</text><text x="238" y="66" font-size="10" fill="var(--ink3)">leech</text></svg>`},
+ {k:"Steering with lines", h:"Traveler, not tiller", body:[
+  `A sail only cares about one angle: the angle between its chord and the apparent wind. You can change that angle two ways — turn the boat, or move the sail. Turning the boat costs distance and speed; moving the sail is free.`,
+  `<b>Gust on a beat:</b> drop the traveler. The boom swings down to leeward, the angle of attack shrinks, heel eases — and your course, your twist and your leech tension are all untouched. As the gust fades, car back up. On the simulator: raise the wind, watch heel spike, then pull the traveler down and watch heel fall while speed holds.`,
+  `Pinching (steering up to depower) also works, but it trades speed away and stalls the keel. Lines first, tiller second.`],
+  want:["Traveler down in puffs, up in lulls — “playing the traveler”","Traveler up + eased sheet in light air: boom on centerline, leech still soft"],
+  avoid:["Dumping the mainsheet as the first reflex — you lose leech control and the sail flogs","Feathering so high the jib breaks and the boat stops"],
+  svg:`<svg viewBox="0 0 300 170"><path d="M 75 20 C 95 55 98 120 92 150 L 58 150 C 52 120 55 55 75 20 Z" fill="var(--panel2)" stroke="var(--ink2)"/><line x1="75" y1="85" x2="130" y2="118" stroke="var(--accent)" stroke-width="3"/><line x1="75" y1="85" x2="112" y2="130" stroke="var(--ghost)" stroke-width="2.5" stroke-dasharray="5 4"/><text x="136" y="116" font-size="10.5" fill="var(--accent)">gust: car down</text><text x="118" y="143" font-size="10.5" fill="var(--ink3)">was</text><line x1="230" y1="30" x2="200" y2="66" stroke="var(--teal)" stroke-width="2"/><path d="M 200 66 l 10 -3 m -10 3 l 2 -10" stroke="var(--teal)" stroke-width="2" fill="none"/><text x="205" y="24" font-size="10.5" fill="var(--teal)">wind</text></svg>`},
+ {k:"Wind", h:"Apparent wind", body:[
+  `Your sails never feel the true wind — they feel the true wind combined with the wind of your own motion. Sail forward at 5 kt and you add a 5 kt headwind to whatever nature provides. The blend is the apparent wind: always further forward and (upwind) stronger than true.`,
+  `<b>Why you care:</b> every trim decision keys off apparent, not true. Accelerate, and apparent swings forward — you must sheet on or bear away slightly. Slow down (tack, wave, lull) and it swings aft — sails go soft, ease or head up. This is why boats trim after every speed change.`],
+  want:["Trim to the apparent arrows in the simulator — watch them move as speed changes"],
+  avoid:["Setting trim once and cleating everything — apparent wind is a moving target"],
+  svg:`<svg viewBox="0 0 300 170"><line x1="70" y1="140" x2="70" y2="40" stroke="var(--ink2)" stroke-width="2"/><path d="M 70 40 l -6 12 m 6 -12 l 6 12" stroke="var(--ink2)" stroke-width="2" fill="none"/><text x="30" y="96" font-size="10.5" fill="var(--ink2)">boat wind</text><line x1="70" y1="140" x2="190" y2="80" stroke="var(--ink3)" stroke-width="2" stroke-dasharray="5 4"/><text x="196" y="78" font-size="10.5" fill="var(--ink3)">true</text><line x1="70" y1="40" x2="190" y2="80" stroke="var(--teal)" stroke-width="2.6"/><text x="150" y="50" font-size="10.5" fill="var(--teal)" font-weight="700">apparent</text></svg>`},
+ {k:"Feel", h:"Heel & weather helm", body:[
+  `Some heel is good: 12–22° on a Colgate 26 keeps the keel loaded and the waterline long. Past that, the hull shape drags the bow to windward, you correct with rudder, and the rudder becomes a brake. More heel ≠ more speed — it usually means the opposite.`,
+  `<b>Weather helm</b> is the tiller tugging to leeward as the boat tries to round up. A touch (2–4° of rudder) is healthy feel. Heavy helm is a message: the main is too big for the moment. Answer with the depower ladder — traveler down, flatten (outhaul, backstay), twist open, cunningham on — and only then reef.`],
+  want:["12–22° heel, light tug on the tiller","Depower ladder memorized: traveler → flatten → twist → reef"],
+  avoid:["Sailing at 30° because it feels fast — the speedo disagrees","Holding 10° of rudder for minutes at a time"],
+  svg:`<svg viewBox="0 0 300 170"><g transform="rotate(-18 150 120)"><path d="M 104 108 Q 150 136 196 108 L 188 94 L 112 94 Z" fill="var(--panel2)" stroke="var(--ink2)"/><line x1="150" y1="94" x2="150" y2="18" stroke="var(--ink)" stroke-width="2.4"/><line x1="150" y1="132" x2="150" y2="160" stroke="var(--ink2)" stroke-width="3.6"/></g><text x="216" y="40" font-size="11" fill="var(--ink2)">18° — in the band</text></svg>`},
+ {k:"Feel", h:"The gears", body:[
+  `Racers talk about trim in gears, like a bicycle. <b>First gear</b> — out of a tack, after slop stops you: sails full (ease outhaul, soft backstay), extra twist, bow slightly low. Accelerate. <b>Second/third</b> — up to target speed: progressively flatten, firm the leech, point higher. <b>Fourth</b> — flat water and full speed: everything on, leech firm, pointing high.`,
+  `Overpowered is its own gear: flat sails, open twist, traveler low. The skill is noticing which gear the moment calls for — every wave set, gust and lull is a shift.`],
+  want:["Downshift (fuller, more twist, bow down) after every tack and every big wave","Upshift as the boat reaches target speed"],
+  avoid:["Trying to point high at low speed — the keel stalls and you slide sideways"],
+  svg:`<svg viewBox="0 0 300 170"><path d="M 30 130 Q 90 128 130 96 Q 170 66 262 58" stroke="var(--accent)" stroke-width="2.6" fill="none"/><circle cx="52" cy="129" r="5" fill="var(--accent)"/><circle cx="130" cy="96" r="5" fill="var(--accent)"/><circle cx="238" cy="59" r="5" fill="var(--accent)"/><text x="40" y="152" font-size="10.5" fill="var(--ink2)">1st: full + twist</text><text x="118" y="120" font-size="10.5" fill="var(--ink2)">3rd: firming up</text><text x="196" y="42" font-size="10.5" fill="var(--ink2)">4th: flat + tight</text></svg>`},
+];
+$("concepts").innerHTML = CONCEPTS.map(c=>`
+ <div class="concept"><span class="kicker">${c.k}</span><h3>${c.h}</h3>
+  ${c.body.map(p=>`<p>${p}</p>`).join("")}
+  <div class="figrow">${c.svg}
+    <div class="rule2" style="flex:1 1 260px;margin-top:0">
+      <div class="box want"><h4>Want it</h4><ul>${c.want.map(w=>`<li>${w}</li>`).join("")}</ul></div>
+      <div class="box avoid"><h4>Avoid</h4><ul>${c.avoid.map(w=>`<li>${w}</li>`).join("")}</ul></div>
+    </div>
+  </div>
+ </div>`).join("");
+
+/* ================= DRILLS CONTENT ================= */
+const DRILLS = [
+ {s:"Beating in 18 kt. Heel hits 28°, the tiller is tugging hard, speed is dropping. First move?",
+  o:["Ease the mainsheet all the way","Drop the traveler down to leeward","Steer up sharply to feather","Tighten the vang"], a:1,
+  e:"Traveler down reduces the main's angle of attack instantly — heel eases while twist, leech tension and course all stay put. Dumping the sheet also works but throws away leech control; feathering trades speed and stalls the keel. Then flatten: backstay and outhaul on. (Concept: Traveler, not tiller.)"},
+ {s:"5 kt of breeze, leftover chop. Everything is sheeted block-to-block and the boat is dead in the water. Best fix?",
+  o:["Sheet the jib harder","Ease sheets, add twist, ease the outhaul for belly","Cunningham on hard","Backstay on hard"], a:1,
+  e:"Light air can't stay attached to a strangled sail. Ease everything a touch: open twist keeps weak flow attached aloft, belly gives punch through the slop. Cunningham and backstay hard are heavy-air tools. (Concepts: Twist, Belly.)"},
+ {s:"The breeze has built all afternoon. Deep horizontal wrinkles have vanished from the main's luff, the leech looks hooked, helm is heavy, pointing is poor. Which line?",
+  o:["Outhaul","Traveler","Cunningham","Jib halyard"], a:2,
+  e:"Classic draft-blown-aft: stretch has let the deepest point slide back past 50%, hooking the leech. Cunningham tension drags the draft forward, opens the leech and lightens the helm. (Concept: Draft position.)"},
+ {s:"You bear away from a beat to a broad reach and ease the mainsheet. The boom lifts, the top of the main twists off and flogs. Which line owns this?",
+  o:["Mainsheet back in","Boom vang","Backstay","Outhaul"], a:1,
+  e:"With the sheet eased way out it pulls sideways, not down — it can no longer tension the leech. Off the wind the vang takes over the twist job. Sheeting back in would just stall the sail. (Concept: Twist; Line: Vang.)"},
+ {s:"Flat water, 12 kt, you want to squeeze up to a mark without tacking. How do you buy pointing?",
+  o:["Ease the outhaul for power","Backstay on, traveler up, sheet firm — flatten and close the leech","More twist everywhere","Bear away to build speed and hope"], a:1,
+  e:"Pointing mode: backstay tightens the forestay (flatter, finer jib entry) and flattens the main; traveler up brings the boom to centerline; a firm sheet closes the leech. Flat water is exactly when a tight leech pays. (Concepts: Belly, The gears.)"},
+ {s:"Upwind, the jib's top telltale pair breaks and luffs long before the lower pairs. What's the adjustment?",
+  o:["Move the fairlead car forward","Move the fairlead car aft","More jib halyard","Ease the jib sheet"], a:0,
+  e:"Top breaking first means the head is too open — too much jib twist. Car forward points the sheet's pull more downward, tensions the leech and closes the top so all pairs break together. (Line: Fairlead car.)"},
+ {s:"Gusty 16–22 kt beat. You want the jib to shrug off the puffs without constant sheet work. Set-up?",
+  o:["Car forward, sheet hard","Car aft a few holes — flatter foot, open top","Halyard eased soft","Sheet eased a foot"], a:1,
+  e:"Car aft flattens the foot and lets the head twist open, so each gust spills from the top automatically — a built-in shock absorber. The forgiving setup for breeze. (Concepts: Twist as gust response.)"},
+ {s:"You tack. Coming out of the tack the boat is slow, apparent wind has gone soft and aft. What's the right 'gear'?",
+  o:["Point high immediately and trim hard","Bow slightly low, sails a touch fuller and twisted, then trim up as speed builds","Backstay on to flatten","Cleat everything — it was right before the tack"], a:1,
+  e:"First gear: at low speed the apparent wind is lighter and further aft, and the keel needs flow before it grips. Foot off slightly with forgiving full/twisted sails, accelerate, then shift up — flatten, firm the leech, point. (Concepts: The gears, Apparent wind.)"},
+];
+let qi=0, right=0, answered=0;
+function renderDrill(){
+  const d=DRILLS[qi];
+  $("drill").innerHTML = `
+    <div class="qnum">Drill ${qi+1} of ${DRILLS.length}</div>
+    <div class="scen">${d.s}</div>
+    <div class="opts">${d.o.map((o,i)=>`<button data-i="${i}">${String.fromCharCode(65+i)}. ${o}</button>`).join("")}</div>
+    <div class="expl" id="expl"><span class="verdict" id="verdict"></span><div id="expl-body" style="margin-top:6px"></div></div>
+    <div class="drillnav">
+      <span class="score">score ${right}/${answered}</span>
+      <button id="next" disabled>${qi<DRILLS.length-1?"Next drill →":"Start over"}</button>
+    </div>`;
+  document.querySelectorAll("#drill .opts button").forEach(b=>b.addEventListener("click",()=>{
+    const i=+b.dataset.i, d=DRILLS[qi];
+    document.querySelectorAll("#drill .opts button").forEach(x=>x.disabled=true);
+    if(i===d.a){ b.classList.add("right"); right++; $("verdict").textContent="✓ Right"; $("verdict").style.color="var(--good)"; }
+    else { b.classList.add("wrong");
+      document.querySelector(`#drill .opts button[data-i="${d.a}"]`).classList.add("right");
+      $("verdict").textContent="✕ Not this time"; $("verdict").style.color="var(--crit)"; }
+    answered++;
+    $("expl-body").textContent=d.e;
+    $("expl").classList.add("show");
+    document.querySelector("#drill .score").textContent=`score ${right}/${answered}`;
+    $("next").disabled=false;
+  }));
+  $("next").addEventListener("click",()=>{
+    if(qi<DRILLS.length-1){ qi++; } else { qi=0; right=0; answered=0; }
+    renderDrill();
+  });
+}
+renderDrill();
+
+/* ================= 3D VIEW (Babylon.js) =================
+   Axes: +x forward (bow), +y up, +z port. Wind held on starboard (-z),
+   so booms swing to port and sails belly to +z — same convention as the
+   2D views. Sail surfaces are rebuilt from the live physics shapes.     */
+let B3=null, B3dirty=true;
+const V3=(x,y,z)=>new BABYLON.Vector3(x,y,z);
+
+function makeNoiseNormal(scene){
+  const N=256, dt=new BABYLON.DynamicTexture("bump",N,scene,false);
+  const ctx=dt.getContext(), img=ctx.createImageData(N,N);
+  // smooth value noise via a few octaves of blurred randomness
+  let h=new Float32Array(N*N);
+  let rngState=12345;
+  const rng=()=>{ rngState=(rngState*1103515245+12345)&0x7fffffff; return rngState/0x7fffffff; };
+  for(let o of [4,8,16,32]){
+    const g=[]; const gs=o+1;
+    for(let i=0;i<gs*gs;i++) g.push(rng());
+    for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+      const fx=x/N*o, fy=y/N*o, ix=fx|0, iy=fy|0, tx=fx-ix, ty=fy-iy;
+      const sm=t=>t*t*(3-2*t);
+      const a=g[iy*gs+ix], b=g[iy*gs+ix+1], c=g[(iy+1)*gs+ix], d=g[(iy+1)*gs+ix+1];
+      h[y*N+x]+= (a+(b-a)*sm(tx)+(c-a)*sm(ty)+(a-b-c+d)*sm(tx)*sm(ty))/4;
+    }
+  }
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    const i=y*N+x;
+    const dx=h[y*N+((x+1)%N)]-h[i], dy=h[((y+1)%N)*N+x]-h[i];
+    img.data[i*4]=clamp(128+dx*900,0,255);
+    img.data[i*4+1]=clamp(128+dy*900,0,255);
+    img.data[i*4+2]=255; img.data[i*4+3]=255;
+  }
+  ctx.putImageData(img,0,0); dt.update();
+  dt.wrapU=dt.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;
+  return dt;
+}
+
+function hullPaths(){
+  // lofted canoe body: 13 stations bow->stern
+  const L=7.85, paths=[];
+  for(let si=0; si<=24; si++){
+    const t=si/24;                       // 0 bow, 1 stern
+    const x=L/2 - t*L;
+    const halfB=1.28*Math.pow(Math.sin(Math.PI*clamp(t*1.06,0,.93)),.62);
+    const dep=.5*Math.pow(Math.sin(Math.PI*clamp(.10+.85*t,0,1)),.75);
+    const sheer=.72 - .05*Math.sin(Math.PI*t);
+    const row=[];
+    for(let pi=0; pi<=20; pi++){
+      const u=pi/20*2-1;                 // -1 .. +1 rail to rail
+      const au=Math.abs(u);
+      const z=halfB*Math.sign(u)*Math.pow(au,.75);
+      const y=-dep + (sheer+dep)*Math.pow(au,1.7);
+      row.push(V3(x,y,z));
+    }
+    paths.push(row);
+  }
+  return paths;
+}
+
+function sailPathArray(kind, sh, forceFull){
+  // kind 'main'|'jib'; sh: {boom|clew, twist, depth, draft}
+  const rows=[], NR=11, NC=13;
+  const dp=clamp(sh.draft,.32,.6), k=Math.log(.5)/Math.log(dp);
+  for(let iy=0; iy<NR; iy++){
+    const hf=iy/(NR-1);
+    let luff, chord;
+    const hoistM3=forceFull?1:clamp(state.mainhal/.35,0,1), hoistJ3=forceFull?1:clamp(state.jhal/.35,0,1);
+    if(kind==="main"){ luff=V3(.72, 1.45+9.35*hf*Math.max(hoistM3,.12), 0);
+      chord=3.30*(1-.90*Math.pow(hf,1.05))*(1-(1-state.outhaul)*.09*(1-hf)); }
+    else { const bow=V3(3.72,1.05,0), hd=V3(.80,10.05,0);
+           luff=BABYLON.Vector3.Lerp(bow,hd,hf*Math.max(hoistJ3,.12)); chord=2.90*(1-.94*Math.pow(hf,1.05)); }
+    const delta=rad((kind==="main"?sh.boom:sh.clew) + sh.twist*Math.pow(hf,1.15));
+    const cdir=V3(-Math.cos(delta),0,Math.sin(delta));      // aft, swung to port
+    const ndir=V3(Math.sin(delta),0,Math.cos(delta));       // leeward normal
+    const c=sh.depth*(1-.25*hf);
+    const row=[];
+    for(let ix=0; ix<NC; ix++){
+      const cf=ix/(NC-1);
+      const off=c*chord*Math.sin(Math.PI*Math.pow(cf,k));
+      row.push(luff.add(cdir.scale(chord*cf)).add(ndir.scale(off)));
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+function ensure3D(){
+  if(B3) return;
+  const hud=$("hud3d");
+  if(typeof BABYLON==="undefined"){
+    if(hud) hud.innerHTML="3D engine failed to load (script blocked). Try reloading the page.";
+    return;
+  }
+  const canvas=$("bab");
+  canvas.addEventListener("webglcontextcreationerror",e=>{
+    if(hud) hud.innerHTML="WebGL context failed: "+(e.statusMessage||"unknown")+".<br>Enable hardware acceleration in the browser settings, then reload.";
+  });
+  try{ ensure3Dinner(canvas); }
+  catch(err){
+    if(hud) hud.innerHTML="3D failed to start: "+err.message+".<br>WebGL may be unavailable here — enable hardware acceleration or open the page in Chrome.";
+  }
+}
+function ensure3Dinner(canvas){
+  // artifact iframes deny the gamepad feature via Permissions-Policy; Babylon's
+  // input manager probes navigator.getGamepads() and would throw SecurityError
+  try{ navigator.getGamepads && navigator.getGamepads(); }
+  catch(e){ try{ Object.defineProperty(navigator,"getGamepads",{value:()=>[],configurable:true}); }catch(e2){} }
+  const engine=new BABYLON.Engine(canvas,true,{antialias:true,adaptToDeviceRatio:true});
+  const scene=new BABYLON.Scene(engine);
+  scene.clearColor=new BABYLON.Color4(.55,.7,.85,1);
+
+  const cam=new BABYLON.ArcRotateCamera("cam", 2.55, 1.32, 15, V3(.4,3.2,0), scene);
+  cam.lowerRadiusLimit=7; cam.upperRadiusLimit=70; cam.upperBetaLimit=1.55;
+  cam.wheelDeltaPercentage=.01; cam.minZ=.3;
+  try{ cam.inputs.removeByType("ArcRotateCameraGamepadInput"); }catch(e){}
+  cam.attachControl(canvas,true);
+
+  const sun=new BABYLON.DirectionalLight("sun", V3(.35,-.55,-.75), scene); sun.intensity=2.6;
+  new BABYLON.HemisphericLight("hemi", V3(0,1,0), scene).intensity=.95;
+
+  const sky=BABYLON.MeshBuilder.CreateBox("sky",{size:800},scene);
+  const skyM=new BABYLON.SkyMaterial("skyM",scene);
+  skyM.backFaceCulling=false; skyM.inclination=.32; skyM.azimuth=.22;
+  skyM.turbidity=3.2; skyM.luminance=.9; skyM.rayleigh=1.8;
+  sky.material=skyM;
+
+  const water=BABYLON.MeshBuilder.CreateGround("water",{width:800,height:800,subdivisions:192},scene);
+  const wm=new BABYLON.WaterMaterial("wm",scene,new BABYLON.Vector2(256,256));
+  wm.bumpTexture = window.__WATER_NORMALS
+    ? new BABYLON.Texture(window.__WATER_NORMALS, scene)
+    : makeNoiseNormal(scene);
+  wm.windForce=-2.5; wm.waveHeight=.03; wm.bumpHeight=.16; wm.waveLength=.9; wm.waveSpeed=.32;
+  wm.windDirection=new BABYLON.Vector2(.4,-1);
+  wm.waterColor=new BABYLON.Color3(.02,.14,.14); wm.colorBlendFactor=.16;
+  water.material=wm;
+  wm.addToRenderList(sky);
+
+  const boat=new BABYLON.TransformNode("boat",scene);
+
+  const hullM=new BABYLON.PBRMaterial("hullM",scene);
+  hullM.albedoColor=new BABYLON.Color3(.93,.94,.95); hullM.metallic=0; hullM.roughness=.62;
+  const hull=BABYLON.MeshBuilder.CreateRibbon("hull",{pathArray:hullPaths(),sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
+  hull.material=hullM; hull.parent=boat;
+  const deck=BABYLON.MeshBuilder.CreateRibbon("deck",{pathArray:(()=>{const hp=hullPaths();return hp.map(r=>[r[0],r[r.length-1]]);})(),sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
+  const deckM=new BABYLON.PBRMaterial("deckM",scene);
+  deckM.albedoTexture=makeDeckTexture(); deckM.albedoTexture.uScale=6; deckM.albedoTexture.vScale=2;
+  deckM.metallic=0; deckM.roughness=.85;
+  deck.material=deckM; deck.parent=boat;
+
+  const sparM=new BABYLON.PBRMaterial("sparM",scene);
+  sparM.albedoColor=new BABYLON.Color3(.75,.77,.80); sparM.metallic=.6; sparM.roughness=.4;
+  const mast=BABYLON.MeshBuilder.CreateCylinder("mast",{height:10.6,diameterBottom:.14,diameterTop:.09},scene);
+  mast.position=V3(.72,.7+5.3,0); mast.material=sparM; mast.parent=boat;
+  const boom=BABYLON.MeshBuilder.CreateCylinder("boom",{height:3.4,diameter:.11},scene);
+  boom.rotation.z=Math.PI/2; boom.material=sparM; boom.parent=boat;
+  const keel=BABYLON.MeshBuilder.CreateBox("keel",{width:1.5,height:1.05,depth:.14},scene);
+  keel.position=V3(-.2,-.95,0); keel.material=hullM; keel.parent=boat;
+  const rudder=BABYLON.MeshBuilder.CreateBox("rudder",{width:.45,height:.95,depth:.06},scene);
+  rudder.position=V3(-3.35,-.5,0); rudder.material=hullM; rudder.parent=boat;
+
+  // standing rigging as thin lines
+  const rigPts=[
+    [V3(3.72,1.05,0),V3(.80,10.05,0)],                          // forestay
+    [V3(.72,9.2,0),V3(.72,6.4,.9),V3(.6,.8,1.15)],              // shrouds over spreader tips
+    [V3(.72,9.2,0),V3(.72,6.4,-.9),V3(.6,.8,-1.15)],
+  ];
+  // toerails along the sheer
+  const hp=hullPaths();
+  rigPts.push(hp.map(r0=>r0[0].add(new BABYLON.Vector3(0,.03,0))));
+  rigPts.push(hp.map(r0=>r0[r0.length-1].add(new BABYLON.Vector3(0,.03,0))));
+  const rig=BABYLON.MeshBuilder.CreateLineSystem("rig",{lines:rigPts},scene);
+  rig.color=new BABYLON.Color3(.25,.27,.3); rig.parent=boat;
+
+  function makeSailAlbedo(){
+    const N=512, dt=new BABYLON.DynamicTexture("sailTex",N,scene,true);
+    const ctx=dt.getContext();
+    ctx.fillStyle="#f5f3ec"; ctx.fillRect(0,0,N,N);
+    for(let i=0;i<12000;i++){ ctx.fillStyle=`rgba(60,55,40,${Math.random()*.05})`;
+      ctx.fillRect(Math.random()*N,Math.random()*N,1,1); }
+    ctx.strokeStyle="rgba(110,105,88,.55)"; ctx.lineWidth=2;
+    for(let k=1;k<8;k++){ const y=k*N/8; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(N,y); ctx.stroke(); }
+    // clear vinyl window like the real sail
+    ctx.fillStyle="rgba(150,175,190,.85)"; ctx.strokeStyle="rgba(90,90,80,.8)";
+    ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(N*.18,N*.62,N*.34,N*.16,8); else ctx.rect(N*.18,N*.62,N*.34,N*.16);
+    ctx.fill(); ctx.stroke();
+    dt.update(); return dt;
+  }
+  function makeDeckTexture(){
+    const N=256, dt=new BABYLON.DynamicTexture("deckTex",N,scene,true);
+    const ctx=dt.getContext();
+    ctx.fillStyle="#d9d6cc"; ctx.fillRect(0,0,N,N);
+    for(let i=0;i<26000;i++){ ctx.fillStyle=`rgba(80,78,70,${Math.random()*.16})`;
+      ctx.fillRect(Math.random()*N,Math.random()*N,1.4,1.4); }
+    dt.update(); dt.wrapU=dt.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE; return dt;
+  }
+  const sailM=new BABYLON.PBRMaterial("sailM",scene);
+  sailM.albedoTexture=makeSailAlbedo();
+  sailM.metallic=0; sailM.roughness=.6; sailM.emissiveColor=new BABYLON.Color3(.10,.10,.10);
+
+  sailM.backFaceCulling=false; sailM.twoSidedLighting=true;
+
+  // cabin trunk + deck hardware (photo-matched: low trunk forward, long open cockpit)
+  const cabin=BABYLON.MeshBuilder.CreateBox("cabin",{width:1.9,height:.26,depth:1.5},scene);
+  cabin.position=V3(1.75,.85,0); cabin.material=hullM; cabin.parent=boat;
+  const sole=BABYLON.MeshBuilder.CreateBox("sole",{width:3.1,height:.05,depth:1.1},scene);
+  sole.position=V3(-1.5,.42,0); sole.material=deckM; sole.parent=boat;
+  const benchP=BABYLON.MeshBuilder.CreateBox("benchP",{width:3.0,height:.09,depth:.42},scene);
+  benchP.position=V3(-1.5,.62,.72); benchP.material=hullM; benchP.parent=boat;
+  const benchS=benchP.clone("benchS"); benchS.position=V3(-1.5,.62,-.72); benchS.parent=boat;
+  // stainless: bow pulpit, stanchions, lifelines, stern rails
+  const steel=new BABYLON.PBRMaterial("steelTube",scene);
+  steel.albedoColor=new BABYLON.Color3(.8,.82,.85); steel.metallic=.85; steel.roughness=.3;
+  const pulpit=BABYLON.MeshBuilder.CreateTube("pulpit",{path:[
+    V3(3.15,.72,.34),V3(3.15,1.12,.30),V3(3.75,1.12,.12),V3(3.95,1.12,0),
+    V3(3.75,1.12,-.12),V3(3.15,1.12,-.30),V3(3.15,.72,-.34)],radius:.022},scene);
+  pulpit.material=steel; pulpit.parent=boat;
+  const lifelinesPts=[];
+  for(const side of [1,-1]){
+    const rail=[];
+    [[2.2,1.05],[0.8,1.15],[-0.8,1.22],[-2.4,1.24]].forEach(([x,hb])=>{
+      const st=BABYLON.MeshBuilder.CreateCylinder("st",{height:.46,diameter:.03},scene);
+      st.position=V3(x,.94,side*hb); st.material=steel; st.parent=boat;
+      rail.push(V3(x,1.17,side*hb));
+    });
+    lifelinesPts.push([V3(3.15,1.12,side*.30),...rail,V3(-3.5,1.12,side*.9)]);
+    const stern=BABYLON.MeshBuilder.CreateCylinder("sr",{height:.5,diameter:.03},scene);
+    stern.position=V3(-3.5,.9,side*.9); stern.material=steel; stern.parent=boat;
+  }
+  const lifelines=BABYLON.MeshBuilder.CreateLineSystem("lifelines",{lines:lifelinesPts},scene);
+  lifelines.color=new BABYLON.Color3(.75,.78,.8); lifelines.parent=boat;
+  // spreaders + shrouds routed over the tips
+  for(const side of [1,-1]){
+    const sp=BABYLON.MeshBuilder.CreateCylinder("sp",{height:.9,diameter:.05},scene);
+    sp.rotation.x=Math.PI/2; sp.position=V3(.72,6.4,side*.45); sp.material=steel; sp.parent=boat;
+  }
+  const travTrack=BABYLON.MeshBuilder.CreateBox("travTrack",{width:.07,height:.05,depth:1.7},scene);
+  travTrack.position=V3(-.95,.96,0); travTrack.material=sparM; travTrack.parent=boat;
+  const travCar=BABYLON.MeshBuilder.CreateBox("travCar",{width:.12,height:.09,depth:.14},scene);
+  travCar.material=sparM; travCar.parent=boat;
+  const jibTrackP=BABYLON.MeshBuilder.CreateBox("jibTrackP",{width:.9,height:.04,depth:.06},scene);
+  jibTrackP.position=V3(1.6,.94,.95); jibTrackP.material=sparM; jibTrackP.parent=boat;
+  const jibTrackS=jibTrackP.clone("jibTrackS"); jibTrackS.position=V3(1.6,.94,-.95); jibTrackS.parent=boat;
+  const jibCar=BABYLON.MeshBuilder.CreateBox("jibCar",{width:.14,height:.08,depth:.1},scene);
+  jibCar.material=sparM; jibCar.parent=boat;
+
+  // led-aft hardware: turning blocks at mast base -> organizers -> clutches
+  for(const side of [1,-1]){
+    const org=BABYLON.MeshBuilder.CreateCylinder("org",{height:.03,diameter:.12},scene);
+    org.position=V3(.45,.75,side*.22); org.material=sparM; org.parent=boat;
+    const clutch=BABYLON.MeshBuilder.CreateBox("clutch",{width:.3,height:.07,depth:.14},scene);
+    clutch.position=V3(-.25,.78,side*.34); clutch.material=sparM; clutch.parent=boat;
+  }
+  const winch=BABYLON.MeshBuilder.CreateCylinder("winch",{height:.14,diameterBottom:.16,diameterTop:.12},scene);
+  winch.position=V3(-.65,.82,.5); winch.material=sparM; winch.parent=boat;
+  const fiddle=BABYLON.MeshBuilder.CreateBox("fiddle",{width:.07,height:.1,depth:.07},scene);
+  fiddle.material=sparM; fiddle.parent=boat; fiddle.position=V3(-.95,1.06,0);
+
+  const sh0={boom:5,clew:9,twist:13,depth:.12,draft:.44};
+  const mainSail=BABYLON.MeshBuilder.CreateRibbon("mainSail",{pathArray:sailPathArray("main",sh0),sideOrientation:BABYLON.Mesh.DOUBLESIDE,updatable:true},scene);
+  const jibSail =BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:sailPathArray("jib",{...sh0,clew:9}),sideOrientation:BABYLON.Mesh.DOUBLESIDE,updatable:true},scene);
+  mainSail.material=sailM; jibSail.material=sailM;
+  mainSail.parent=boat; jibSail.parent=boat;
+
+  [hull,deck,mast,boom,mainSail,jibSail].forEach(m=>wm.addToRenderList(m));
+
+  B3={engine,scene,cam,boat,wm,mainSail,jibSail,boomMesh:boom,travCar,jibCar,
+      runLines:null,dyeMesh:null,dyeOn:true,t:0,heelCur:0};
+  B3dirty=true;
+  $("dyeBtn").addEventListener("click",()=>{
+    B3.dyeOn=!B3.dyeOn;
+    $("dyeBtn").classList.toggle("on",B3.dyeOn);
+    $("dyeBtn").textContent="wind dye: "+(B3.dyeOn?"on":"off");
+    if(!B3.dyeOn){ if(B3.dyeMesh){B3.dyeMesh.dispose();B3.dyeMesh=null;} if(B3.pulseMesh){B3.pulseMesh.dispose();B3.pulseMesh=null;} B3.dyeState=null; }
+    B3dirty=true;
+  });
+
+  engine.runRenderLoop(()=>{ try{ tick3D(); scene.render(); }catch(err){
+    if($("hud3d") && !$("hud3d").dataset.err){ $("hud3d").dataset.err="1";
+      $("hud3d").innerHTML="3D render error: "+err.message; } } });
+  window.addEventListener("resize",()=>engine.resize());
+}
+
+// horizontal air velocity in the boat frame at (x,z), height y — freestream +
+// one bound vortex per sail (strength from that sail's local lift), so the
+// slot, upwash and stall all show up in the dye for real physical reasons
+function flowVel(x,z,y,r){
+  const aws=r.aws*KT*Math.pow(Math.max(y,1)/10,.11);
+  const awaR=rad(r.awa);
+  let vx=-Math.cos(awaR)*aws, vz=Math.sin(awaR)*aws;
+  if(PANEL.ok&&PANEL.H&&PANEL.H.length){
+    let H=PANEL.H[0];
+    for(const h of PANEL.H) if(Math.abs(h.y-y)<Math.abs(H.y-y)) H=h;
+    for(let j=0;j<H.vor.length;j++){
+      const gj=H.g[j]*aws;
+      const dx=x-H.vor[j][0], dz=z-H.vor[j][1];
+      const r2=Math.max(dx*dx+dz*dz,.12);
+      vx += -gj/(2*Math.PI*r2)*dz;
+      vz +=  gj/(2*Math.PI*r2)*dx;
+    }
+  }
+  return [vx,vz];
+}
+function segX(ax,az,bx,bz,cx,cz,dx,dz){ // 2D segment intersection -> t along ab or -1
+  const rx=bx-ax, rz=bz-az, sx=dx-cx, sz=dz-cz;
+  const den=rx*sz-rz*sx; if(Math.abs(den)<1e-9) return -1;
+  const t=((cx-ax)*sz-(cz-az)*sx)/den, u=((cx-ax)*rz-(cz-az)*rx)/den;
+  return (t>=0&&t<=1&&u>=0&&u<=1)?t:-1;
+}
+function buildDye(r){
+  const lines=[], speeds=[], upX=Math.cos(rad(r.awa)), upZ=-Math.sin(rad(r.awa));
+  for(const y of [2.2,5,7.8]){
+    let H=null;
+    if(PANEL.H) for(const h of PANEL.H) if(!H||Math.abs(h.y-y)<Math.abs(H.y-y)) H=h;
+    for(let k=0;k<9;k++){
+      const lat=(k-4)*1.15;
+      let px=upX*13-upZ*lat+.7, pz=upZ*13+upX*lat;
+      const pts=[], spd=[];
+      for(let i=0;i<150;i++){
+        const [vx,vz]=flowVel(px,pz,y,r);
+        const m=Math.hypot(vx,vz)||1;
+        pts.push(V3(px,y,pz)); spd.push(m);
+        const near=Math.hypot(px-1.5,pz)<4.5;
+        const st=near?.12:.26;
+        let nx=px+vx/m*st, nz=pz+vz/m*st;
+        // don't step through the sail surface: slide along it instead
+        if(H&&near){
+          for(const poly of H.polys){
+            for(let q=0;q<poly.length-1;q++){
+              if(segX(px,pz,nx,nz,poly[q][0],poly[q][1],poly[q+1][0],poly[q+1][1])>=0){
+                let tx=poly[q+1][0]-poly[q][0], tz=poly[q+1][1]-poly[q][1];
+                const tl=Math.hypot(tx,tz)||1; tx/=tl; tz/=tl;
+                if(tx*vx+tz*vz<0){ tx=-tx; tz=-tz; }
+                nx=px+tx*st; nz=pz+tz*st;
+              }
+            }
+          }
+        }
+        px=nx; pz=nz;
+        if(Math.hypot(px,pz)>30) break;
+      }
+      lines.push(pts); speeds.push(spd);
+    }
+  }
+  return {lines, speeds};
+}
+/* ---- position-based-dynamics sail cloth ----
+   Verlet particles + distance constraints. Luff and boom edges pinned, wind
+   pressure per vertex, per-row angle of attack so the head flogs only when
+   it is genuinely open. The trim model supplies rest lengths and pins.    */
+const CLOTH={};
+function clothInit(kind, targets, pins){
+  const NR=targets.length, NC=targets[0].length;
+  const p=[], pp=[], w=[];
+  for(let iy=0;iy<NR;iy++)for(let ix=0;ix<NC;ix++){
+    const t=targets[iy][ix];
+    p.push(t.clone()); pp.push(t.clone());
+    const pinnedLuff = ix===0;
+    const pinnedFoot = kind==="main" && iy===0;
+    w.push(pinnedLuff||pinnedFoot?0:1);
+  }
+  const cons=[];
+  const idx=(iy,ix)=>iy*NC+ix;
+  for(let iy=0;iy<NR;iy++)for(let ix=0;ix<NC;ix++){
+    if(ix+1<NC) cons.push([idx(iy,ix),idx(iy,ix+1),0]);
+    if(iy+1<NR) cons.push([idx(iy,ix),idx(iy+1,ix),0]);
+    if(ix+1<NC&&iy+1<NR){ cons.push([idx(iy,ix),idx(iy+1,ix+1),0]); cons.push([idx(iy,ix+1),idx(iy+1,ix),0]); }
+  }
+  CLOTH[kind]={p,pp,w,cons,NR,NC,targets:null};
+  clothRetarget(kind,targets,pins||targets);
+}
+function clothRetarget(kind, targets, pins){
+  // targets: FULL-hoist shape (cloth rest lengths never shrink);
+  // pins: actual luff/foot anchor positions (slide down the mast as the halyard eases)
+  const c=CLOTH[kind]; c.targets=targets;
+  const NC=c.NC, flat=[], flatPin=[];
+  pins=pins||targets;
+  for(let iy=0;iy<c.NR;iy++)for(let ix=0;ix<NC;ix++){ flat.push(targets[iy][ix]); flatPin.push(pins[iy][ix]); }
+  for(const con of c.cons) con[2]=BABYLON.Vector3.Distance(flat[con[0]],flat[con[1]]);
+  for(let i=0;i<flat.length;i++) if(c.w[i]===0){ c.p[i].copyFrom(flatPin[i]); c.pp[i].copyFrom(flatPin[i]); }
+}
+function clothStep(kind, r, dt, t){
+  const c=CLOTH[kind]; if(!c) return;
+  const aws=r.aws*KT;
+  const awaR=rad(r.awa);
+  const wx=-Math.cos(awaR), wz=Math.sin(awaR);
+  const NC=c.NC;
+  const sailAng=kind==="main"?r.main.boom:r.jib.clew;
+  const sailTw=kind==="main"?r.main.twist:r.jib.twist;
+  const rowAoa=[]; for(let iy=0;iy<c.NR;iy++){ const hf=iy/(c.NR-1);
+    rowAoa.push(r.awa + 7*hf - (sailAng + sailTw*Math.pow(hf,1.15))); }
+  const hoist=clamp((kind==="main"?state.mainhal:state.jhal)/.35,0,1);
+  const dropping=hoist<.98;
+  for(let i=0;i<c.p.length;i++){
+    if(c.w[i]===0) continue;
+    const iy=(i/NC)|0, ix=i%NC;
+    const a=c.p[Math.max(i-1,iy*NC)], b=c.p[Math.min(i+1,iy*NC+NC-1)];
+    const u=c.p[Math.max(i-NC,ix)], v=c.p[Math.min(i+NC,c.p.length-NC+ix)];
+    const e1=b.subtract(a), e2=v.subtract(u);
+    let n=BABYLON.Vector3.Cross(e2,e1); const nl=n.length()||1; n.scaleInPlace(1/nl);
+    const dot=n.x*wx+n.z*wz;
+    const luffRow=rowAoa[iy]<5;
+    const press=(luffRow?.06:.5)*aws*aws*1.6;
+    let f=n.scale(press*dot);
+    if(luffRow){ const ph=t*22+ix*1.7+iy*.9;
+      f.addInPlace(n.scale(Math.sin(ph)*aws*aws*.9)); }
+    if(dropping){ // buckle seed so surplus cloth folds out of plane instead of collapsing flat
+      const ph2=ix*2.3+iy*1.1;
+      f.z+=Math.sin(ph2)*6*(1-hoist); f.x+=Math.cos(ph2*1.7)*3*(1-hoist); }
+    const px=c.p[i].x, py=c.p[i].y, pz=c.p[i].z;
+    c.p[i].x += (px-c.pp[i].x)*.94 + f.x*dt*dt;
+    c.p[i].y += (py-c.pp[i].y)*.94 + (f.y-25)*dt*dt;
+    c.p[i].z += (pz-c.pp[i].z)*.94 + f.z*dt*dt;
+    c.pp[i].set(px,py,pz);
+  }
+  const flatT=[];
+  for(let iy=0;iy<c.NR;iy++)for(let ix=0;ix<NC;ix++) flatT.push(c.targets[iy][ix]);
+  const shapeK=hoist*hoist;   // dropped cloth is free fabric, not commanded shape
+  for(let i=0;i<c.p.length;i++){ if(c.w[i]===0) continue;
+    const hf=((i/NC)|0)/(c.NR-1);
+    const k=(rowAoa[(i/NC)|0]<5 ? .05 : .06+.22*hf*hf)*shapeK;
+    c.p[i].x+=(flatT[i].x-c.p[i].x)*k; c.p[i].y+=(flatT[i].y-c.p[i].y)*k; c.p[i].z+=(flatT[i].z-c.p[i].z)*k; }
+  for(let it=0;it<5;it++) for(const [i,j,rest] of c.cons){
+    const dx=c.p[j].x-c.p[i].x, dy=c.p[j].y-c.p[i].y, dz=c.p[j].z-c.p[i].z;
+    const dEuc=Math.sqrt(dx*dx+dy*dy+dz*dz)||1e-6;
+    const diff=(dEuc-rest)/dEuc, wi=c.w[i], wj=c.w[j], ws=wi+wj;
+    if(!ws) continue;
+    const sx=dx*diff/ws, sy=dy*diff/ws, sz=dz*diff/ws;
+    c.p[i].x+=sx*wi; c.p[i].y+=sy*wi; c.p[i].z+=sz*wi;
+    c.p[j].x-=sx*wj; c.p[j].y-=sy*wj; c.p[j].z-=sz*wj;
+  }
+  const rows=[];
+  for(let iy=0;iy<c.NR;iy++){ const row=[];
+    for(let ix=0;ix<NC;ix++) row.push(c.p[iy*NC+ix]);
+    rows.push(row); }
+  return rows;
+}
+function tick3D(){
+  if(!B3||!lastR) return;
+  const r=lastR, dt=B3.engine.getDeltaTime()/1000;
+  B3.t+=dt;
+  if(B3dirty){
+    const shM={boom:Math.max(r.main.boom,2),twist:r.main.twist,depth:r.main.depth,draft:r.main.draft};
+    const shJ={clew:Math.max(r.jib.clew,3),twist:r.jib.twist,depth:r.jib.depth,draft:r.jib.draft};
+    const tgtM=sailPathArray("main",shM,true), tgtJ=sailPathArray("jib",shJ,true);
+    const pinM=sailPathArray("main",shM,false), pinJ=sailPathArray("jib",shJ,false);
+    if(!CLOTH.main){ clothInit("main",tgtM,pinM); clothInit("jib",tgtJ,pinJ); }
+    else { clothRetarget("main",tgtM,pinM); clothRetarget("jib",tgtJ,pinJ); }
+    const d=rad(shM.boom);
+    B3.boomMesh.rotation.y=d;                       // swing boom to port with the foot
+    B3.boomMesh.position=V3(.72,1.42,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(1.7));
+    B3.boomMesh.rotation.z=Math.PI/2; B3.boomMesh.rotation.x=0;
+    // sea state follows the 2D toggle: flat water is FLAT
+    if(state.sea==="flat"){ B3.wm.waveHeight=.03; B3.wm.bumpHeight=.16; B3.wm.windForce=-2.5; }
+    else { B3.wm.waveHeight=.2; B3.wm.bumpHeight=.55; B3.wm.windForce=-7; }
+    // deck hardware follows the lines
+    B3.travCar.position=V3(-.95,1.0,-state.trav*.75);
+    B3.jibCar.position=V3(2.0-.8*state.jcar,.98,.95);
+    // running rigging: mainsheet (mid-boom -> traveler car) + working jib sheet (clew -> car)
+    const boomMid=V3(.72,1.42,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(1.7));
+    const dj=rad(shJ.clew);
+    const clew=V3(3.72,1.05,0).add(V3(-Math.cos(dj),0,Math.sin(dj)).scale(2.9));
+    if(B3.tubes){ for(const k in B3.tubes) B3.tubes[k].forEach(m=>m.dispose()); }
+    B3.tubes={};
+    const boomDir=V3(-Math.cos(d),0,Math.sin(d));
+    const boomEnd=V3(.72,1.42,0).add(boomDir.scale(3.4));
+    const boomVangPt=V3(.72,1.42,0).add(boomDir.scale(1.15));
+    const mastHead=V3(.72,11.3,0), hounds=V3(.80,10.05,0), gooseneck=V3(.72,1.42,0);
+    // main clew actually slides along the boom with the outhaul
+    const footLen=3.30*(1-(1-state.outhaul)*.09);
+    const mClew=V3(.72,1.47,0).add(boomDir.scale(footLen));
+    const cunSag=(1-state.cunn)*.10;
+    const cunTop=V3(.72,1.78,.09), cunBot=V3(.70,1.02,.09);
+    const cunMid=cunTop.add(cunBot).scale(.5).add(V3(-.02,0,cunSag+.03));
+    function sagLine(a,b,slack,parts){
+      if(!slack||slack<.02) return [a,b];
+      parts=parts||6; const pts=[];
+      for(let i=0;i<=parts;i++){const q=i/parts;
+        const pt=BABYLON.Vector3.Lerp(a,b,q); pt.y-=Math.sin(Math.PI*q)*slack*.6; pts.push(pt);}
+      return pts;
+    }
+    const car=B3.travCar.position;
+    const boomMid2=V3(.72,1.42,0).add(boomDir.scale(1.95));
+    const mastBase=V3(.66,1.0,0);
+    const ropes={
+      // mainsheet: 3-part tackle boom->car->boom->car, tail to the helm
+      sheet:[sagLine(boomMid, car.add(V3(0,.10,0)), r.sheetSlack).concat(
+             sagLine(car.add(V3(0,.10,0)), V3(-2.2,.75,.3), .08).slice(1))],
+      jsheet:[[clew, B3.jibCar.position.clone(), V3(-.7,.72,.8)]],
+      jsheetw:[sagLine(clew, V3(2.0-.8*state.jcar,.98,-.95), (1-state.jsheetw)*.5).concat(
+               sagLine(V3(2.0-.8*state.jcar,.98,-.95), V3(-.7,.72,-.8), (1-state.jsheetw)*.15).slice(1))],
+      jcar:[[V3(2.0-.8*state.jcar,1.02,.95), V3(2.0-.8*state.jcar,.90,.95)]],
+      // vang: 2-part cascade boom bale <-> mast step, tail aft
+      vang:[[boomVangPt.add(V3(0,-.02,.04)), mastBase.add(V3(0,.04,.06)), boomVangPt.add(V3(-.06,-.06,.02)), mastBase.add(V3(0,0,.10)), V3(-.2,.78,.20)]],
+      // outhaul: clew -> boom end sheave -> forward under the boom -> gooseneck cleat
+      outhaul:[[mClew, boomEnd.add(V3(0,.02,0)), boomEnd.add(V3(0,-.07,0)), V3(.72,1.35,0).add(boomDir.scale(.35))]],
+      // cunningham: hook on the luff cringle -> mast-base block -> aft to the clutch
+      cunn:[[cunTop, cunMid, cunBot, V3(.45,.77,.22), V3(-.12,.80,.30)]],
+      // halyards: masthead sheave -> down the mast -> turning block -> organizer -> clutch
+      halyard:[[mastHead.add(V3(-.11,0,0)), V3(.58,1.05,-.06), V3(.45,.77,-.22), V3(-.12,.80,-.30)]],
+      jhal:[[hounds.add(V3(.10,-.02,0)), V3(.60,1.05,.06), V3(.45,.77,.22), V3(-.12,.80,.38)]],
+      toplift:[[mastHead, boomEnd.add(V3(0,.05,0))]],
+      trav:[[car.add(V3(0,.02,0)), V3(-.95,1.0,.85)],[car.add(V3(0,.02,0)), V3(-.95,1.0,-.85)]],
+      backstay:[[V3(.72,10.9,0),V3(-3.7,.85,0)]],
+    };
+    const steelKeys={backstay:1,toplift:1};
+    // color-coded like the rigging guides
+    const ROPE_COLORS={sheet:[.75,.1,.1], jsheet:[.82,.72,.5], jsheetw:[.6,.55,.4], jcar:[.9,.5,.15], vang:[.15,.55,.25],
+      outhaul:[.85,.55,.15], cunn:[.8,.15,.35], halyard:[.9,.9,.88], jhal:[.2,.35,.75], trav:[.4,.4,.75]};
+    if(!B3.ropeMats){ B3.ropeMats={};
+      for(const k in ROPE_COLORS){ const m=new BABYLON.PBRMaterial("rm_"+k,B3.scene);
+        m.albedoColor=new BABYLON.Color3(...ROPE_COLORS[k]); m.metallic=0; m.roughness=.9; B3.ropeMats[k]=m; } }
+    if(!B3.ropeMat){
+      B3.ropeMat=new BABYLON.PBRMaterial("ropeM",B3.scene);
+      B3.ropeMat.albedoColor=new BABYLON.Color3(.45,.18,.10); B3.ropeMat.metallic=0; B3.ropeMat.roughness=.9;
+      B3.ropeHi=new BABYLON.PBRMaterial("ropeHi",B3.scene);
+      B3.ropeHi.albedoColor=new BABYLON.Color3(1,.35,.1); B3.ropeHi.metallic=0; B3.ropeHi.roughness=.5;
+      B3.ropeHi.emissiveColor=new BABYLON.Color3(.9,.3,.05);
+    }
+    if(!B3.steelMat){
+      B3.steelMat=new BABYLON.PBRMaterial("steelM",B3.scene);
+      B3.steelMat.albedoColor=new BABYLON.Color3(.55,.58,.62); B3.steelMat.metallic=.7; B3.steelMat.roughness=.45;
+    }
+    for(const key in ropes){
+      B3.tubes[key]=ropes[key].map((path,i)=>{
+        const hot=key===B3.hiKey;
+        const t2=BABYLON.MeshBuilder.CreateTube("rope_"+key+i,{path,radius:hot?.032:(steelKeys[key]?.008:.016)},B3.scene);
+        t2.material=hot?B3.ropeHi:(steelKeys[key]?B3.steelMat:(B3.ropeMats[key]||B3.ropeMat)); t2.parent=B3.boat; return t2;
+      });
+    }
+    // wind dye streamlines (steady flow -> rebuild only when trim changes)
+    if(B3.dyeOn){
+      if(B3.dyeMesh) B3.dyeMesh.dispose();
+      const dye=buildDye(r);
+      B3.dyeState={paths:dye.lines, speeds:dye.speeds, phase:dye.lines.map((_,i)=>i*1.7)};
+      B3.dyeMesh=BABYLON.MeshBuilder.CreateLineSystem("dye",{lines:dye.lines},B3.scene);
+      B3.dyeMesh.color=new BABYLON.Color3(.35,.95,.85);
+      B3.dyeMesh.alpha=.22; B3.dyeMesh.parent=B3.boat;
+    } else B3.dyeState=null;
+    if($("hud3d")) $("hud3d").innerHTML=
+      `${fmt1(r.speed)} kt &nbsp;·&nbsp; heel ${fmt1(r.heel)}° &nbsp;·&nbsp; leeway ${fmt1(r.leeway)}°<br>`+
+      `main twist ${fmt1(r.main.twist)}° · belly ${(r.main.depth*100).toFixed(0)}% &nbsp;·&nbsp; jib twist ${fmt1(r.jib.twist)}° · power ${Math.round(r.eff*100)}%`;
+    B3dirty=false;
+  }
+  // dye pulses: advance along each streamline at the LOCAL solved flow speed
+  if(B3.dyeOn&&B3.dyeState){
+    const D=B3.dyeState, PL=6, pulses=[];
+    for(let i=0;i<D.paths.length;i++){
+      const path=D.paths[i], spd=D.speeds[i], n=path.length;
+      if(n<PL+2) continue;
+      const j=Math.floor(D.phase[i])%(n-PL);
+      D.phase[i]+=spd[Math.min(j,spd.length-1)]*dt*4.2;   // index rate ∝ local speed
+      if(D.phase[i]>=n-PL) D.phase[i]=0;
+      pulses.push(path.slice(j,j+PL));
+    }
+    if(B3.pulseMesh) B3.pulseMesh.dispose();
+    if(pulses.length){
+      B3.pulseMesh=BABYLON.MeshBuilder.CreateLineSystem("pulse",{lines:pulses},B3.scene);
+      B3.pulseMesh.color=new BABYLON.Color3(.5,1,.92);
+      B3.pulseMesh.alpha=.95; B3.pulseMesh.parent=B3.boat;
+    }
+  } else if(B3.pulseMesh){ B3.pulseMesh.dispose(); B3.pulseMesh=null; }
+  // cloth dynamics every frame
+  if(CLOTH.main){
+    const cdt=Math.min(dt,.033);
+    // atmospheric turbulence: ~10% speed modulation + direction wander, so the
+    // cloth breathes — laboratory-steady wind would hold a trimmed sail rigid
+    const g=1+.10*Math.sin(B3.t*1.3)+.05*Math.sin(B3.t*3.1+1.7)+.04*Math.sin(B3.t*.55+4);
+    const rT=Object.assign({},r);
+    rT.aws=r.aws*g; rT.awa=r.awa+2.2*Math.sin(B3.t*.9+2)+1.2*Math.sin(B3.t*2.3);
+    const rowsM=clothStep("main", rT, cdt, B3.t);
+    const rowsJ=clothStep("jib", rT, cdt, B3.t);
+    if(rowsM) B3.mainSail=BABYLON.MeshBuilder.CreateRibbon("mainSail",{pathArray:rowsM,instance:B3.mainSail});
+    if(rowsJ) B3.jibSail =BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:rowsJ,instance:B3.jibSail});
+  }
+  // heel to port (+z down means rotate.x negative in LH — sign tuned visually)
+  const target=-rad(r.heel);
+  B3.heelCur += (target-B3.heelCur)*Math.min(1,dt*3);
+  B3.boat.rotation.x=B3.heelCur;
+  B3.boat.rotation.z=Math.sin(B3.t*.8)*.012 + clamp(r.speed,0,7)*.004; // gentle pitch + bow-up with speed
+  // heeled hull rotates about the keel line here, so add the buoyant rise a
+  // real hull gets as its leeward volume immerses
+  B3.boat.position.y=Math.sin(B3.t*.62)*.06 + .42 + (1-Math.cos(B3.heelCur))*1.1;
+}
+
+/* ---------------- go ---------------- */
+TRIM_KEYS.forEach(k=>{ const el=$(k); const w=document.createElement("div");
+  el.parentNode.insertBefore(w,el); w.appendChild(el); w.style.position="relative"; });
+update();
+scheduleOptims();
+</script>
+
+
+
+</body></html>
