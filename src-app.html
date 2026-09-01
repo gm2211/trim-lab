@@ -2171,7 +2171,7 @@ function tick3D(){
       B3.dyeState={paths:dye.lines, speeds:dye.speeds, phase:dye.lines.map((_,i)=>i*1.7)};
       B3.dyeMesh=BABYLON.MeshBuilder.CreateLineSystem("dye",{lines:dye.lines},B3.scene);
       B3.dyeMesh.color=new BABYLON.Color3(.35,.95,.85);
-      B3.dyeMesh.alpha=.22; B3.dyeMesh.parent=B3.boat;
+      B3.dyeMesh.alpha=.10; B3.dyeMesh.parent=B3.boat;
     } else B3.dyeState=null;
     if($("hud3d")) $("hud3d").innerHTML=
       `${fmt1(r.speed)} kt &nbsp;·&nbsp; heel ${fmt1(r.heel)}° &nbsp;·&nbsp; leeway ${fmt1(r.leeway)}°<br>`+
@@ -2180,20 +2180,23 @@ function tick3D(){
   }
   // dye pulses: advance along each streamline at the LOCAL solved flow speed
   if(B3.dyeOn&&B3.dyeState){
-    const D=B3.dyeState, PL=6, pulses=[];
+    const D=B3.dyeState, PL=10, NP=3, pulses=[];
     for(let i=0;i<D.paths.length;i++){
       const path=D.paths[i], spd=D.speeds[i], n=path.length;
       if(n<PL+2) continue;
       const j=Math.floor(D.phase[i])%(n-PL);
-      D.phase[i]+=spd[Math.min(j,spd.length-1)]*dt*4.2;   // index rate ∝ local speed
+      D.phase[i]+=spd[Math.min(j,spd.length-1)]*dt*6.5;   // index rate ∝ local speed
       if(D.phase[i]>=n-PL) D.phase[i]=0;
-      pulses.push(path.slice(j,j+PL));
+      for(let k=0;k<NP;k++){                              // several dye packets per line
+        const jk=(j+Math.floor(k*(n-PL)/NP))%(n-PL);
+        pulses.push(path.slice(jk,jk+PL));
+      }
     }
     if(B3.pulseMesh) B3.pulseMesh.dispose();
     if(pulses.length){
       B3.pulseMesh=BABYLON.MeshBuilder.CreateLineSystem("pulse",{lines:pulses},B3.scene);
-      B3.pulseMesh.color=new BABYLON.Color3(.5,1,.92);
-      B3.pulseMesh.alpha=.95; B3.pulseMesh.parent=B3.boat;
+      B3.pulseMesh.color=new BABYLON.Color3(.75,1,.96);
+      B3.pulseMesh.alpha=1; B3.pulseMesh.parent=B3.boat;
     }
   } else if(B3.pulseMesh){ B3.pulseMesh.dispose(); B3.pulseMesh=null; }
   // cloth dynamics every frame
