@@ -72,6 +72,10 @@
   .ctl .row1{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
   .ctl label{font-size:12.5px;font-weight:600}
   .ctl .val{font-family:var(--mono);font-size:11px;color:var(--ink2);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .ctl .val .opt{color:var(--good);font-weight:700}
+  .ctl .sub{font-size:11px;color:var(--ink3);margin:-1px 0 3px}
+  .rail-legend{display:flex;justify-content:flex-end;align-items:center;gap:5px;font-size:10.5px;color:var(--ink3);margin-bottom:6px}
+  .rail-legend i{display:inline-block;width:3px;height:11px;background:var(--good);border-radius:1px}
   .ctl-group h3{margin:0 0 5px}
   .btnrow{display:flex;gap:6px}
   .controls{display:flex;flex-direction:column}
@@ -117,7 +121,8 @@
   .gustbtn.on{background:var(--accent);color:var(--bg);border-style:solid}
   .gustbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}
+  .tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:8px}
+  .tile .num.warnc{color:var(--warn)} .tile .num.goodc{color:var(--good)}
   @media(max-width:700px){.tiles{grid-template-columns:repeat(2,1fr)}}
   .tile{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:7px 10px 6px}
   .tile .lbl{font-family:var(--disp);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink2)}
@@ -131,12 +136,14 @@
 
   .coach{
     background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);
-    border-radius:4px;padding:7px 12px;margin-bottom:8px;
+    border-radius:4px;padding:7px 12px;margin-bottom:8px;display:flex;align-items:baseline;gap:14px;
   }
   .coach.groove{border-left-color:var(--good)}
-  .coach h3{margin:0 0 4px;font-family:var(--disp);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2)}
-  .coach ul{margin:0;padding-left:18px}
-  .coach li{margin:2px 0;font-size:12.5px}
+  .coach h3{margin:0;font-family:var(--disp);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);white-space:nowrap}
+  .coach ul{margin:0;padding:0;list-style:none;display:flex;gap:18px;flex-wrap:wrap;min-width:0}
+  .coach li{margin:0;font-size:12.5px}
+  .coach li::before{content:"●  ";color:var(--accent);font-size:9px}
+  .coach.groove li::before{color:var(--good)}
   .coach li b{color:var(--accent)}
   .coach.groove li b{color:var(--good)}
 
@@ -150,6 +157,12 @@
   figure.viz figcaption .hint{font-family:var(--body);font-weight:400;text-transform:none;letter-spacing:0;font-size:11.5px;color:var(--ink3)}
   figure.viz svg{width:100%;height:auto;display:block}
 
+  .nowfast{display:flex;gap:18px;justify-content:flex-end;align-items:baseline;font-family:var(--mono);
+    font-size:12px;font-variant-numeric:tabular-nums;padding:6px 4px 2px;flex-wrap:wrap}
+  .nowfast .nfk{font-family:var(--disp);font-size:9.5px;letter-spacing:.1em;color:var(--ink3);display:block;text-align:right}
+  .nowfast .now{font-weight:700} .nowfast .fast{color:var(--ink3)}
+  .nowfast .now.off{color:var(--warn)} .nowfast .now.ok{color:var(--good)}
+  .nowfast .lead{font-family:var(--disp);font-size:9.5px;letter-spacing:.1em;color:var(--ink3);margin-right:auto}
   table.shape{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:2px}
   table.shape th{font-family:var(--disp);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink2);text-align:left;padding:2px 5px;border-bottom:1px solid var(--line)}
   table.shape td{padding:2px 5px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
@@ -416,20 +429,20 @@
       <div class="coach" id="coach"></div>
       <div class="viz-grid">
         <figure class="viz" id="fig-sections">
-          <figcaption>Sail sections — twist &amp; belly <span class="hint">solid = your trim · dashed = target · arrows = apparent wind at that height</span></figcaption>
+          <figcaption>Sail sections <span class="hint">solid = your trim · dashed = fast shape · ● draft point</span></figcaption>
           <svg id="svg-sections" viewBox="0 0 640 360" role="img" aria-label="Main and jib cross-sections at head, mid and foot"></svg>
-          <table class="shape" id="shape-table"></table>
+          <div id="shape-table"></div>
         </figure>
         <figure class="viz">
-          <figcaption>Deck view <span class="hint">wind held on starboard side</span></figcaption>
+          <figcaption>Deck plan <span class="hint">wind on starboard · dotted = sheets</span></figcaption>
           <svg id="svg-deck" viewBox="0 0 360 330" role="img" aria-label="Top-down view of boat, sails and wind"></svg>
         </figure>
         <figure class="viz">
-          <figcaption>Twist from astern <span class="hint">leech opening with height · dashed = target</span></figcaption>
+          <figcaption>Twist from astern <span class="hint">colour = what the air is doing at that height</span></figcaption>
           <svg id="svg-twist" viewBox="0 0 360 330" role="img" aria-label="Vertical twist projection seen from astern"></svg>
         </figure>
         <figure class="viz">
-          <figcaption>Heel <span class="hint">target band 12–22°</span></figcaption>
+          <figcaption>Heel <span class="hint">past 22° the rudder turns into a brake</span></figcaption>
           <svg id="svg-heel" viewBox="0 0 360 205" role="img" aria-label="Heel angle gauge"></svg>
         </figure>
       </div>
@@ -8056,11 +8069,13 @@ function renderTiles(r){
   const effV = OPT_R ? clamp(r.speed/Math.max(OPT_R.speed,.1),0,1) : r.eff;
   const effCls = effV>.92?"good":effV>.75?"warn":"crit";
   const effTxt = effV>.92?"✓ in the groove":effV>.75?"! trim off":"✕ way off";
+  const tw=state.twaC||POS[state.posIdx].twa;
   $("tiles").innerHTML = `
-    <div class="tile"><div class="lbl">Speed over water</div><div class="num">${fmt1(r.speed)}<small> kt</small></div>${pill("hull max 6.2","mut")}</div>
-    <div class="tile"><div class="lbl">Heel</div><div class="num">${fmt1(r.heel)}<small> °</small></div>${pill(heelTxt,heelCls)}</div>
-    <div class="tile"><div class="lbl">Weather helm</div><div class="num">${fmt1(r.helm)}<small> ° rudder</small></div>${pill(helmTxt,helmCls)}</div>
-    <div class="tile"><div class="lbl">% of best speed</div><div class="num">${Math.round(effV*100)}<small> %</small></div>${pill(effTxt,effCls)}</div>`;
+    <div class="tile"><div class="lbl">True wind</div><div class="num">${state.tws+(state.gust?6:0)}<small> kt</small></div>${pill(POS[state.posIdx].name.toLowerCase()+" "+Math.round(tw)+"°","mut")}</div>
+    <div class="tile"><div class="lbl">Boat speed</div><div class="num">${fmt1(r.speed)}<small> kt</small></div>${pill("hull max 6.2 kt","mut")}</div>
+    <div class="tile"><div class="lbl">Heel</div><div class="num">${fmt1(r.heel)}<small> °</small></div>${pill(r.heel<10?"flat — no power":heelTxt,r.heel<10?"warn":heelCls)}</div>
+    <div class="tile"><div class="lbl">Weather helm</div><div class="num">${fmt1(r.helm)}<small> ° rud</small></div>${pill(helmTxt,helmCls)}</div>
+    <div class="tile"><div class="lbl">% of best speed</div><div class="num ${effV>.92?"goodc":"warnc"}">${Math.round(effV*100)}<small>%</small></div>${pill(effV>.92?"in the groove":"trim is off",effCls)}</div>`;
 }
 
 function renderCoach(r){
@@ -8068,10 +8083,10 @@ function renderCoach(r){
   const el = $("coach");
   if(tips.length===0){
     el.className="coach groove";
-    el.innerHTML = `<h3>Coach</h3><ul><li><b>In the groove.</b> Shape matches the breeze — hold this and watch the telltales. Try the gust button, or change the wind, and re-trim.</li></ul>`;
+    el.innerHTML = `<h3>What now</h3><ul><li><b>In the groove.</b> Shape matches the breeze — hold this and watch the telltales. Try the gust button, or change the wind, and re-trim.</li></ul>`;
   } else {
     el.className="coach";
-    el.innerHTML = `<h3>Coach</h3><ul>${tips.map(t=>`<li>${t.html}</li>`).join("")}</ul>`;
+    el.innerHTML = `<h3>What now</h3><ul>${tips.slice(0,2).map(t=>`<li>${t.html}</li>`).join("")}</ul>`;
   }
 }
 
@@ -8083,15 +8098,17 @@ function delta(x, ideal, tolGood, tolWarn, fmt){
 }
 function renderTable(r){
   const T=tgt(r);
-  const pc = x=>(x*100).toFixed(0)+"%";
-  const dg = x=>fmt1(x)+"°";
-  $("shape-table").innerHTML = `
-    <tr><th></th><th>Now</th><th>Target</th><th>Δ</th></tr>
-    <tr><td>Main twist</td>${delta(r.main.twist, T.mt, 4, 8, dg)}</tr>
-    <tr><td>Main depth</td>${delta(r.main.depth, T.md, .015, .03, pc)}</tr>
-    <tr><td>Main draft pos.</td>${delta(r.main.draft, T.mdr, .05, .09, pc)}</tr>
-    <tr><td>Jib twist</td>${delta(r.jib.twist, T.jt, 5, 9, dg)}</tr>
-    <tr><td>Jib depth</td>${delta(r.jib.depth, T.jd, .015, .03, pc)}</tr>`;
+  const cell=(k,now,fast,f,tol)=>{
+    const ok=Math.abs(now-fast)<=tol;
+    return `<span><span class="nfk">${k}</span><span class="now ${ok?"ok":"off"}">${f(now)}</span> <span class="fast">/ ${f(fast)}</span></span>`;
+  };
+  const pc=x=>(x*100).toFixed(0)+"%", dgs=x=>fmt1(x)+"\u00B0";
+  $("shape-table").innerHTML = `<div class="nowfast"><span class="lead">NOW / FAST</span>
+    ${cell("M TWIST", r.main.twist, T.mt, dgs, 4)}
+    ${cell("M BELLY", r.main.depth, T.md, pc, .015)}
+    ${cell("M DRAFT", r.main.draft, T.mdr, pc, .05)}
+    ${cell("J TWIST", r.jib.twist, T.jt, dgs, 5)}
+    ${cell("J BELLY", r.jib.depth, T.jd, pc, .015)}</div>`;
 }
 
 /* ---------------- render: sail sections ---------------- */
@@ -8330,10 +8347,13 @@ function renderVals(){
   $("v-mainhal").textContent = state.mainhal<.35?"DROPPED "+Math.round(state.mainhal/.35*100)+"%":state.mainhal<.7?"hoisted · soft":"hoisted · tight";
   $("v-jcar").textContent = state.jcar<.33?"forward · power":state.jcar<.7?"middle":"aft · twist";
   $("v-jhal").textContent = state.jhal<.35?"DROPPED "+Math.round(state.jhal/.35*100)+"%":state.jhal<.7?"hoisted · snug":"hoisted · hard";
-  // exact numbers so a trim can be written down and replicated
+  // exact numbers (current → solver's fast setting) so trim is replicable
   for(const k of TRIM_KEYS){
     const el=$("v-"+k); if(!el) continue;
-    el.textContent += " · " + Math.round(state[k]*100);
+    const cur=Math.round(state[k]*100);
+    if(OPT && Math.abs(OPT[k]-state[k])>(k==="trav"?.08:.04))
+      el.innerHTML = el.textContent+" · "+cur+" → <span class='opt'>"+Math.round(OPT[k]*100)+"</span>";
+    else el.textContent += " · " + cur;
   }
 }
 
@@ -8390,10 +8410,15 @@ function renderFx(src,a,b){
   }
   const wrongWay = (src in OPT) && PREV_STATE &&
     Math.abs(state[src]-OPT[src]) > Math.abs(PREV_STATE[src]-OPT[src]) + .01;
+  const tw2=Math.round(state.twaC||POS[state.posIdx].twa);
   if(wd<=.06){
     nextEl.className="fx-zone fx-next good";
     $("fxMove").textContent="You're at the solver's best trim.";
     $("fxSub").textContent="Change the wind or heading and re-trim.";
+  }else if((src in OPT) && Math.abs(state[src]-OPT[src])<=(src==="trav"?.08:.04)){
+    nextEl.className="fx-zone fx-next good";
+    $("fxMove").textContent=`${M.name} is on the money — leave it, fix something else.`;
+    $("fxSub").textContent=`Fast setting at ${state.tws} kt / ${tw2}\u00B0 is about ${Math.round(OPT[src]*100)}. You are within a hair.`;
   }else{
     const m2=LINEMETA[worst];
     const d=OPT[worst]-state[worst];
@@ -9638,7 +9663,12 @@ coachInit();
 
 /* ---------------- go ---------------- */
 TRIM_KEYS.forEach(k=>{ const el=$(k); const w=document.createElement("div");
-  el.parentNode.insertBefore(w,el); w.appendChild(el); w.style.position="relative"; });
+  el.parentNode.insertBefore(w,el); w.appendChild(el); w.style.position="relative";
+  const sub=document.createElement("div"); sub.className="sub"; sub.textContent=LINEMETA[k].job;
+  w.parentNode.insertBefore(sub, w); });
+document.querySelectorAll('.ctl-group[data-g="main"],.ctl-group[data-g="jib"]').forEach(g=>{
+  const l=document.createElement("div"); l.className="rail-legend";
+  l.innerHTML="<i></i> fast setting for this wind"; g.prepend(l); });
 update();
 scheduleOptims();
 </script>
