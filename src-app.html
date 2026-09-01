@@ -641,7 +641,7 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale){
     if(aoa < 1){ cl = 0; cd += .05; }                        // flogging
     else if(aoa <= stallA){ cl = Math.min(clmax, .078*aoa*(1+1.8*c))*clFac; }
     else { const p = clamp((aoa-stallA)/28, 0, 1);           // separated flow
-           cl = clmax*(1-.55*p); cd += 1.1*p*p + .3*p; }
+           cl = clmax*(1-.72*p); cd += .8*p*p + .22*p; }
     cl *= slotF;                                             // solved slot interaction
     cd += cl*cl/(Math.PI*geom.ar*.8);                        // induced
     const q = .5*RHO_A*aws*aws*(geom.area/5)*heelEff*blanket*.80*(aScale===undefined?1:aScale);
@@ -786,6 +786,8 @@ function coachAdvice(r){
   if(state.jsheetw>.25) push(26, "<b>Windward jib sheet is hauled — the jib is backed.</b> That's how you heave-to on purpose; release it to sail normally.");
   if(r.heel>26) push(10+(r.heel-26), "<b>Overpowered.</b> First move: traveler down. Then flatten — backstay and outhaul on — and let the top twist open (ease mainsheet a touch, keep vang moderate).");
   if(off){
+    if(OPT && OPT.jsheet < state.jsheet-.15) push(7, "The jib is strapped in for this course — <b>ease the jib sheet</b> toward "+Math.round(OPT.jsheet*100)+" and let it swing out with the wind.");
+    else if(r.awa>115) push(2.5, "Deep downwind the jib sits in the main's wind shadow — without a whisker pole it can't fly squared-out, so some sheet tension just keeps it from collapsing. (Poling out / wing-on-wing isn't modeled yet.)");
     if(r.main.boom < 45) push(6, "Off the wind, <b>ease the mainsheet</b> well out — the sail should hang square to the apparent wind. The boom can go out until it nearly touches the side wires holding the mast.");
     if(r.main.twist>30) push(4, "Boom lifting and the top of the main spilling? <b>Vang on</b> — off the wind the vang, not the sheet, holds the leech.");
     if(r.main.twist<12) push(3, "Leech clamped shut for a run — <b>ease the vang</b> a little so the top can breathe.");
@@ -1012,9 +1014,14 @@ function renderTwist(r){
     <text x="${baseX+8}" y="${headY+2}" font-size="10" fill="var(--ink3)">mast</text>`;
   function airColor(hf, boom, twist){
     const aoa=r.awa + 7*hf - (boom + twist*Math.pow(hf,1.15));
+    if(r.awa>90){                                    // off the wind: the sail works as a drag device
+      if(aoa<6) return "var(--ink3)";                // spilling / luffing
+      if(aoa<22) return "var(--warn)";               // soft — could square out more
+      return "var(--good)";                          // pushing
+    }
     if(aoa<6) return "var(--ink3)";                 // spilling / luffing
     if(aoa<r.idl.aoa-6) return "var(--warn)";       // soft
-    if(aoa>r.idl.aoa+13) return "var(--crit)";      // stalled
+    if(aoa>r.idl.aoa+13) return "var(--crit)";      // stalled (upwind only — flow should be attached)
     return "var(--good)";                            // driving
   }
   function leechPath(boom, twist, footLen, taper, color, w, dash){
