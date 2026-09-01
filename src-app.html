@@ -1247,17 +1247,37 @@ function renderDial(){
   // wind arrow points AT the boat from bearing twa off the bow (starboard held)
   const ax=c+Math.sin(rad(twa))*R, ay=c-Math.cos(rad(twa))*R;
   const bx=c+Math.sin(rad(twa))*(R-16), by=c-Math.cos(rad(twa))*(R-16);
-  let ticks="";
-  for(const [a,lab] of [[0,"in irons"],[45,"close-hauled"],[70,"close reach"],[97,"beam reach"],[135,"broad reach"],[178,"run"]]){
-    const tx=c+Math.sin(rad(a))*(R+9), ty=c-Math.cos(rad(a))*(R+9);
-    ticks+=`<text x="${tx}" y="${ty+3}" font-size="8.5" font-weight="600" fill="var(--ink2)" text-anchor="middle" style="user-select:none;pointer-events:none">${lab}</text>`;
+  // points-of-sail rose: mirrored sector wedges on both tacks, labels once
+  const pt=(a,r)=>[c+Math.sin(rad(a))*r, c-Math.cos(rad(a))*r];
+  const wedge=(a1,a2,fill,op)=>{
+    const [x1,y1]=pt(a1,R), [x2,y2]=pt(a2,R);
+    return `<path d="M ${c} ${c} L ${x1} ${y1} A ${R} ${R} 0 ${a2-a1>180?1:0} 1 ${x2} ${y2} Z" fill="${fill}" opacity="${op}"/>`;
+  };
+  const SECT=[[28,52,.26],[52,80,.19],[80,110,.13],[110,160,.08],[160,180,.04]];
+  let zones=wedge(-28,28,"var(--crit)",.22);
+  for(const [a1,a2,op] of SECT){ zones+=wedge(a1,a2,"var(--teal)",op)+wedge(-a2,-a1,"var(--teal)",op); }
+  let seps="";
+  for(const b of [28,52,80,110,160]) for(const s of [1,-1]){
+    const [x2,y2]=pt(b*s,R); seps+=`<line x1="${c}" y1="${c}" x2="${x2}" y2="${y2}" stroke="var(--panel2)" stroke-width=".8"/>`;
   }
-  // no-go zone shading (< 28 deg)
-  const nx1=c+Math.sin(rad(-28))*R, ny1=c-Math.cos(rad(-28))*R;
-  const nx2=c+Math.sin(rad(28))*R, ny2=c-Math.cos(rad(28))*R;
+  // labels mirrored on both tacks like the classic points-of-sail rose
+  const L=[[0,"in irons","flat",R-12]];
+  for(const s of [1,-1]){
+    L.push([40*s,"close-hauled","tan",R+5]);
+    L.push([66*s,"close reach","tan",R-6.5]);
+    L.push([97*s,"beam reach","flat",R-18]);
+    L.push([137*s,"broad reach","tan",R-6.5]);
+  }
+  L.push([180,"run","flat",R-10]);
+  let ticks="";
+  for(const [a,lab,mode,rr] of L){
+    const [tx,ty]=pt(a,rr);
+    const rot=mode==="flat"?0:(a>90?a-180:a<-90?a+180:a);
+    ticks+=`<text x="${tx}" y="${ty+2.5}" font-size="6.5" font-weight="600" fill="var(--ink)" opacity=".85" text-anchor="middle" transform="rotate(${rot} ${tx} ${ty})" style="user-select:none;pointer-events:none">${lab}</text>`;
+  }
   el.innerHTML=`
     <circle cx="${c}" cy="${c}" r="${R}" fill="var(--panel2)" stroke="var(--line)"/>
-    <path d="M ${c} ${c} L ${nx1} ${ny1} A ${R} ${R} 0 0 1 ${nx2} ${ny2} Z" fill="var(--crit-soft)" opacity=".55"/>
+    ${zones}${seps}
     ${ticks}
     <path d="M ${c} ${c-24} L ${c-7} ${c+18} L ${c} ${c+12} L ${c+7} ${c+18} Z" fill="var(--ink2)"/>
     <line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="var(--teal)" stroke-width="3" stroke-linecap="round"/>
@@ -1720,7 +1740,9 @@ function ensure3D(){
   if(B3) return;
   const hud=$("hud3d");
   if(typeof BABYLON==="undefined"){
-    if(hud) hud.innerHTML="3D engine failed to load (script blocked). Try reloading the page.";
+    if(hud) hud.innerHTML=window.__WATER_NORMALS
+      ?"3D engine failed to load (script blocked). Try reloading the page."
+      :"This is the raw source file (src-app.html) — the 3D engine gets added at build time. Open the built app instead: run build.py, or use the GitHub Pages site / the artifact.";
     return;
   }
   const canvas=$("bab");
@@ -2328,14 +2350,29 @@ async function oauthBegin(){
   $("oauthCodeRow").style.display="block";
   $("oauthState").textContent="approve in the new tab, then paste the code";
 }
+async function relayPost(relay, kind, payload){
+  // native worker path first, then the motive server's route — the same relay
+  // deployment can serve both apps (bodies and response shapes already match)
+  const paths = kind==="exchange"
+    ? ["/claude/exchange","/api/ai/claude-oauth/exchange"]
+    : ["/claude/refresh","/api/ai/claude-oauth/refresh"];
+  let last=null;
+  for(const p of paths){
+    try{
+      const res=await fetch(relay+p,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+      if(res.status===404){ last=new Error("relay has no "+p); continue; }
+      return res;
+    }catch(e){ last=e; }
+  }
+  throw last||new Error("relay unreachable");
+}
 async function oauthFinish(){
   const relay=(localStorage.getItem(RELAY_STORE)||"").replace(/\/$/,"");
   const code=$("oauthCode").value.trim();
   if(!relay||!code||!PKCE){ $("oauthState").textContent="start with Connect Claude first"; return; }
   $("oauthState").textContent="exchanging…";
   try{
-    const res=await fetch(relay+"/claude/exchange",{method:"POST",headers:{"content-type":"application/json"},
-      body:JSON.stringify({code, verifier:PKCE.verifier, state:PKCE.state})});
+    const res=await relayPost(relay,"exchange",{code, verifier:PKCE.verifier, state:PKCE.state});
     const data=await res.json();
     if(!res.ok||!data.accessToken) throw new Error(data.error||"exchange failed");
     localStorage.setItem(OAUTH_STORE, JSON.stringify({access:data.accessToken, refresh:data.refreshToken,
@@ -2352,8 +2389,8 @@ async function oauthAccess(){
   if(Date.now()<saved.exp) return saved.access;
   const relay=(localStorage.getItem(RELAY_STORE)||"").replace(/\/$/,"");
   if(!relay||!saved.refresh){ return null; }
-  const res=await fetch(relay+"/claude/refresh",{method:"POST",headers:{"content-type":"application/json"},
-    body:JSON.stringify({refreshToken:saved.refresh})});
+  let res=null;
+  try{ res=await relayPost(relay,"refresh",{refreshToken:saved.refresh}); }catch(e){ return null; }
   if(!res.ok) return null;
   const d=await res.json();
   localStorage.setItem(OAUTH_STORE, JSON.stringify({access:d.accessToken, refresh:d.refreshToken||saved.refresh,
