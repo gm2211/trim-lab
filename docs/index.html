@@ -275,6 +275,33 @@
     #pane-view3d .sim-grid{height:100%;grid-template-columns:min(272px,26vw) minmax(0,1fr);gap:10px}
     #pane-view3d #dock3d{height:100%;overflow-y:auto;min-width:0}
     #pane-view3d .threed-wrap{height:100%;min-height:0}
+    /* Lines: horizontal card carousel, no page scroll */
+    #pane-lines.active{height:100%;display:flex;flex-direction:column;min-height:0}
+    #pane-lines .prose{max-width:none}
+    #pane-lines .prose h2{margin:4px 0 6px;font-size:15px}
+    #pane-lines .prose p{font-size:12.5px !important;margin:0 0 8px;max-width:90ch !important}
+    #pane-lines .cardgrid{flex:1;min-height:0;display:flex;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;
+      gap:12px;scroll-snap-type:x mandatory;padding-bottom:4px}
+    #pane-lines .card{flex:0 0 330px;scroll-snap-align:start;overflow:hidden;display:flex;flex-direction:column}
+    #pane-lines .card p,#pane-lines .card dd{font-size:12.5px}
+    #pane-lines .card .note{margin-top:auto}
+    /* Concepts: one per page + pager */
+    #pane-concepts.active{height:100%;display:flex;flex-direction:column;min-height:0}
+    #pane-concepts .prose h2{margin:4px 0 6px;font-size:15px}
+    #concepts{flex:1;min-height:0}
+    #concepts .concept{display:none;height:100%;overflow:hidden;margin:0;column-count:2;column-gap:30px;column-fill:auto}
+    #concepts .concept.cur{display:block}
+    #concepts .concept p{font-size:14px;line-height:1.55}
+    .conc-nav{display:flex;gap:10px;align-items:center;justify-content:center;padding:6px 0 0}
+    .conc-nav button{font-family:var(--disp);font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+      background:var(--ink);color:var(--bg);border:none;border-radius:3px;padding:7px 14px;cursor:pointer}
+    .conc-nav .dots{font-family:var(--mono);font-size:12px;color:var(--ink2)}
+    /* Drills: locked, centered */
+    #pane-drills.active{height:100%;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+    #pane-drills .prose h2{margin:4px 0 6px;font-size:15px}
+    #pane-drills .prose p{font-size:12.5px !important;margin:0 0 8px}
+    #pane-drills .drill{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+    #pane-drills .opts{overflow-y:auto;min-height:0}
   }
 </style>
 
@@ -8460,7 +8487,7 @@ $("perfect").addEventListener("click",()=>{
 function showTab(name){
   [...$("tabs").children].forEach(c=>c.classList.toggle("active",c.dataset.tab===name));
   document.querySelectorAll(".tabpane").forEach(p=>p.classList.toggle("active",p.id==="pane-"+name));
-  document.querySelector("main").classList.toggle("lock", name==="sim"||name==="view3d");
+  document.querySelector("main").classList.add("lock");
   // the one controls rail moves between Helm and 3D so state stays in sync
   if(name==="view3d"){ $("dock3d").appendChild($("controls")); ensure3D(); setTimeout(()=>{ if(B3) B3.engine.resize(); },60); }
   else if(name==="sim"){ document.querySelector("#pane-sim .sim-grid").prepend($("controls")); }
@@ -8602,6 +8629,7 @@ const CONCEPTS = [
   avoid:["Trying to point high at low speed — the keel stalls and you slide sideways"],
   svg:`<svg viewBox="0 0 300 170"><path d="M 30 130 Q 90 128 130 96 Q 170 66 262 58" stroke="var(--accent)" stroke-width="2.6" fill="none"/><circle cx="52" cy="129" r="5" fill="var(--accent)"/><circle cx="130" cy="96" r="5" fill="var(--accent)"/><circle cx="238" cy="59" r="5" fill="var(--accent)"/><text x="40" y="152" font-size="10.5" fill="var(--ink2)">1st: full + twist</text><text x="118" y="120" font-size="10.5" fill="var(--ink2)">3rd: firming up</text><text x="196" y="42" font-size="10.5" fill="var(--ink2)">4th: flat + tight</text></svg>`},
 ];
+let CONC_IDX=0;
 $("concepts").innerHTML = CONCEPTS.map(c=>`
  <div class="concept"><span class="kicker">${c.k}</span><h3>${c.h}</h3>
   ${c.body.map(p=>`<p>${p}</p>`).join("")}
@@ -8612,6 +8640,20 @@ $("concepts").innerHTML = CONCEPTS.map(c=>`
     </div>
   </div>
  </div>`).join("");
+{
+  const nav=document.createElement("div"); nav.className="conc-nav";
+  nav.innerHTML=`<button id="concPrev">← Prev</button><span class="dots" id="concDots"></span><button id="concNext">Next →</button>`;
+  $("pane-concepts").appendChild(nav);
+  const cards=[...document.querySelectorAll("#concepts .concept")];
+  function showConc(i){
+    CONC_IDX=(i+cards.length)%cards.length;
+    cards.forEach((c,j)=>c.classList.toggle("cur",j===CONC_IDX));
+    $("concDots").textContent=`${CONC_IDX+1} / ${cards.length} · ${CONCEPTS[CONC_IDX].h}`;
+  }
+  $("concPrev").addEventListener("click",()=>showConc(CONC_IDX-1));
+  $("concNext").addEventListener("click",()=>showConc(CONC_IDX+1));
+  showConc(0);
+}
 
 /* ================= DRILLS CONTENT ================= */
 const DRILLS = [
