@@ -68,11 +68,10 @@
     font-family:var(--disp);font-size:11.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
     color:var(--ink2);margin:0 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px;
   }
-  .ctl{display:grid;grid-template-columns:92px minmax(0,1fr) 88px;align-items:center;gap:0 7px;margin-bottom:4px}
-  .ctl .row1{display:contents}
-  .ctl label{font-size:12px;font-weight:600;order:1;line-height:1.15}
-  .ctl>div:not(.row1),.ctl>input{order:2;min-width:0}
-  .ctl .val{font-family:var(--mono);font-size:10px;color:var(--ink2);font-variant-numeric:tabular-nums;text-align:right;order:3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ctl{margin-bottom:5px}
+  .ctl .row1{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .ctl label{font-size:12.5px;font-weight:600;white-space:nowrap}
+  .ctl .val{font-family:var(--mono);font-size:11px;color:var(--ink2);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .ctl-group h3{margin:0 0 5px}
   .btnrow{display:flex;gap:6px}
   .btnrow .gustbtn{flex:1;margin-top:4px;font-size:10.5px;padding:7px 4px}
@@ -268,15 +267,19 @@
   @media(min-width:760px) and (min-height:520px){
     main.lock{height:calc(100dvh - 60px);padding:8px 16px;overflow:hidden}
     #pane-sim.active{height:100%}
-    #pane-sim .sim-grid{height:100%;grid-template-columns:min(272px,26vw) minmax(0,1fr);gap:10px}
-    #pane-sim .controls{position:static;height:100%;overflow-y:auto}
+    #pane-sim .sim-grid{height:100%;grid-template-columns:min(400px,34vw) minmax(0,1fr);gap:10px}
+    #pane-sim .controls{position:static;height:100%;overflow-y:auto;
+      display:grid;grid-template-columns:1fr 1fr;gap:0 16px;align-content:start}
+    #pane-sim .controls .ctl-group:first-child{grid-column:1/-1}
     #pane-sim .stage{height:100%;display:flex;flex-direction:column;min-width:0}
     #pane-sim .viz-grid{flex:1;min-height:0;display:grid;grid-template-columns:1.25fr 1fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:8px}
     #fig-sections{grid-row:auto}
     #pane-sim figure.viz{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;padding:8px 10px}
     #pane-sim figure.viz svg{flex:1 1 0;min-height:0;width:100%;height:100%}
-    #pane-view3d .sim-grid{height:100%;grid-template-columns:min(272px,26vw) minmax(0,1fr);gap:10px}
+    #pane-view3d .sim-grid{height:100%;grid-template-columns:min(400px,34vw) minmax(0,1fr);gap:10px}
     #pane-view3d #dock3d{height:100%;overflow-y:auto;min-width:0}
+    #pane-view3d #dock3d .controls{height:100%;display:grid;grid-template-columns:1fr 1fr;gap:0 16px;align-content:start}
+    #pane-view3d #dock3d .controls .ctl-group:first-child{grid-column:1/-1}
     #pane-view3d .threed-wrap{height:100%;min-height:0}
     /* Lines: horizontal card carousel, no page scroll */
     #pane-lines.active{height:100%;display:flex;flex-direction:column;min-height:0}
@@ -336,12 +339,16 @@
     <aside class="controls" id="controls">
       <div class="ctl-group">
         <h3>Conditions</h3>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 112px;gap:0 8px;align-items:center;min-width:0">
+        <div style="min-width:0">
         <div class="ctl">
           <div class="row1"><label for="tws">True wind</label><span class="val" id="v-tws"></span></div>
           <input type="range" id="tws" min="4" max="24" step="1" value="12">
         </div>
-        <div class="ctl" style="grid-template-columns:92px 1fr"><div class="row1"><label>Point of sail</label><span class="val" id="v-twa" style="order:2"></span></div></div>
-        <svg id="windDial" viewBox="0 0 130 130" style="width:136px;display:block;margin:2px auto 4px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none" role="slider" aria-label="Wind direction"></svg>
+        <div class="ctl"><div class="row1"><label>Point of sail</label><span class="val" id="v-twa"></span></div></div>
+        </div>
+        <svg id="windDial" viewBox="0 0 130 130" style="width:112px;max-width:100%;display:block;margin:0;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none" role="slider" aria-label="Wind direction"></svg>
+        </div>
         <div class="btnrow">
           <button class="gustbtn" id="gust">Gust +6 kt</button>
           <button class="gustbtn" id="perfect" style="border-style:solid">Perfect trim</button>
@@ -442,7 +449,18 @@
     <button id="coachGear" title="settings">⚙</button><button id="coachClose" title="close">✕</button></div>
   <div class="coach-log" id="coachLog"></div>
   <div class="coach-key" id="coachKey">
-    <div>Bring your own Anthropic API key — stored only in this browser, sent only to api.anthropic.com.</div>
+    <div style="margin-bottom:8px"><b>Sign in with a Claude subscription (easiest)</b><br>
+      <span style="color:var(--ink3)">Opens claude.ai to approve, shows a code, paste it back. Needs a relay URL once (see the repo README — a free 2-minute deploy).</span></div>
+    <input type="text" id="relayIn" placeholder="https://trim-lab-relay.….workers.dev" style="font-size:11px">
+    <div class="row" style="margin-bottom:8px">
+      <button id="oauthStart" style="font-size:11px;padding:5px 10px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Connect Claude</button>
+      <span id="oauthState" style="font-size:11px;color:var(--ink3)"></span>
+    </div>
+    <div id="oauthCodeRow" style="display:none">
+      <input type="text" id="oauthCode" placeholder="Paste the code claude.ai showed">
+      <button id="oauthFinish" style="font-size:11px;padding:5px 10px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Finish sign-in</button>
+    </div>
+    <div style="margin:10px 0 0;border-top:1px solid var(--line);padding-top:8px">Or paste a credential — an API key, or the token from <code>claude setup-token</code>. Stored only in this browser, sent only to api.anthropic.com.</div>
     <input type="password" id="keyIn" placeholder="sk-ant-...">
     <div class="row">
       <select id="modelSel"><option value="claude-opus-5">Opus 5 (best)</option><option value="claude-haiku-4-5">Haiku 4.5 (cheap)</option></select>
@@ -743,6 +761,7 @@ function coachAdvice(r){
   const tips=[]; const idl=r.idl; const off=r.off;
   const push=(sev,html)=>tips.push({sev,html});
 
+  if((state.twaC||POS[state.posIdx].twa)<27) push(32, "<b>In irons.</b> The bow is inside the no-sail zone — no sail trim can make lift here; the sails can only flap. Drag the wind back to at least the close-hauled mark to fill them.");
   if(state.mainhal<.35) push(30, "<b>Main halyard released — the main is coming down.</b> Hoist it back up (halyard to the top of its range) before trimming anything else.");
   if(state.jhal<.35) push(28, "<b>Jib halyard released — the jib is dropping.</b> Hoist first, then set luff tension.");
   if(state.jsheetw>.25) push(26, "<b>Windward jib sheet is hauled — the jib is backed.</b> That's how you heave-to on purpose; release it to sail normally.");
@@ -1050,7 +1069,8 @@ const easeWords = ["fully eased","eased","eased a bit","firm","hard on"];
 function word(v){ return easeWords[clamp(Math.floor(v*4.999),0,4)]; }
 function renderVals(){
   $("v-tws").textContent = state.tws+" kt"+(state.gust?" (+6 gust)":"");
-  $("v-twa").textContent = Math.round(state.twaC||POS[state.posIdx].twa)+"\u00B0 \u00B7 "+POS[state.posIdx].name;
+  { const tw=state.twaC||POS[state.posIdx].twa;
+    $("v-twa").textContent = Math.round(tw)+"\u00B0 \u00B7 "+(tw<27?"in irons":POS[state.posIdx].name); }
   renderDial();
   $("v-sheet").textContent = word(state.sheet);
   $("v-trav").textContent = state.trav===0?"centered":(state.trav>0?"up (windward) "+Math.round(state.trav*100)+"%":"down (leeward) "+Math.round(-state.trav*100)+"%");
@@ -1063,6 +1083,11 @@ function renderVals(){
   $("v-mainhal").textContent = state.mainhal<.35?"DROPPED "+Math.round(state.mainhal/.35*100)+"%":state.mainhal<.7?"hoisted · soft":"hoisted · tight";
   $("v-jcar").textContent = state.jcar<.33?"forward · power":state.jcar<.7?"middle":"aft · twist";
   $("v-jhal").textContent = state.jhal<.35?"DROPPED "+Math.round(state.jhal/.35*100)+"%":state.jhal<.7?"hoisted · snug":"hoisted · hard";
+  // exact numbers so a trim can be written down and replicated
+  for(const k of TRIM_KEYS){
+    const el=$("v-"+k); if(!el) continue;
+    el.textContent += " · " + Math.round(state[k]*100);
+  }
 }
 
 /* ---------------- live effect bar ---------------- */
@@ -1156,7 +1181,7 @@ function renderDial(){
     const x=(e.clientX-rct.left)/rct.width*130-65, y=(e.clientY-rct.top)/rct.height*130-65;
     let a=deg(Math.atan2(x,-y));            // bearing off the bow
     a=Math.abs(a);                          // port side mirrors to the starboard-tack model
-    state.twaC=clamp(a,28,178);
+    state.twaC=clamp(a,2,178);
     // snap posIdx to the nearest preset so coach/optimizer labels stay honest
     let best=0,bd=1e9;
     POS.forEach((p,i)=>{const d=Math.abs(p.twa-state.twaC); if(d<bd){bd=d;best=i;}});
@@ -2164,8 +2189,61 @@ function coachApply(changes){
   const a=lastR;
   return `${applied.join(" · ")}\nresult: speed ${before.speed.toFixed(2)}→${a.speed.toFixed(2)} kt · heel ${before.heel.toFixed(1)}→${a.heel.toFixed(1)}° · main twist ${before.twist.toFixed(1)}→${a.main.twist.toFixed(1)}° · power ${Math.round(before.eff*100)}→${Math.round(a.eff*100)}%`;
 }
+const OAUTH_STORE="trimlab_oauth", RELAY_STORE="trimlab_relay";
+let PKCE=null;
+function b64url(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+async function oauthBegin(){
+  const relay=($("relayIn").value.trim()||localStorage.getItem(RELAY_STORE)||"").replace(/\/$/,"");
+  if(!relay){ $("oauthState").textContent="relay URL needed first"; return; }
+  localStorage.setItem(RELAY_STORE, relay);
+  const raw=new Uint8Array(32); crypto.getRandomValues(raw);
+  const verifier=b64url(raw);
+  const challenge=b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  PKCE={verifier, state:b64url(crypto.getRandomValues(new Uint8Array(16)))};
+  const u=new URL("https://claude.ai/oauth/authorize");
+  u.search=new URLSearchParams({code:"true", client_id:"9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+    response_type:"code", redirect_uri:"https://console.anthropic.com/oauth/code/callback",
+    scope:"user:inference user:profile", code_challenge:challenge, code_challenge_method:"S256",
+    state:PKCE.state}).toString();
+  window.open(u.toString(),"_blank");
+  $("oauthCodeRow").style.display="block";
+  $("oauthState").textContent="approve in the new tab, then paste the code";
+}
+async function oauthFinish(){
+  const relay=(localStorage.getItem(RELAY_STORE)||"").replace(/\/$/,"");
+  const code=$("oauthCode").value.trim();
+  if(!relay||!code||!PKCE){ $("oauthState").textContent="start with Connect Claude first"; return; }
+  $("oauthState").textContent="exchanging…";
+  try{
+    const res=await fetch(relay+"/claude/exchange",{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({code, verifier:PKCE.verifier, state:PKCE.state})});
+    const data=await res.json();
+    if(!res.ok||!data.accessToken) throw new Error(data.error||"exchange failed");
+    localStorage.setItem(OAUTH_STORE, JSON.stringify({access:data.accessToken, refresh:data.refreshToken,
+      exp:Date.now()+((data.expiresIn||3600)-120)*1000}));
+    COACH.provider=COACH.provider==="sample"?"sample":"api";
+    $("coachProv").textContent=COACH.provider==="sample"?"via your Claude account":"via your subscription";
+    $("oauthState").textContent="connected ✓"; $("oauthCodeRow").style.display="none"; $("oauthCode").value="";
+    coachNote("Claude subscription connected — tokens live only in this browser.");
+  }catch(e){ $("oauthState").textContent="failed: "+e.message; }
+}
+async function oauthAccess(){
+  let saved=null; try{ saved=JSON.parse(localStorage.getItem(OAUTH_STORE)||"null"); }catch(e){}
+  if(!saved) return null;
+  if(Date.now()<saved.exp) return saved.access;
+  const relay=(localStorage.getItem(RELAY_STORE)||"").replace(/\/$/,"");
+  if(!relay||!saved.refresh){ return null; }
+  const res=await fetch(relay+"/claude/refresh",{method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({refreshToken:saved.refresh})});
+  if(!res.ok) return null;
+  const d=await res.json();
+  localStorage.setItem(OAUTH_STORE, JSON.stringify({access:d.accessToken, refresh:d.refreshToken||saved.refresh,
+    exp:Date.now()+((d.expiresIn||3600)-120)*1000}));
+  return d.accessToken;
+}
 async function coachAskApi(userMsg){
-  const cred=detectCred(localStorage.getItem(COACH_STORE));
+  const oat=await oauthAccess();
+  const cred=oat?{kind:"oauth",token:oat}:detectCred(localStorage.getItem(COACH_STORE));
   if(!cred) throw {code:"no_key"};
   const model=localStorage.getItem(COACH_MODEL)||"claude-opus-5";
   const headers={
@@ -2233,8 +2311,10 @@ async function coachInit(){
       if(fn){ COACH.provider="sample"; COACH.sampleFn=fn; $("coachProv").textContent="via your Claude account"; return; }
     }
   }catch(e){}
-  if(detectCred(localStorage.getItem(COACH_STORE))){ COACH.provider="api"; $("coachProv").textContent="via your key"; }
+  if(localStorage.getItem(OAUTH_STORE)){ COACH.provider="api"; $("coachProv").textContent="via your subscription"; }
+  else if(detectCred(localStorage.getItem(COACH_STORE))){ COACH.provider="api"; $("coachProv").textContent="via your key"; }
   else { $("coachProv").textContent="no credential yet"; }
+  const savedRelay=localStorage.getItem(RELAY_STORE); if(savedRelay&&$("relayIn")) $("relayIn").value=savedRelay;
 }
 $("coachFab").addEventListener("click",()=>{ $("coachPanel").classList.toggle("open");
   if(!$("coachLog").childElementCount) coachNote("Ask about trim, or say “demonstrate how I can add more twist” — the coach will move the sliders and explain.");
@@ -2243,6 +2323,9 @@ $("coachClose").addEventListener("click",()=>$("coachPanel").classList.remove("o
 $("coachGear").addEventListener("click",()=>$("coachKey").classList.toggle("show"));
 $("coachSend").addEventListener("click",coachSend);
 $("coachMsg").addEventListener("keydown",e=>{ if(e.key==="Enter") coachSend(); });
+$("oauthStart").addEventListener("click",oauthBegin);
+$("oauthFinish").addEventListener("click",oauthFinish);
+$("relayIn").addEventListener("change",()=>{ const v=$("relayIn").value.trim(); if(v) localStorage.setItem(RELAY_STORE,v); });
 $("keySave").addEventListener("click",()=>{
   const v=$("keyIn").value.trim();
   if(v){ localStorage.setItem(COACH_STORE,v); localStorage.setItem(COACH_MODEL,$("modelSel").value);

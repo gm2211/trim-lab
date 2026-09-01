@@ -28,3 +28,20 @@ Republish by passing that URL as `url` when publishing `trim-lab.html`.
   input probes `navigator.getGamepads()` and dies — shimmed in `ensure3D`.
 - The artifact pipeline re-bundles inline scripts; debug the *served* page, not the upload.
 - Hidden browser tabs get zero rAF frames — a "frozen" 3D view unfreezes on focus.
+
+## One-click Claude subscription sign-in (auth relay)
+
+The coach's "Connect Claude" button runs the whole OAuth flow in the browser except
+the code→token exchange, which Anthropic's endpoint refuses from any browser origin.
+`relay/worker.js` is that one step as a stateless serverless function (nothing stored,
+nothing logged). Deploy it once, free, either way:
+
+```bash
+npx wrangler deploy relay/worker.js --name trim-lab-relay --compatibility-date 2026-01-01
+```
+
+or point a [Deno Deploy](https://dash.deno.com) project at `relay/worker.js`.
+
+Paste the deployed URL into the coach ⚙ panel once. Grok device-code support and the
+Codex enterprise-token path (motive's own one-click Codex is disabled upstream too)
+can ride the same relay later.
