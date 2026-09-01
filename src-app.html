@@ -74,21 +74,24 @@
   .ctl .val{font-family:var(--mono);font-size:11px;color:var(--ink2);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .ctl-group h3{margin:0 0 5px}
   .btnrow{display:flex;gap:6px}
-  .cond-grid{display:grid;grid-template-columns:minmax(0,1fr) 118px;gap:0 8px;align-items:center;min-width:0;overflow:hidden}
-  .controls{container-type:inline-size}
-  .rail-tabs{display:none;gap:4px;grid-column:1/-1;margin-bottom:6px}
-  .rail-tabs button{flex:1;font-size:11.5px;font-weight:700;padding:5px;border:1px solid var(--line);
-    background:var(--panel);color:var(--ink2);cursor:pointer;border-radius:2px;font-family:var(--disp);
-    letter-spacing:.08em;text-transform:uppercase}
-  .rail-tabs button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-  @container (max-width:339px){
-    .controls{grid-template-columns:1fr !important}
-    .rail-tabs{display:flex}
-    .controls[data-rt="main"] .ctl-group[data-g="jib"]{display:none}
-    .controls[data-rt="jib"] .ctl-group[data-g="main"]{display:none}
-    .cond-grid{grid-template-columns:1fr;justify-items:center}
-    .cond-grid>div{width:100%}
-  }
+  .controls{display:flex;flex-direction:column}
+  .rail-body{flex:1;min-height:0;overflow-y:auto}
+  .rail-tabs{display:flex;gap:4px;margin-bottom:10px;background:var(--panel2);border-radius:6px;padding:3px}
+  .rail-tabs button{flex:1;font-size:12px;font-weight:700;padding:7px 4px;border:none;
+    background:none;color:var(--ink2);cursor:pointer;border-radius:4px;font-family:var(--disp);
+    letter-spacing:.06em;text-transform:uppercase}
+  .rail-tabs button.on{background:var(--bg);color:var(--ink)}
+  .controls[data-rt="wind"] .ctl-group:not([data-g="wind"]){display:none}
+  .controls[data-rt="main"] .ctl-group:not([data-g="main"]){display:none}
+  .controls[data-rt="jib"] .ctl-group:not([data-g="jib"]){display:none}
+  .ctl-group[data-g="main"] .ctl,.ctl-group[data-g="jib"] .ctl{margin-bottom:14px}
+  .val.big{color:var(--accent);font-size:14px}
+  .endcaps{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--ink3);margin-top:2px}
+  .twa-big{text-align:center;font-size:21px;font-weight:650;margin-top:2px}
+  .twa-hint{text-align:center;font-size:12.5px;color:var(--ink3);margin:2px 0 12px}
+  .aw-card{background:var(--panel2);border-radius:6px;padding:10px 12px;font-size:13px;line-height:1.5}
+  .aw-card b{font-family:var(--mono);color:var(--teal);font-weight:600}
+  .gustbtn.solid{border-style:solid;background:var(--ink);color:var(--bg);border-color:var(--ink)}
   .btnrow .gustbtn{flex:1;margin-top:4px;font-size:10.5px;padding:7px 4px}
   input[type=range]{width:100%;accent-color:var(--accent);height:18px;margin:0}
   .opt-tick{position:absolute;top:-3px;width:2.5px;height:8px;border-radius:1px;background:var(--ink3);pointer-events:none}
@@ -284,19 +287,16 @@
   @media(min-width:760px) and (min-height:520px){
     main.lock{height:calc(100dvh - 60px);padding:8px 16px;overflow:hidden;max-width:none}
     #pane-sim.active,#pane-view3d.active{height:100%}
-    #pane-sim .sim-grid{height:100%;grid-template-columns:min(400px,34vw) minmax(0,1fr);gap:10px}
-    #pane-sim .controls{position:static;height:100%;overflow-y:auto;
-      display:grid;grid-template-columns:1fr 1fr;gap:0 16px;align-content:start}
-    #pane-sim .controls .ctl-group[data-g="cond"],#pane-sim .controls .rail-tabs{grid-column:1/-1}
+    #pane-sim .sim-grid{height:100%;grid-template-columns:min(340px,28vw) minmax(0,1fr);gap:10px}
+    #pane-sim .controls{position:static;height:100%}
     #pane-sim .stage{height:100%;display:flex;flex-direction:column;min-width:0}
     #pane-sim .viz-grid{flex:1;min-height:0;display:grid;grid-template-columns:1.25fr 1fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:8px}
     #fig-sections{grid-row:auto}
     #pane-sim figure.viz{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;padding:8px 10px}
     #pane-sim figure.viz svg{flex:1 1 0;min-height:0;width:100%;height:100%}
-    #pane-view3d .sim-grid{height:100%;grid-template-columns:min(400px,34vw) minmax(0,1fr);gap:10px}
+    #pane-view3d .sim-grid{height:100%;grid-template-columns:min(340px,28vw) minmax(0,1fr);gap:10px}
     #pane-view3d #dock3d{height:100%;overflow-y:auto;min-width:0}
-    #pane-view3d #dock3d .controls{height:100%;display:grid;grid-template-columns:1fr 1fr;gap:0 16px;align-content:start}
-    #pane-view3d #dock3d .controls .ctl-group[data-g="cond"],#pane-view3d #dock3d .controls .rail-tabs{grid-column:1/-1}
+    #pane-view3d #dock3d .controls{height:100%}
     #pane-view3d .threed-wrap{height:100%;min-height:0}
     /* Lines: horizontal card carousel, no page scroll */
     #pane-lines.active{height:100%;display:flex;flex-direction:column;min-height:0}
@@ -351,30 +351,24 @@
 <!-- ================= SIMULATOR ================= -->
 <section class="tabpane active" id="pane-sim">
   <div class="sim-grid">
-    <aside class="controls" id="controls" data-rt="main">
-      <div class="ctl-group" data-g="cond">
-        <h3>Conditions</h3>
-        <div class="cond-grid">
-          <div style="min-width:0">
-            <div class="ctl">
-              <div class="row1"><label for="tws">True wind</label><span class="val" id="v-tws"></span></div>
-              <input type="range" id="tws" min="4" max="24" step="1" value="12">
-            </div>
-            <div class="ctl"><div class="row1"><label>Point of sail</label><span class="val" id="v-twa"></span></div></div>
-            <div class="btnrow">
-              <button class="gustbtn" id="gust">Gust +6 kt</button>
-              <button class="gustbtn" id="perfect" style="border-style:solid">Perfect trim</button>
-            </div>
-          </div>
-          <svg id="windDial" viewBox="0 0 130 130" role="slider" aria-label="Wind direction"
-            style="width:116px;max-width:100%;display:block;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none"></svg>
-        </div>
-      </div>
+    <aside class="controls" id="controls" data-rt="wind">
       <div class="rail-tabs" id="railTabs">
-        <button data-rt="main" class="on">Mainsail</button><button data-rt="jib">Jib</button>
+        <button data-rt="wind" class="on">Wind</button><button data-rt="main">Mainsail</button><button data-rt="jib">Jib</button>
+      </div>
+      <div class="rail-body">
+      <div class="ctl-group" data-g="wind">
+        <div class="ctl">
+          <div class="row1"><label for="tws">True wind</label><span class="val big" id="v-tws"></span></div>
+          <input type="range" id="tws" min="4" max="24" step="1" value="12">
+          <div class="endcaps"><span>4 kt</span><span>24 kt</span></div>
+        </div>
+        <svg id="windDial" viewBox="0 0 130 130" role="slider" aria-label="Wind direction"
+          style="width:min(210px,72%);max-width:100%;display:block;margin:10px auto 6px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none"></svg>
+        <div class="twa-big" id="twaBig"></div>
+        <div class="twa-hint">drag the dial to change heading</div>
+        <div class="aw-card" id="awCard"></div>
       </div>
       <div class="ctl-group" data-g="main">
-        <h3>Mainsail lines</h3>
         <div class="ctl"><div class="row1"><label for="sheet">Mainsheet</label><span class="val" id="v-sheet"></span></div>
           <input type="range" id="sheet" min="0" max="100" value="85"></div>
         <div class="ctl"><div class="row1"><label for="trav">Traveler</label><span class="val" id="v-trav"></span></div>
@@ -391,7 +385,6 @@
           <input type="range" id="mainhal" min="0" max="100" value="90"></div>
       </div>
       <div class="ctl-group" data-g="jib">
-        <h3>Jib lines</h3>
         <div class="ctl"><div class="row1"><label for="jsheet">Jib sheet · leeward</label><span class="val" id="v-jsheet"></span></div>
           <input type="range" id="jsheet" min="0" max="100" value="75"></div>
         <div class="ctl"><div class="row1"><label for="jsheetw">Jib sheet · windward</label><span class="val" id="v-jsheetw"></span></div>
@@ -400,6 +393,11 @@
           <input type="range" id="jcar" min="0" max="100" value="50"></div>
         <div class="ctl"><div class="row1"><label for="jhal">Jib halyard</label><span class="val" id="v-jhal"></span></div>
           <input type="range" id="jhal" min="0" max="100" value="40"></div>
+      </div>
+      </div>
+      <div class="btnrow">
+        <button class="gustbtn" id="gust">Gust +6 kt</button>
+        <button class="gustbtn solid" id="perfect">Solve perfect trim</button>
       </div>
     </aside>
 
@@ -1096,7 +1094,8 @@ function word(v){ return easeWords[clamp(Math.floor(v*4.999),0,4)]; }
 function renderVals(){
   $("v-tws").textContent = state.tws+" kt"+(state.gust?" (+6 gust)":"");
   { const tw=state.twaC||POS[state.posIdx].twa;
-    $("v-twa").textContent = Math.round(tw)+"\u00B0 \u00B7 "+(tw<27?"in irons":POS[state.posIdx].name); }
+    if($("twaBig")) $("twaBig").textContent = (tw<27?"In irons":POS[state.posIdx].name)+" \u00B7 "+Math.round(tw)+"\u00B0";
+    if($("awCard")&&lastR) $("awCard").innerHTML = "Apparent wind is what the sails actually feel: <b>"+fmt1(lastR.aws)+" kt</b> at <b>"+Math.round(lastR.awa)+"\u00B0</b> off the bow."; }
   renderDial();
   $("v-sheet").textContent = word(state.sheet);
   $("v-trav").textContent = state.trav===0?"centered":(state.trav>0?"up (windward) "+Math.round(state.trav*100)+"%":"down (leeward) "+Math.round(-state.trav*100)+"%");
@@ -1182,6 +1181,7 @@ function update(src){
   if(src && B3 && TRIM_KEYS.includes(src)) B3.hiKey=src;
   lastR=r;
   B3dirty=true;
+  if($("awCard")) $("awCard").innerHTML = "Apparent wind is what the sails actually feel: <b>"+fmt1(r.aws)+" kt</b> at <b>"+Math.round(r.awa)+"\u00B0</b> off the bow.";
   if(src){ renderOptims(); scheduleOptims(); }
 }
 
@@ -1520,30 +1520,30 @@ $("concepts").innerHTML = CONCEPTS.map(c=>`
 
 /* ================= DRILLS CONTENT ================= */
 const DRILLS = [
- {s:"Beating in 18 kt. Heel hits 28°, the tiller is tugging hard, speed is dropping. First move?",
-  o:["Ease the mainsheet all the way","Drop the traveler down to leeward","Steer up sharply to feather","Tighten the vang"], a:1,
-  e:"Traveler down reduces the main's angle of attack instantly — heel eases while twist, leech tension and course all stay put. Dumping the sheet also works but throws away leech control; feathering trades speed and stalls the keel. Then flatten: backstay and outhaul on. (Concept: Traveler, not tiller.)"},
- {s:"5 kt of breeze, leftover chop. Everything is pulled in as hard as they go and the boat is barely moving. Best fix?",
-  o:["Sheet the jib harder","Ease sheets, add twist, ease the outhaul for belly","Cunningham on hard","Backstay on hard"], a:1,
-  e:"Light air can't stay attached to a strangled sail. Ease everything a touch: open twist keeps weak flow attached aloft, belly gives punch through the slop. Cunningham and backstay hard are heavy-air tools. (Concepts: Twist, Belly.)"},
- {s:"The breeze has built all afternoon. Deep horizontal wrinkles have vanished from the main's luff, the leech looks hooked, helm is heavy, pointing is poor. Which line?",
+ {s:"Beating in 14 kt, backstay and outhaul already snugged, crew on the rail. A 19-kt puff hits: heel jumps to 28\u00B0, the tiller tugs hard. Your hand is on the full-width traveler. First move, right now?",
+  o:["Ease the mainsheet a foot or two","Drop the traveler down to leeward","Steer up sharply to feather through it","Tighten the vang"], a:1,
+  e:"On a keelboat with a full-width traveler at hand, dropping the car is the classic puff response: it swings the whole boom to leeward, cutting the main's angle of attack instantly, while twist and leech tension stay exactly as you set them \u2014 and one pull restores everything when the puff passes. Easing the sheet also depowers (and plenty of good sailors do it, especially in shifty air or on boats without a good traveler), but it opens the leech too, so you're re-trimming shape, not just power. Feathering works in flat water but stalls the keel if overdone. If the heel is constant rather than puff-driven, the real fix is flattening the sail and, eventually, a reef. (Concept: Traveler = angle of attack.)"},
+ {s:"5 kt of breeze, leftover chop from a dying seabreeze. Sheets are cranked in hard, the boat is barely making 2 kt and every wave stops it dead. Best fix?",
+  o:["Sheet the jib in even harder","Ease sheets for twist, ease the outhaul for belly","Cunningham on hard","Backstay on hard"], a:1,
+  e:"Light wind can't stay attached to a strangled sail \u2014 over-trimming stalls what little flow there is. Ease everything a touch: extra twist keeps the weak breeze attached up high, and a deeper (fuller) sail gives the punch to keep the boat moving through the chop. Cunningham and backstay are heavy-air flattening tools; here they'd make things worse. (Concepts: Twist, Belly.)"},
+ {s:"The breeze has built all afternoon. The soft horizontal wrinkles along the main's luff have disappeared, the deepest part of the sail looks like it's drifted back toward the leech, the helm is heavy and pointing has gone soft. Which line fixes this?",
   o:["Outhaul","Traveler","Cunningham","Jib halyard"], a:2,
-  e:"Classic draft-blown-aft: stretch has let the deepest point slide back past 50%, hooking the leech. Cunningham tension drags the draft forward, opens the leech and lightens the helm. (Concept: Draft position.)"},
- {s:"You bear away from a beat to a broad reach and ease the mainsheet. The boom lifts, the top of the main twists off and flogs. Which line owns this?",
+  e:"Classic draft-blown-aft: building wind pressure has stretched the luff and let the sail's deepest point slide aft, loading the leech and the helm. Cunningham tension pulls the draft back forward to around 40\u201345% of the way aft, frees the back of the sail, and lightens the helm. Outhaul flattens the bottom but doesn't move the draft; the traveler changes angle, not shape. (Concept: Draft position.)"},
+ {s:"You bear away from a beat to a broad reach and ease the mainsheet well out. The boom rises, the top of the main twists wide open and starts to flog. Which line owns this problem now?",
   o:["Mainsheet back in","Boom vang","Backstay","Outhaul"], a:1,
-  e:"With the sheet eased way out it pulls sideways, not down — it can no longer tension the leech. Off the wind the vang takes over the twist job. Sheeting back in would just stall the sail. (Concept: Twist; Line: Vang.)"},
- {s:"Flat water, 12 kt, you want to squeeze up to a mark without tacking. How do you buy pointing?",
-  o:["Ease the outhaul for power","Backstay on, traveler up, sheet firm — flatten and close the leech","More twist everywhere","Bear away to build speed and hope"], a:1,
-  e:"Pointing mode: backstay tightens the forestay (flatter, finer jib entry) and flattens the main; traveler up brings the boom to centerline; a firm sheet closes the leech. Flat water is exactly when a tight leech pays. (Concepts: Belly, The gears.)"},
- {s:"Upwind, the jib's top telltale pair breaks and luffs long before the lower pairs. What's the adjustment?",
+  e:"Upwind the mainsheet pulls mostly down, so it controls the leech. Eased way out on a reach it pulls mostly sideways \u2014 it can no longer hold the boom down, so the leech goes slack and the top twists off. Off the wind, the vang takes over the job of holding the boom down and setting twist. Sheeting back in would fix the flogging but point the sail at the wrong angle and stall it. (Concept: Twist; Line: Vang.)"},
+ {s:"Flat water, 12 kt, boat at full speed on a beat. You want to squeeze up to a mark without an extra tack. How do you buy pointing?",
+  o:["Ease the outhaul for power","Backstay on, traveler up, sheet firm \u2014 flatten and close the leech","Add twist everywhere","Bear away to build speed and hope"], a:1,
+  e:"Pointing mode \u2014 but only from full speed. Backstay tension tightens the forestay so the jib gets a flatter, finer entry that lets you sail closer to the wind; traveler up brings the boom to the centerline; a firm sheet closes the leech so the sail bends the wind harder. You'll give up a little speed for the height \u2014 flat water is exactly when that trade pays, because no waves are there to knock the speed away. (Concepts: The gears, Pointing mode.)"},
+ {s:"Upwind, steering slowly toward the wind to test the jib: the top pair of telltales lifts and breaks long before the lower pairs. What's the adjustment?",
   o:["Move the fairlead car forward","Move the fairlead car aft","More jib halyard","Ease the jib sheet"], a:0,
-  e:"Top breaking first means the head is too open — too much jib twist. Car forward points the sheet's pull more downward, tensions the leech and closes the top so all pairs break together. (Line: Fairlead car.)"},
- {s:"Gusty 16–22 kt beat. You want the jib to shrug off the puffs without constant sheet work. Set-up?",
-  o:["Car forward, sheet hard","Car aft a few holes — flatter foot, open top","Halyard eased soft","Sheet eased a foot"], a:1,
-  e:"Car aft flattens the foot and lets the head twist open, so each gust spills from the top automatically — a built-in shock absorber. The forgiving setup for breeze. (Concepts: Twist as gust response.)"},
- {s:"You tack. Coming out of the tack the boat is slow, apparent wind has gone soft and aft. What's the right 'gear'?",
-  o:["Point high immediately and trim hard","Bow slightly low, sails a touch fuller and twisted, then trim up as speed builds","Backstay on to flatten","Cleat everything — it was right before the tack"], a:1,
-  e:"First gear: at low speed the apparent wind is lighter and further aft, and the keel needs flow before it grips. Foot off slightly with forgiving full/twisted sails, accelerate, then shift up — flatten, firm the leech, point. (Concepts: The gears, Apparent wind.)"},
+  e:"Top breaking early means the head of the jib is too open \u2014 too much twist, spilling wind aloft. Moving the car forward aims the sheet's pull more downward, tensioning the leech and closing the top, so all pairs break together. (If the bottom pair broke first, you'd go the other way.) (Line: Fairlead car; Concept: Twist.)"},
+ {s:"Gusty 16\u201322 kt beat, short-handed \u2014 nobody free to play the jib sheet in every puff. How do you set the jib up to absorb the gusts on its own?",
+  o:["Car forward, sheet hard","Car aft a few holes \u2014 flatter foot, open top","Ease the halyard soft","Ease the sheet a foot and leave it"], a:1,
+  e:"Sliding the car aft points the sheet's pull more along the foot: the bottom of the sail flattens and the top is free to twist open. Each gust then spills from the head automatically and the boat stays on its feet \u2014 a built-in shock absorber. It costs a little pointing, which is the right trade when nobody can work the sheet. (Concept: Twist as gust response.)"},
+ {s:"You tack. Coming out of it the boat is slow and the apparent wind has gone soft and moved aft. What's the right gear?",
+  o:["Point high immediately and trim hard","Aim slightly low, sails a touch fuller and more twisted, trim up as speed builds","Backstay on to flatten","Cleat everything \u2014 it was right before the tack"], a:1,
+  e:"First gear. At low speed you make less of your own wind, so the apparent wind is lighter and further aft \u2014 and the keel can't grip until water is flowing over it. Aim a few degrees low of close-hauled with forgiving, slightly full and twisted sails, let the boat accelerate, then shift up: sheet on, flatten, point. Trimming hard and pointing immediately just stalls everything at low speed. (Concepts: The gears, Apparent wind.)"},
 ];
 let qi=0, right=0, answered=0;
 function renderDrill(){
@@ -1707,7 +1707,7 @@ function ensure3Dinner(canvas){
   wm.bumpTexture = window.__WATER_NORMALS
     ? new BABYLON.Texture(window.__WATER_NORMALS, scene)
     : makeNoiseNormal(scene);
-  wm.windForce=-2.5; wm.waveHeight=.03; wm.bumpHeight=.16; wm.waveLength=.9; wm.waveSpeed=.32;
+  wm.windForce=-1.4; wm.waveHeight=.015; wm.bumpHeight=.10; wm.waveLength=1.6; wm.waveSpeed=.11;
   wm.windDirection=new BABYLON.Vector2(.4,-1);
   wm.waterColor=new BABYLON.Color3(.02,.14,.14); wm.colorBlendFactor=.16;
   water.material=wm;
@@ -2086,8 +2086,15 @@ function tick3D(){
     const ROPE_COLORS={sheet:[.75,.1,.1], jsheet:[.82,.72,.5], jsheetw:[.6,.55,.4], jcar:[.9,.5,.15], vang:[.15,.55,.25],
       outhaul:[.85,.55,.15], cunn:[.8,.15,.35], halyard:[.9,.9,.88], jhal:[.2,.35,.75], trav:[.4,.4,.75]};
     if(!B3.ropeMats){ B3.ropeMats={};
+      const ropeTex=window.__ROPE_COLOR?new BABYLON.Texture(window.__ROPE_COLOR,B3.scene):null;
+      const ropeBump=window.__ROPE_NORMAL?new BABYLON.Texture(window.__ROPE_NORMAL,B3.scene):null;
+      if(ropeTex){ ropeTex.uScale=1; ropeTex.vScale=10; }
+      if(ropeBump){ ropeBump.uScale=1; ropeBump.vScale=10; ropeBump.level=.7; }
       for(const k in ROPE_COLORS){ const m=new BABYLON.PBRMaterial("rm_"+k,B3.scene);
-        m.albedoColor=new BABYLON.Color3(...ROPE_COLORS[k]); m.metallic=0; m.roughness=.9; B3.ropeMats[k]=m; } }
+        m.albedoColor=new BABYLON.Color3(...ROPE_COLORS[k]); m.metallic=0; m.roughness=.9;
+        if(ropeTex) m.albedoTexture=ropeTex;
+        if(ropeBump) m.bumpTexture=ropeBump;
+        B3.ropeMats[k]=m; } }
     if(!B3.ropeMat){
       B3.ropeMat=new BABYLON.PBRMaterial("ropeM",B3.scene);
       B3.ropeMat.albedoColor=new BABYLON.Color3(.45,.18,.10); B3.ropeMat.metallic=0; B3.ropeMat.roughness=.9;
