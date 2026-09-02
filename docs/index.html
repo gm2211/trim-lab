@@ -482,6 +482,7 @@
       <canvas id="bab"></canvas>
       <div class="threed-hud" id="hud3d"></div>
       <button id="dyeBtn" class="dye-btn on">wind dye: on</button>
+      <button id="ttBtn" class="dye-btn on" style="right:132px">telltales: on</button>
       <div class="threed-tip">drag to orbit &middot; scroll to zoom &middot; lines live on the left</div>
     </div>
   </div>
@@ -8028,6 +8029,15 @@ function compute(){
 }
 
 /* ---------------- coach ---------------- */
+function ttReadout(r){
+  if(r.off || r.jib.wow) return "telltales: off the wind";
+  const mj=rowAoaAt("jib",r,.5)-(r.idl.aoa-4);
+  const j = mj<-2 ? "windward lifting — sheet on or bear away"
+          : mj> 6 ? "leeward stalling — ease" : "both streaming";
+  const top=rowAoaAt("main",r,.8)-r.idl.aoa;
+  const m = top>4 ? "top leech stalled — ease sheet / vang" : "leech flying";
+  return `jib telltales: ${j} &nbsp;·&nbsp; main: ${m}`;
+}
 function coachAdvice(r){
   const tips=[]; const idl=r.idl; const off=r.off;
   const push=(sev,html)=>tips.push({sev,html});
@@ -9192,11 +9202,19 @@ function ensure3Dinner(canvas){
   B3={engine,scene,cam,boat,wm,mainSail,jibSail,boomMesh:boom,travCar,jibCar,
       runLines:null,puffs:null,dyeR:null,dyeOn:true,t:0,heelCur:0};
   B3dirty=true;
+  initTelltales();
   $("dyeBtn").addEventListener("click",()=>{
     B3.dyeOn=!B3.dyeOn;
     $("dyeBtn").classList.toggle("on",B3.dyeOn);
     $("dyeBtn").textContent="wind dye: "+(B3.dyeOn?"on":"off");
     if(!B3.dyeOn){ if(B3.puffs) B3.puffs.setEnabled(false); B3.dyeR=null; }
+    B3dirty=true;
+  });
+  $("ttBtn").addEventListener("click",()=>{
+    if(!(B3&&B3.tt)) return;
+    B3.tt.on=!B3.tt.on;
+    $("ttBtn").classList.toggle("on",B3.tt.on);
+    $("ttBtn").textContent="telltales: "+(B3.tt.on?"on":"off");
     B3dirty=true;
   });
 
@@ -9267,6 +9285,32 @@ function initPuffs(){
   for(let i=0;i<PUFF_N;i++) seedPuff(pp,i,true);
   B3.puffs=mesh; B3.puffPos=pos; B3.pp=pp;
 }
+/* ---- yarn telltales -------------------------------------------------
+   Six on the jib (red to port, green to starboard, 25% aft of the luff at
+   three heights) and four on the main leech. Each is a 6-point ribbon built
+   from the cloth's own local frame each frame.                          */
+const TT_SEG=6, TT_JIB_ROWS=[2,5,8], TT_JIB_IX=3, TT_LEECH_ROWS=[2,4,6,8];
+const TT_LEN_J=.34, TT_LEN_L=.30, TT_OFF=.035;
+function initTelltales(){
+  const mk=(name,col,n)=>{
+    const mesh=new BABYLON.Mesh(name,B3.scene), q=n*(TT_SEG-1);
+    const pos=new Float32Array(q*12), idx=new Uint32Array(q*6);
+    for(let i=0;i<q;i++){ idx[i*6]=i*4; idx[i*6+1]=i*4+1; idx[i*6+2]=i*4+2;
+                          idx[i*6+3]=i*4; idx[i*6+4]=i*4+2; idx[i*6+5]=i*4+3; }
+    mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind,pos,true);
+    mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind,new Float32Array(q*12),true);
+    mesh.setIndices(idx);
+    const m=new BABYLON.PBRMaterial(name+"M",B3.scene);
+    m.unlit=true; m.albedoColor=new BABYLON.Color3(...col); m.backFaceCulling=false;
+    mesh.material=m; mesh.parent=B3.boat; mesh.isPickable=false;
+    mesh.alwaysSelectAsActiveMesh=true;   // verts move every frame
+    mesh.renderingGroupId=1;              // yarn reads through the cloth, as it does backlit on the water
+    return {mesh,pos};
+  };
+  B3.tt={ red:mk("ttRed",[.86,.13,.13],3), grn:mk("ttGrn",[.10,.62,.28],3),
+          lch:mk("ttLch",[.12,.12,.15],4), st:[], on:true };
+  for(let i=0;i<10;i++) B3.tt.st.push({lift:0,stall:0,seed:i*2.4});
+}
 function seedPuff(pp,i,anywhere){
   const r=B3.dyeR||{awa:30};
   const upX=Math.cos(rad(r.awa)), upZ=-Math.sin(rad(r.awa));
@@ -9308,6 +9352,78 @@ function stepPuffs(dt){
   }
   B3.puffs.updateVerticesData(BABYLON.VertexBuffer.PositionKind,pos);
 }
+function stepTelltales(rowsM, rowsJ, r, dt){
+  const tt=B3.tt;
+  const showJ = tt.on && rowsJ && clamp(state.jhal/.35,0,1)>.99 && !r.jib.wow && r.awa<125;
+  const showM = tt.on && rowsM && clamp(state.mainhal/.35,0,1)>.99 && r.awa<150;
+  tt.red.mesh.setEnabled(!!showJ); tt.grn.mesh.setEnabled(!!showJ); tt.lch.mesh.setEnabled(!!showM);
+  const vm=B3.scene.activeCamera.getViewMatrix().m;
+  const camF=V3(vm[2],vm[6],vm[10]);                     // camera forward, as in stepPuffs
+  const W=clamp(B3.cam.radius*.0045,.028,.10);           // roughly constant apparent width
+  const awaR=rad(r.awa), wx=-Math.cos(awaR), wz=Math.sin(awaR);   // downwind direction
+  const gDown=V3(0,-Math.cos(B3.heelCur),-Math.sin(B3.heelCur));  // gravity in the heeled boat frame
+  const K=Math.min(1,dt*5);
+  if(showJ) for(let k=0;k<TT_JIB_ROWS.length;k++){
+    const iy=TT_JIB_ROWS[k], ix=TT_JIB_IX;
+    const A=rowsJ[iy][ix];
+    const T=rowsJ[iy][ix+1].subtract(rowsJ[iy][ix-1]).normalize();   // chordwise, aft
+    const U=rowsJ[iy+1][ix].subtract(rowsJ[iy-1][ix]).normalize();   // up the sail
+    const N=BABYLON.Vector3.Cross(U,T).normalize();                  // == ndir when trimmed
+    const leeSign=(N.x*wx+N.z*wz)>=0?1:-1, portSign=N.z>=0?1:-1;
+    const m=rowAoaAt("jib",r,iy/10)-(r.idl.aoa-4);      // jib ideal = idl.aoa-4, as in finish()
+    const liftT =clamp((-m-2)/6,0,1);                   // windward lifts before the sail luffs
+    const stallT=clamp(( m-6)/7,0,1);                   // leeward stalls before finish()'s +13
+    for(const sgn of [1,-1]){
+      const nrm=N.scale(sgn), isLee=(sgn===leeSign), st=tt.st[k*2+(sgn>0?0:1)];
+      st.lift +=((isLee?0:liftT )-st.lift )*K;
+      st.stall+=((isLee?stallT:0)-st.stall)*K;
+      yarn(sgn===portSign?tt.red:tt.grn, k, A,T,nrm,U,gDown,camF,W,TT_LEN_J,TT_OFF,st);
+    }
+  }
+  if(showM) for(let k=0;k<TT_LEECH_ROWS.length;k++){
+    const iy=TT_LEECH_ROWS[k], ix=12, hf=iy/10;
+    const A=rowsM[iy][ix];
+    const T=rowsM[iy][ix].subtract(rowsM[iy][ix-1]).normalize();
+    const U=rowsM[iy+1][ix].subtract(rowsM[iy-1][ix]).normalize();
+    const N=BABYLON.Vector3.Cross(U,T).normalize();
+    if(N.x*wx+N.z*wz<0) N.scaleInPlace(-1);            // always the leeward face
+    const m=rowAoaAt("main",r,hf)-r.idl.aoa;
+    // a leech telltale answers to leech closure as well as gross angle: hook the
+    // leech and the top one dies first, even when the mid-sail angle looks fine
+    const st=tt.st[6+k], stallT=clamp(Math.max((m-4)/8,(r.main.leech-.88)/.22*hf),0,1);
+    st.lift=0; st.stall+=(stallT-st.stall)*K;
+    yarn(tt.lch,k,A,T,N,U,gDown,camF,W,TT_LEN_L,.012,st);
+  }
+  if(showJ){ tt.red.mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind,tt.red.pos);
+             tt.grn.mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind,tt.grn.pos); }
+  if(showM)  tt.lch.mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind,tt.lch.pos);
+}
+// one yarn: integrate a direction that streams aft along the surface, rotates up
+// and off the cloth when the row is starved (lift), and curls forward + to leeward
+// when it is stalled; a travelling sine gives the flutter, as luffRow does in clothStep
+function yarn(bank,slot,A,T,N,U,gDown,camF,W,L,off,st){
+  const seg=L/(TT_SEG-1), flut=clamp(Math.max(st.lift,st.stall)*1.15+.07,0,1.2);
+  let p=A.add(N.scale(off)), d=T.clone(); const pts=[p.clone()];
+  for(let k=1;k<TT_SEG;k++){
+    const wob=Math.sin(B3.t*(9+11*flut)-k*1.15+st.seed)*flut;
+    d=d.add(U.scale(st.lift*.42+wob*.16))
+       .add(N.scale(st.lift*.18+st.stall*.34+wob*.26))
+       .add(T.scale(-st.stall*.42))                                  // curl back toward the luff
+       .add(gDown.scale(.10+.14*(1-Math.max(st.lift,st.stall)))).normalize();
+    p=p.add(d.scale(seg)); pts.push(p.clone());
+  }
+  const base=slot*(TT_SEG-1)*12, pos=bank.pos;
+  for(let k=0;k<TT_SEG-1;k++){
+    const a=pts[k], b=pts[k+1];
+    let s=BABYLON.Vector3.Cross(b.subtract(a),camF);     // billboard the flat yarn at the camera
+    const sl=s.length(); if(sl<1e-5) s=U.scale(W/2); else s.scaleInPlace(W/2/sl);
+    const o=base+k*12;
+    pos[o  ]=a.x-s.x; pos[o+1 ]=a.y-s.y; pos[o+2 ]=a.z-s.z;
+    pos[o+3]=b.x-s.x; pos[o+4 ]=b.y-s.y; pos[o+5 ]=b.z-s.z;
+    pos[o+6]=b.x+s.x; pos[o+7 ]=b.y+s.y; pos[o+8 ]=b.z+s.z;
+    pos[o+9]=a.x+s.x; pos[o+10]=a.y+s.y; pos[o+11]=a.z+s.z;
+  }
+}
 /* ---- position-based-dynamics sail cloth ----
    Verlet particles + distance constraints. Luff and boom edges pinned, wind
    pressure per vertex, per-row angle of attack so the head flogs only when
@@ -9344,18 +9460,22 @@ function clothRetarget(kind, targets, pins){
   for(const con of c.cons) con[2]=BABYLON.Vector3.Distance(flat[con[0]],flat[con[1]]);
   for(let i=0;i<flat.length;i++) if(c.w[i]===0){ c.p[i].copyFrom(flatPin[i]); c.pp[i].copyFrom(flatPin[i]); }
 }
+// local angle of attack at height fraction hf: apparent wind (with the 7 deg
+// twist gradient up the rig) minus the sail's own angle at that height
+function rowAoaAt(kind, r, hf){
+  const ang = kind==="main" ? r.main.boom  : r.jib.clew;
+  const tw  = kind==="main" ? r.main.twist : r.jib.twist;
+  const own = ang + tw*Math.pow(hf,1.15);
+  if(kind==="jib" && r.jib.wow) return r.awa + 7*hf + (Math.abs(ang) + tw*Math.pow(hf,1.15)) - 180;
+  return r.awa + 7*hf - own;
+}
 function clothStep(kind, r, dt, t){
   const c=CLOTH[kind]; if(!c) return;
   const aws=r.aws*KT;
   const awaR=rad(r.awa);
   const wx=-Math.cos(awaR), wz=Math.sin(awaR);
   const NC=c.NC;
-  const sailAng=kind==="main"?r.main.boom:r.jib.clew;
-  const sailTw=kind==="main"?r.main.twist:r.jib.twist;
-  const wingSet = kind==="jib" && r.jib.wow;
-  const rowAoa=[]; for(let iy=0;iy<c.NR;iy++){ const hf=iy/(c.NR-1);
-    const ang = Math.abs(sailAng) + sailTw*Math.pow(hf,1.15);
-    rowAoa.push(wingSet ? r.awa + 7*hf + ang - 180 : r.awa + 7*hf - (sailAng + sailTw*Math.pow(hf,1.15))); }
+  const rowAoa=[]; for(let iy=0;iy<c.NR;iy++) rowAoa.push(rowAoaAt(kind,r,iy/(c.NR-1)));
   const hoist=clamp((kind==="main"?state.mainhal:state.jhal)/.35,0,1);
   const dropping=hoist<.98;
   for(let i=0;i<c.p.length;i++){
@@ -9523,7 +9643,8 @@ function tick3D(){
     } else if(B3.puffs){ B3.puffs.setEnabled(false); B3.dyeR=null; }
     if($("hud3d")) $("hud3d").innerHTML=
       `${fmt1(r.speed)} kt &nbsp;·&nbsp; heel ${fmt1(r.heel)}° &nbsp;·&nbsp; leeway ${fmt1(r.leeway)}°<br>`+
-      `main twist ${fmt1(r.main.twist)}° · belly ${(r.main.depth*100).toFixed(0)}% &nbsp;·&nbsp; jib twist ${fmt1(r.jib.twist)}° · power ${Math.round(r.eff*100)}%`;
+      `main twist ${fmt1(r.main.twist)}° · belly ${(r.main.depth*100).toFixed(0)}% &nbsp;·&nbsp; jib twist ${fmt1(r.jib.twist)}° · power ${Math.round(r.eff*100)}%`+
+      `<br><span style="opacity:.8">${ttReadout(r)}</span>`;
     B3dirty=false;
   }
   // dye particles: each puff is carried through the solved flow field at the
@@ -9541,6 +9662,7 @@ function tick3D(){
     const rowsJ=clothStep("jib", rT, cdt, B3.t);
     if(rowsM) B3.mainSail=BABYLON.MeshBuilder.CreateRibbon("mainSail",{pathArray:rowsM,instance:B3.mainSail});
     if(rowsJ) B3.jibSail =BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:rowsJ,instance:B3.jibSail});
+    if(B3.tt) stepTelltales(rowsM, rowsJ, rT, cdt);
   }
   // heel to port (+z down means rotate.x negative in LH — sign tuned visually)
   const target=-rad(r.heel);
