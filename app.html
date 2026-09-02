@@ -327,12 +327,12 @@
     #pane-lines .prose h2{margin:4px 0 6px;font-size:15px}
     #pane-lines .prose p{font-size:12.5px !important;margin:0 0 8px;max-width:90ch !important}
     #pane-lines .cardgrid{flex:1;min-height:0;display:flex;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;
-      gap:12px;scroll-snap-type:x mandatory;padding-bottom:4px;align-items:flex-start}
-    #pane-lines .card{flex:0 0 350px;height:auto;scroll-snap-align:start;overflow:hidden;display:flex;flex-direction:column}
+      gap:12px;scroll-snap-type:x mandatory;padding-bottom:4px;align-items:stretch}
+    #pane-lines .card{flex:0 0 350px;height:auto;scroll-snap-align:start;overflow:hidden auto;display:flex;flex-direction:column}
+    #pane-lines .card .note{margin-top:auto}
     #pane-lines .card p,#pane-lines .card dd{font-size:12.5px;line-height:1.45}
     #pane-lines .card dt{border-top:1px solid var(--line);padding-top:7px;margin-top:9px}
-    #pane-lines .card dl{margin-top:6px}
-    #pane-lines .card .note{margin-top:10px}
+    #pane-lines .card dl{margin-top:6px;margin-bottom:10px}
     #pane-lines .card .try{margin-top:10px;align-self:flex-start}
     /* Concepts: one per page + pager */
     #pane-concepts.active{height:100%;display:flex;flex-direction:column;min-height:0}
