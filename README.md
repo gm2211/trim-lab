@@ -4,7 +4,8 @@ Interactive trainer: VPP-grade physics (segment aero, two-element vortex panel m
 heel/leeway force balance), Babylon.js 3D with PBD sail cloth (folding, flogging),
 wind-dye streamlines from solved circulation, per-slider trim-optimality indicators,
 and a coordinate-descent "perfect trim" solver. 2D views: sail sections, deck plan,
-twist-from-astern, heel gauge, drills and concept guides.
+twist-from-astern, heel gauge, a hand-written, reviewed static drill list (in `src-app.html`),
+and concept guides.
 
 ## Layout
 - `src-app.html` — the entire app (HTML/CSS/JS) with a `<script id="lib-slot">` placeholder.
