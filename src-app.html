@@ -767,15 +767,18 @@ function compute(){
     const depthJ = .08 + .075*(1 - .45*s.backstay - .40*s.jcar);
     const jTension = clamp((s.jhal-.35)/.65, 0, 1);
     const draftJ = clamp(.41 + .011*(twsKt-8) - .12*jTension, .32, .60);
-    // The slider pays out sheet length. The length scale is calibrated on the
-    // mid-track lead so that at the default car the clew angle progression
+    // The slider measures sheet paid out beyond block-to-block (the shortest
+    // lead the current car allows) — like a trimmer counting inches eased off
+    // the winch — calibrated on the mid-track lead so the ease progression
     // feels like the old curve (cubic: the first part of ease opens the leech
-    // while the clew barely swings). Moving the car then changes the clew
-    // angle for the same length, exactly like the real lead. The wind can
-    // luff the jib (weathervane at awa-4) but never trims it — only the sheet.
+    // while the clew barely swings). The car no longer two-blocks the sheet;
+    // it shifts the clew angle a degree or two for the same ease and moves
+    // the load between leech and foot. The wind can luff the jib (weathervane
+    // at awa-4) but never trims it — only the sheet.
     const leadRef=jibLead(.5), lead=jibLead(s.jcar);
     const clewStar=leadRef.d0 + Math.pow(1-s.jsheet,3)*(78-leadRef.d0);
-    const Ljib=leadRef.dist(clewStar);
+    const eased=leadRef.dist(clewStar)-leadRef.dist(leadRef.d0);
+    const Ljib=lead.dist(lead.d0)+eased;
     const clewSheet=lead.angFor(Ljib);            // sheet-limited clew angle at the actual car
     const clewLee = clamp(Math.min(awa-4, clewSheet) - s.jsheetw*30, -25, 80);
     // wing-on-wing: deep downwind, with the leeward sheet eased right off and the
@@ -787,7 +790,7 @@ function compute(){
     const wow = wowF>.5;
     return {upwind, wowF,
       m:{leech:leechM,twist:twistM,depth:depthM,draft:draftM,boom:boomM,slack:sheetSlack},
-      j:{leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ,wow,sheetLen:Ljib,clewSheet}};
+      j:{leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ,wow,sheetLen:Ljib,clewSheet,eased}};
   }
 
   function step(V, heel, lee){
@@ -866,7 +869,7 @@ function compute(){
     return {tws:twsKt, twa, aws:aws/KT, awa, upwind:sh.upwind, wowF:sh.wowF, off,
       main:{...sh.m, aoa:aoaM, eff:M.eff, luff:M.luff, stall:M.stall},
       jib:{...sh.j, clew:sh.j.boom, aoa:aoaJ, eff:J.eff, luff:J.luff, stall:J.stall,
-        sheetT, sheetSlack:sheetSlackJ, sheetLen:sh.j.sheetLen, taut},
+        sheetT, sheetSlack:sheetSlackJ, sheetLen:sh.j.sheetLen, eased:sh.j.eased, taut},
       idl, eff, heel:clamp(heel,0,40), helm, leeway:lee, sheetSlack:sh.m.slack, speed:V/KT};
   }
 }
@@ -1229,8 +1232,9 @@ function word(v){ return easeWords[clamp(Math.floor(v*4.999),0,4)]; }
 function jsheetLabel(r){
   const w=word(state.jsheet);
   if(!r||!r.jib||r.jib.sheetT===undefined) return w;
-  if(!r.jib.taut) return w+" · slack "+Math.round(r.jib.sheetSlack*100)+" cm";
-  return w+" · load "+Math.round(r.jib.sheetT/9.81)+" kg";
+  const out=Math.round(r.jib.eased*100)+" cm out";
+  if(!r.jib.taut) return w+" · "+out+" · slack "+Math.round(r.jib.sheetSlack*100)+" cm";
+  return w+" · "+out+" · load "+Math.round(r.jib.sheetT/9.81)+" kg";
 }
 function renderVals(){
   syncJibSheetRail();
