@@ -312,6 +312,8 @@
     #pane-sim .sim-grid{height:100%;grid-template-columns:min(340px,28vw) minmax(0,1fr);gap:10px}
     #pane-sim .controls{position:static;height:100%}
     #pane-sim .stage{height:100%;display:flex;flex-direction:column;min-width:0}
+    /* Coach strip: fixed height (fits 3 lines) so a 1- vs 2-tip message never reflows the viz grid */
+    #pane-sim .coach{flex:none;box-sizing:border-box;height:74px;overflow-y:auto;align-items:baseline}
     #pane-sim .viz-grid{flex:1;min-height:0;display:grid;grid-template-columns:1.25fr 1fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:8px}
     #pane-sim .fx{flex:0 0 auto}
     #fig-sections{grid-row:auto}
