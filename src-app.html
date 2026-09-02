@@ -412,10 +412,10 @@
           <input type="range" id="mainhal" min="0" max="100" value="90"></div>
       </div>
       <div class="ctl-group" data-g="jib">
-        <div class="ctl"><div class="row1"><label for="jsheet">Jib sheet · leeward</label><span class="val" id="v-jsheet"></span></div>
-          <input type="range" id="jsheet" min="0" max="100" value="75"></div>
-        <div class="ctl"><div class="row1"><label for="jsheetw">Jib sheet · windward</label><span class="val" id="v-jsheetw"></span></div>
-          <input type="range" id="jsheetw" min="0" max="100" value="0"></div>
+        <div class="ctl"><div class="row1"><label for="jsheetP">Jib sheet · port</label><span class="val" id="v-jsheetP"></span></div>
+          <input type="range" id="jsheetP" min="0" max="100" value="75"></div>
+        <div class="ctl"><div class="row1"><label for="jsheetS">Jib sheet · starboard</label><span class="val" id="v-jsheetS"></span></div>
+          <input type="range" id="jsheetS" min="0" max="100" value="0"></div>
         <div class="ctl"><div class="row1"><label for="jcar">Fairlead car</label><span class="val" id="v-jcar"></span></div>
           <input type="range" id="jcar" min="0" max="100" value="50"></div>
         <div class="ctl"><div class="row1"><label for="jhal">Jib halyard</label><span class="val" id="v-jhal"></span></div>
@@ -850,12 +850,12 @@ function coachAdvice(r){
   if((state.twaC||POS[state.posIdx].twa)<27) push(32, "<b>In irons.</b> The bow is inside the no-sail zone — no sail trim can make lift here; the sails can only flap. Drag the wind back to at least the close-hauled mark to fill them.");
   if(state.mainhal<.35) push(30, "<b>Main halyard released — the main is coming down.</b> Hoist it back up (halyard to the top of its range) before trimming anything else.");
   if(state.jhal<.35) push(28, "<b>Jib halyard released — the jib is dropping.</b> Hoist first, then set luff tension.");
-  if(state.jsheetw>.25 && !r.jib.wow) push(26, "<b>Windward jib sheet is hauled — the jib is backed.</b> That's how you heave-to on purpose; release it to sail normally.");
+  if(state.jsheetw>.25 && !r.jib.wow) push(26, "<b>The "+sideWord("jsheetw")+" jib sheet is hauled — the jib is backed.</b> That's how you heave-to on purpose; release it to sail normally.");
   if(r.heel>26) push(10+(r.heel-26), "<b>Overpowered.</b> First move: traveler down. Then flatten — backstay and outhaul on — and let the top twist open (ease mainsheet a touch, keep vang moderate).");
   if(off){
     if(OPT && OPT.jsheet < state.jsheet-.15) push(7, "The jib is strapped in for this course — <b>ease the jib sheet</b> toward "+Math.round(OPT.jsheet*100)+" and let it swing out with the wind.");
     else if(r.jib.wow) push(1.5, "Jib is flying <b>wing-on-wing</b> to windward, in clear air. Hold the course: heading up onto a reach collapses it against the forestay.");
-    else if(r.awa>145) push(3, "Dead downwind the jib is blanketed behind the main. <b>Ease the leeward jib sheet right off and take up the windward sheet</b> to fly it wing-on-wing on the other side.");
+    else if(r.awa>145) push(3, "Dead downwind the jib is blanketed behind the main. <b>Ease the "+sideWord("jsheet")+" jib sheet right off and take up the "+sideWord("jsheetw")+" sheet</b> to fly it wing-on-wing on the other side.");
     else if(r.awa>115) push(2.5, "Deep downwind the jib sits in the main's wind shadow — without a whisker pole it can't fly squared-out, so some sheet tension just keeps it from collapsing. Deeper than ~145° apparent you can fly it wing-on-wing instead.");
     if(r.main.boom < 45) push(6, "Off the wind, <b>ease the mainsheet</b> well out — the sail should hang square to the apparent wind. The boom can go out until it nearly touches the side wires holding the mast.");
     if(r.main.twist>30) push(4, "Boom lifting and the top of the main spilling? <b>Vang on</b> — off the wind the vang, not the sheet, holds the leech.");
@@ -952,6 +952,14 @@ function renderTable(r){
 // boat view draws signed display angles instead: tackSign() * model angle, so
 // on port tack the sails set to starboard and the wind arrows come from port.
 function tackSign(){ return (state.twaSide||1)<0?-1:1; }
+// The physics state keeps the jib sheets by ROLE (jsheet = working/leeward,
+// jsheetw = lazy/windward); the rail shows them by SIDE so the labels never
+// move. On starboard tack the working sheet is the port one.
+function jibSheetSideId(k){ const st=tackSign()>0; return k==="jsheet"?(st?"jsheetP":"jsheetS"):k==="jsheetw"?(st?"jsheetS":"jsheetP"):k; }
+function jibSheetRole(id){ const st=tackSign()>0; return id==="jsheetP"?(st?"jsheet":"jsheetw"):id==="jsheetS"?(st?"jsheetw":"jsheet"):id; }
+function sideWord(k){ return jibSheetSideId(k)==="jsheetP"?"port":"starboard"; }
+function ctlOf(k){ return $(jibSheetSideId(k)); }
+function lineName(k){ return (k==="jsheet"||k==="jsheetw") ? (sideWord(k)==="port"?"Port":"Starboard")+" jib sheet ("+(k==="jsheet"?"working":"lazy")+")" : LINEMETA[k].name; }
 function sectionPath(x0,y0,ang,L,depth,draftPos,flip){
   // chord from luff (x0,y0), aft is straight down, ang rotates it to port (left);
   // wind from starboard (right), so camber bulges to leeward (left of chord)
@@ -1180,6 +1188,7 @@ function renderHeel(r){
 const easeWords = ["fully eased","eased","eased a bit","firm","hard on"];
 function word(v){ return easeWords[clamp(Math.floor(v*4.999),0,4)]; }
 function renderVals(){
+  syncJibSheetRail();
   $("v-tws").textContent = state.tws+" kt"+(state.gust?" (+6 gust)":"");
   { const tw=state.twaC||POS[state.posIdx].twa;
     if($("twaBig")) $("twaBig").textContent = (tw<27?"In irons":POS[state.posIdx].name)+" \u00B7 "+Math.round(tw)+"\u00B0";
@@ -1191,14 +1200,14 @@ function renderVals(){
   $("v-outhaul").textContent = state.outhaul<.33?"eased · belly":state.outhaul<.7?"medium":"tight · flat";
   $("v-cunn").textContent = state.cunn<.2?"slack":state.cunn<.6?"snug":"hard";
   $("v-backstay").textContent = state.backstay<.25?"soft · sag":state.backstay<.65?"medium":"hard · bent mast";
-  $("v-jsheet").textContent = word(state.jsheet);
-  $("v-jsheetw").textContent = (lastR&&lastR.jib&&lastR.jib.wow) ? "trimmed — wing-on-wing" : state.jsheetw<.08?"slack (lazy)":state.jsheetw<.5?"taking up — backing!":"hauled — jib backed";
+  $("v-"+jibSheetSideId("jsheet")).textContent = word(state.jsheet);
+  $("v-"+jibSheetSideId("jsheetw")).textContent = (lastR&&lastR.jib&&lastR.jib.wow) ? "trimmed — wing-on-wing" : state.jsheetw<.08?"slack (lazy)":state.jsheetw<.5?"taking up — backing!":"hauled — jib backed";
   $("v-mainhal").textContent = state.mainhal<.35?"DROPPED "+Math.round(state.mainhal/.35*100)+"%":state.mainhal<.7?"hoisted · soft":"hoisted · tight";
   $("v-jcar").textContent = state.jcar<.33?"forward · power":state.jcar<.7?"middle":"aft · twist";
   $("v-jhal").textContent = state.jhal<.35?"DROPPED "+Math.round(state.jhal/.35*100)+"%":state.jhal<.7?"hoisted · snug":"hoisted · hard";
   // exact numbers (current → solver's fast setting) so trim is replicable
   for(const k of TRIM_KEYS){
-    const el=$("v-"+k); if(!el) continue;
+    const el=$("v-"+jibSheetSideId(k)); if(!el) continue;
     const cur=Math.round(state[k]*100);
     if(OPT && Math.abs(OPT[k]-state[k])>(k==="trav"?.08:.04))
       el.innerHTML = el.textContent+" · "+cur+" → <span class='opt'>"+Math.round(OPT[k]*100)+"</span>";
@@ -1214,11 +1223,11 @@ const LINEMETA = {
   outhaul:{name:"Outhaul",job:"belly in the lower main"},
   cunn:{name:"Cunningham",job:"main draft position"},
   backstay:{name:"Backstay",job:"flattens main + jib entry"},
-  jsheet:{name:"Jib sheet",job:"jib angle + leech"},
+  jsheet:{name:"Working jib sheet",job:"jib angle + leech"},
   jcar:{name:"Fairlead car",job:"jib twist vs foot"},
   jhal:{name:"Jib halyard",job:"hoist, then jib draft position"},
   mainhal:{name:"Main halyard",job:"hoist, then main luff tension"},
-  jsheetw:{name:"Windward jib sheet",job:"backs the jib upwind; flies it wing-on-wing on a run"},
+  jsheetw:{name:"Lazy jib sheet",job:"backs the jib upwind; flies it wing-on-wing on a run"},
   tws:{name:"True wind",job:"conditions changed"},
   pos:{name:"Point of sail",job:"conditions changed"},
   gust:{name:"Gust",job:"+6 kt on top of true wind"},
@@ -1247,7 +1256,7 @@ function renderFx(src,a,b){
   add("helm",a.helm,b.helm,.5,dg,distBand(a.helm,1,4),distBand(b.helm,1,4));
   add("speed",a.speed,b.speed,.05,kt,-a.speed,-b.speed);
   chips.sort((x,y)=>y.mag-x.mag);
-  $("fxLine").textContent=M.name;
+  $("fxLine").textContent=lineName(src);
   $("fxJob").textContent=M.job;
   $("fxChips").innerHTML = chips.length ? chips.slice(0,4).map(c=>c.html).join("")
     : `<span class="idle">no measurable change \u2014 try a bigger pull</span>`;
@@ -1275,13 +1284,13 @@ function renderNext(src){
     $("fxSub").textContent="Change the wind or heading and re-trim.";
   }else if((src in OPT) && Math.abs(state[src]-OPT[src])<=(src==="trav"?.08:.04)){
     nextEl.className="fx-zone fx-next good";
-    $("fxMove").textContent=`${M.name} is on the money — leave it, fix something else.`;
+    $("fxMove").textContent=`${lineName(src)} is on the money — leave it, fix something else.`;
     $("fxSub").textContent=`Fast setting at ${state.tws} kt / ${tw2}\u00B0 is about ${Math.round(OPT[src]*100)}. You are within a hair.`;
   }else{
     const m2=LINEMETA[worst];
     const d=OPT[worst]-state[worst];
     const verb = worst==="trav" ? (d>0?"Traveler up":"Traveler down")
-               : (d>0?"Pull the "+m2.name.toLowerCase():"Ease the "+m2.name.toLowerCase());
+               : (d>0?"Pull the "+lineName(worst).toLowerCase():"Ease the "+lineName(worst).toLowerCase());
     nextEl.className="fx-zone fx-next "+(wrongWay?"bad":"warn");
     $("fxMove").textContent=`${verb} \u2014 roughly ${Math.round(Math.abs(d)*100)}% of range to go.`;
     $("fxSub").textContent=(wrongWay?"That last move went the wrong way. ":"")+
@@ -1381,9 +1390,9 @@ function renderDial(){
 [["tws",v=>state.tws=+v],["sheet",v=>state.sheet=v/100],["trav",v=>state.trav=v/100],
  ["vang",v=>state.vang=v/100],["outhaul",v=>state.outhaul=v/100],["cunn",v=>state.cunn=v/100],
  ["backstay",v=>state.backstay=v/100],["mainhal",v=>state.mainhal=v/100],
- ["jsheet",v=>state.jsheet=v/100],["jsheetw",v=>state.jsheetw=v/100],["jcar",v=>state.jcar=v/100],
+ ["jsheetP",v=>state[jibSheetRole("jsheetP")]=v/100],["jsheetS",v=>state[jibSheetRole("jsheetS")]=v/100],["jcar",v=>state.jcar=v/100],
  ["jhal",v=>state.jhal=v/100]].forEach(([id,fn])=>{
-  $(id).addEventListener("input",e=>{fn(e.target.value);update(id);});
+  $(id).addEventListener("input",e=>{fn(e.target.value);update(jibSheetRole(id));});
 });
 $("gust").addEventListener("click",()=>{
   state.gust=!state.gust;
@@ -1404,7 +1413,7 @@ function tgt(r){
 function renderOptims(){
   if(!OPT) return;
   for(const k of TRIM_KEYS){
-    const input=$(k); if(!input) return;
+    const input=ctlOf(k); if(!input) return;
     const wrap=input.parentElement;
     let tick=wrap.querySelector(".opt-tick");
     if(!tick){ tick=document.createElement("div"); tick.className="opt-tick"; wrap.appendChild(tick);
@@ -1485,7 +1494,7 @@ $("perfect").addEventListener("click",()=>{
     if(p.__twa){ state.twaC=p.__twa; }
     for(const k of TRIM_KEYS){
       state[k]=p[k];
-      $(k).value=k==="trav"?Math.round(p[k]*100):Math.round(p[k]*100);
+      ctlOf(k).value=k==="trav"?Math.round(p[k]*100):Math.round(p[k]*100);
     }
     update("perfect");
     $("perfect").textContent="Solve perfect trim"; $("perfect").disabled=false;
@@ -1510,7 +1519,7 @@ $("tabs").addEventListener("click",e=>{
 
 /* ---------------- demo sweep: pull a line and watch ---------------- */
 function demo(id){
-  const el=$(id); if(!el) return;
+  const el=ctlOf(id); if(!el) return;
   const start=+el.value, min=+el.min, max=+el.max;
   const setV=v=>{el.value=v; el.dispatchEvent(new Event("input"));};
   if(matchMedia("(prefers-reduced-motion: reduce)").matches){
@@ -1608,14 +1617,31 @@ $("linecards").innerHTML = LINES.map((l,i)=>`
   <div class="note"><b>On the Colgate 26:</b> ${l.c26}</div>
   <button class="try" data-ctl="${LINE_CTL[i]}">Pull it in the simulator →</button>
  </div>`).join("");
-LINE_CTL.forEach((id,i)=>{ const el=$(id); if(!el) return;
+LINE_CTL.forEach((id,i)=>{ const el=ctlOf(id); if(!el) return;
   const l=LINES[i];
   el.closest(".ctl").title = l.n+"\nTighten \u2192 "+l.tight+"\nEase \u2192 "+l.ease;
 });
-["mainhal","jsheetw"].forEach(id=>{ const el=$(id); if(!el) return;
-  el.closest(".ctl").title = id==="mainhal"
-    ? "Main halyard\nBottom third of travel = the sail drops and piles on the boom.\nAbove that \u2192 luff tension (draft forward)."
-    : "Windward jib sheet\nHaul \u2192 backs the jib against the wind (heave-to, slow-motion tacks).\nSlack is its normal sailing state."; });
+["mainhal"].forEach(id=>{ const el=$(id); if(!el) return;
+  el.closest(".ctl").title = "Main halyard\nBottom third of travel = the sail drops and piles on the boom.\nAbove that \u2192 luff tension (draft forward)."; });
+const JIB_LINE = LINES.find(l=>l.n==="Jib sheet");
+let RAIL_TACK=null;
+// keep each side's slider showing the sheet that is physically on that side
+function syncJibSheetRail(){
+  const st=tackSign();
+  if(st!==RAIL_TACK){
+    RAIL_TACK=st;
+    for(const k of ["jsheet","jsheetw"]){ const el=ctlOf(k); if(el) el.value=Math.round(state[k]*100); }
+  }
+  for(const k of ["jsheet","jsheetw"]){
+    const el=ctlOf(k); if(!el) continue;
+    const ctl=el.closest(".ctl"); if(!ctl) continue;
+    const sub=ctl.querySelector(".sub");
+    if(sub) sub.textContent=(k==="jsheet"?"working \u00b7 ":"lazy \u00b7 ")+LINEMETA[k].job;
+    ctl.title = k==="jsheet"
+      ? lineName(k)+"\nTighten \u2192 "+JIB_LINE.tight+"\nEase \u2192 "+JIB_LINE.ease
+      : lineName(k)+"\nHaul \u2192 backs the jib against the wind (heave-to, slow-motion tacks).\nSlack is its normal sailing state.";
+  }
+}
 $("linecards").addEventListener("click",e=>{
   const b=e.target.closest(".try"); if(!b) return;
   showTab("sim");
@@ -1749,7 +1775,7 @@ function renderDrill(){
       let bi=0,bd=1e9; POS.forEach((p,pi)=>{const dd=Math.abs(p.twa-S.twa); if(dd<bd){bd=dd;bi=pi;}});
       state.posIdx=bi;
       $("tws").value=S.tws;
-      for(const k of TRIM_KEYS){ if(k in S.state){ state[k]=S.state[k]; const el=$(k); if(el) el.value=Math.round(S.state[k]*100); } }
+      for(const k of TRIM_KEYS){ if(k in S.state){ state[k]=S.state[k]; const el=ctlOf(k); if(el) el.value=Math.round(S.state[k]*100); } }
       showTab("sim");
       update(S.hi);                                            // highlights the mistrimmed line
     });
@@ -2576,7 +2602,7 @@ function detectCred(raw){
 function coachInstructions(){
   const lines=TRIM_KEYS.map(k=>{
     const m=LINEMETA[k];
-    return `- ${k} (${m.name}): ${m.job}; range ${k==="trav"?"-1..1":"0..1"}, now ${state[k].toFixed(2)}`;
+    return `- ${k} (${lineName(k)}): ${m.job}; range ${k==="trav"?"-1..1":"0..1"}, now ${state[k].toFixed(2)}`;
   }).join("\n");
   const r=lastR, o=OPT?Object.fromEntries(TRIM_KEYS.map(k=>[k,+OPT[k].toFixed(2)])):null;
   return `You are the sail-trim coach inside "Trim Lab", a Colgate 26 sail-trim simulator. The user sails a real Colgate 26 and is learning which line does what.
@@ -2608,7 +2634,7 @@ function coachApply(changes){
     if(!(k in changes)) continue;
     const v=clamp(Number(changes[k]), k==="trav"?-1:0, 1);
     if(!isFinite(v)) continue;
-    const el=$(k);
+    const el=ctlOf(k);
     const oldV=+el.value, lo=+el.min, hi=+el.max;
     state[k]=v;
     el.value=Math.round(v*100);
@@ -2623,7 +2649,7 @@ function coachApply(changes){
       holder.appendChild(t);
       setTimeout(()=>{ t.style.opacity="0"; setTimeout(()=>t.remove(),1000); }, 6000);
     }
-    applied.push(`${LINEMETA[k].name} ${oldV}→${el.value}`);
+    applied.push(`${lineName(k)} ${oldV}→${el.value}`);
   }
   if(!applied.length) return null;
   const a=lastR;
@@ -2828,7 +2854,7 @@ $("keyForget").addEventListener("click",()=>{ localStorage.removeItem(COACH_STOR
 coachInit();
 
 /* ---------------- go ---------------- */
-TRIM_KEYS.forEach(k=>{ const el=$(k); const w=document.createElement("div");
+TRIM_KEYS.forEach(k=>{ const el=ctlOf(k); const w=document.createElement("div");
   el.parentNode.insertBefore(w,el); w.appendChild(el); w.style.position="relative";
   const sub=document.createElement("div"); sub.className="sub"; sub.textContent=LINEMETA[k].job;
   w.parentNode.insertBefore(sub, w); });
