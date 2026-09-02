@@ -1998,11 +1998,19 @@ function segX(ax,az,bx,bz,cx,cz,dx,dz){ // 2D segment intersection -> t along ab
   const t=((cx-ax)*sz-(cz-az)*sx)/den, u=((cx-ax)*rz-(cz-az)*rx)/den;
   return (t>=0&&t<=1&&u>=0&&u<=1)?t:-1;
 }
-const PUFF_N=1600;
+// ---- wind dye as a wind-tunnel smoke rake ----
+// Dye is released from fixed lanes upstream at three heights, like the smoke
+// rake in a wind-tunnel test, and each puff is drawn as a comet streak along
+// its own velocity. The flow is steady, so every puff in a lane follows the
+// same path and the lanes read as streamlines: bunching and lengthening where
+// the air accelerates through the slot, spreading and shortening in the wake,
+// bending into the upwash ahead of the jib.
+const PUFF_LANES=36, PUFF_HEIGHTS=[2.2,5.0,7.8], PUFF_PER=18;
+const PUFF_N=PUFF_LANES*PUFF_HEIGHTS.length*PUFF_PER;
 function initPuffs(){
-  // dye as PARTICLES: one custom updatable mesh of camera-facing quads (the
-  // recovered engine bundle has no working thin instances or particle system,
-  // so the quads are billboarded on the CPU like the cloth ribbons)
+  // one custom updatable mesh of quads (the recovered engine bundle has no
+  // working thin instances or particle system); each quad is re-shaped every
+  // frame into a camera-facing streak from the puff's tail to its head
   const mesh=new BABYLON.Mesh("puffs",B3.scene);
   const pos=new Float32Array(PUFF_N*12), idx=new Uint32Array(PUFF_N*6);
   for(let i=0;i<PUFF_N;i++){
@@ -2012,9 +2020,12 @@ function initPuffs(){
   mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind,pos,true);
   mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind,new Float32Array(PUFF_N*12),true);
   mesh.setIndices(idx);
+  // (the slim engine bundle drops PBR's vertex-colour and opacity-texture
+  // paths, so the comet fade is geometric: the streak tapers to its tail)
   const pm=new BABYLON.PBRMaterial("puffM",B3.scene);
-  pm.unlit=true; pm.albedoColor=new BABYLON.Color3(.62,.93,.88); pm.alpha=.5;
-  pm.backFaceCulling=false;
+  pm.unlit=true; pm.albedoColor=new BABYLON.Color3(.70,.96,.92); pm.alpha=.6;
+  pm.transparencyMode=BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND;
+  pm.disableDepthWrite=true; pm.backFaceCulling=false;
   mesh.material=pm; mesh.parent=B3.boat; mesh.isPickable=false;
   mesh.alwaysSelectAsActiveMesh=true;                     // skip frustum test: verts move every frame
   const pp=new Float32Array(PUFF_N*3);
@@ -2025,18 +2036,22 @@ function initPuffs(){
 function seedPuff(pp,i,anywhere){
   const r=B3.dyeR||{awa:30};
   const upX=Math.cos(rad(r.awa)), upZ=-Math.sin(rad(r.awa));
-  const lat=(Math.random()*2-1)*7.5;
-  // fresh puffs enter upstream; the initial fill scatters them everywhere
-  const along=anywhere ? (Math.random()*30-14) : (13+Math.random()*5);
+  const lane=i%PUFF_LANES, hi=((i/PUFF_LANES)|0)%PUFF_HEIGHTS.length;
+  const k=(i/(PUFF_LANES*PUFF_HEIGHTS.length))|0;
+  const lat=(lane/(PUFF_LANES-1)*2-1)*7.2;
+  // the initial fill spaces each lane's puffs evenly along the run; later
+  // respawns re-enter at the rake upstream, jittered so the lanes stay dashed
+  const along=anywhere ? 16-30*(k+Math.random()*.3)/PUFF_PER : 15+Math.random()*3;
   pp[i*3  ]=upX*along-upZ*lat + .7;
-  pp[i*3+1]=1.4+Math.random()*7.6;
+  pp[i*3+1]=PUFF_HEIGHTS[hi];
   pp[i*3+2]=upZ*along+upX*lat;
 }
 function stepPuffs(dt){
   const dtc=Math.min(dt,.05), pp=B3.pp, pos=B3.puffPos, r=B3.dyeR;
   const upX=Math.cos(rad(r.awa)), upZ=-Math.sin(rad(r.awa));
   const vm=B3.scene.activeCamera.getViewMatrix().m;
-  const s=.055, rx=vm[0]*s, ry=vm[4]*s, rz=vm[8]*s, ux=vm[1]*s, uy=vm[5]*s, uz=vm[9]*s;
+  const cx=vm[2], cy=vm[6], cz=vm[10];                    // camera forward, world frame
+  const TAU=.10, W=.022;                                  // streak = the last 100 ms of travel
   for(let i=0;i<PUFF_N;i++){
     let x=pp[i*3], y=pp[i*3+1], z=pp[i*3+2];
     const [vx,vz]=flowVel(x,z,y,r);
@@ -2044,11 +2059,18 @@ function stepPuffs(dt){
     const along=(x-.7)*upX+z*upZ, lat=-(x-.7)*upZ+z*upX;
     if(along<-15||Math.abs(lat)>9||Math.hypot(x,z)>26){ seedPuff(pp,i,false); x=pp[i*3]; z=pp[i*3+2]; }
     else { pp[i*3]=x; pp[i*3+2]=z; }
-    const o=i*12;
-    pos[o  ]=x-rx-ux; pos[o+1 ]=y-ry-uy; pos[o+2 ]=z-rz-uz;
-    pos[o+3]=x+rx-ux; pos[o+4 ]=y+ry-uy; pos[o+5 ]=z+rz-uz;
-    pos[o+6]=x+rx+ux; pos[o+7 ]=y+ry+uy; pos[o+8 ]=z+rz+uz;
-    pos[o+9]=x-rx+ux; pos[o+10]=y-ry+uy; pos[o+11]=z-rz+uz;
+    // comet: the tail trails the head along the local velocity, so streak
+    // length is speed; the width faces the camera and tapers to the tail
+    const tx=x-vx*TAU, tz=z-vz*TAU;
+    const vl=Math.hypot(vx,vz)||1e-6, dx=vx/vl, dz=vz/vl;
+    let sx=-dz*cy, sy=dz*cx-dx*cz, sz=dx*cy;               // cross(flowDir, camForward)
+    const sl=Math.hypot(sx,sy,sz);
+    if(sl<1e-4){ sx=0; sy=W; sz=0; } else { sx*=W/sl; sy*=W/sl; sz*=W/sl; }
+    const o=i*12, k=.12;
+    pos[o  ]=tx-sx*k; pos[o+1 ]=y-sy*k; pos[o+2 ]=tz-sz*k;   // tail (narrow)
+    pos[o+3]=x-sx;    pos[o+4 ]=y-sy;   pos[o+5 ]=z-sz;      // head
+    pos[o+6]=x+sx;    pos[o+7 ]=y+sy;   pos[o+8 ]=z+sz;      // head
+    pos[o+9]=tx+sx*k; pos[o+10]=y+sy*k; pos[o+11]=tz+sz*k;   // tail (narrow)
   }
   B3.puffs.updateVerticesData(BABYLON.VertexBuffer.PositionKind,pos);
 }
