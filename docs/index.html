@@ -353,8 +353,9 @@
     .conc-nav button{font-family:var(--disp);font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
       background:var(--ink);color:var(--bg);border:none;border-radius:3px;padding:7px 14px;cursor:pointer}
     .conc-nav .dots{font-family:var(--mono);font-size:12px;color:var(--ink2);text-align:center;white-space:nowrap}
-    /* Drills: locked, centered */
-    #pane-drills.active{height:100%;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+    /* Drills: locked, centered 820px column (header + intro + card), top-aligned */
+    #pane-drills.active{height:100%;overflow:hidden;display:flex;flex-direction:column;min-height:0;align-items:center}
+    #pane-drills .prose,#pane-drills .drill{width:100%;max-width:820px;box-sizing:border-box}
     #pane-drills .prose h2{margin:4px 0 6px;font-size:15px}
     #pane-drills .prose p{font-size:12.5px !important;margin:0 0 8px}
     #pane-drills .drill{flex:0 1 auto;min-height:0;overflow:hidden;display:flex;flex-direction:column;max-width:820px}
