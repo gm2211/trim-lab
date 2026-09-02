@@ -737,8 +737,10 @@ function compute(){
     const jTension = clamp((s.jhal-.35)/.65, 0, 1);
     const draftJ = clamp(.41 + .011*(twsKt-8) - .12*jTension, .32, .60);
     // fixed sheet length = fixed max clew angle; the wind can luff the jib
-    // (weathervane at awa-4) but can never trim it — only the sheet does that
-    const clewLimit = 4 + (1-s.jsheet)*72;
+    // (weathervane at awa-4) but can never trim it — only the sheet does that.
+    // Quadratic: the first part of sheet ease opens the leech (twist) while the
+    // clew barely swings; the clew only goes out wide once the sheet is well eased.
+    const clewLimit = 4 + Math.pow(1-s.jsheet,2)*72;
     const clewLee = clamp(Math.min(awa-4, clewLimit) - s.jsheetw*30, -25, 80);
     // wing-on-wing: deep downwind, with the leeward sheet eased right off and the
     // windward (lazy) sheet taken up, the jib flies out on the windward side in
