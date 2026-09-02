@@ -31,7 +31,7 @@ import random as _r
 def pick(seed, opts): return _r.Random(seed).choice(opts)
 def symptom(d, seed=0):
     b=d["base"]; k=d["key"]; dr=d["dir"]
-    if k=="jhal" and dr==-1: return "the jib's luff has gone slack and sags off to leeward in scallops"
+    if k=="jhal" and dr==-1: return "the jib's luff has gone slack and is scalloping along its length"
     if k=="jhal" and dr==1: return "the jib's luff is bar-tight with a hard vertical crease behind it"
     if k=="mainhal" and dr==-1: return "the main halyard has slipped — the sail sits low, loose and baggy"
     if b["mluff"]: return "the front of the main is bubbling and won't fill"
@@ -79,18 +79,21 @@ for i,d in enumerate(sorted(picked,key=lambda x:(x["twa"],x["key"]))):
     a=next(idx for idx,o in enumerate(opts) if o["ok"])
     s=f'{POSP[d["pos"]]} in {WINDP[d["wind"]]}: {symptom(d,seed=i)}. {lossphrase(d["loss"])} — which line do you reach for?'
     heel=d["correct"]["dHeel"]
-    hc= f" and takes about {abs(heel):.0f}° of heel off" if heel<=-1.5 else (f" and stands the boat up into its power (heel +{heel:.0f}°)" if heel>=1.5 else "")
+    hc= f" and takes about {abs(heel):.0f}° of heel off" if heel<=-1.5 else (f" as the boat heels back into its power (heel +{heel:.0f}°)" if heel>=1.5 else "")
     also=""
-    if d["also"]:
-        x=d["also"][0]
-        also=f' {ACT[(x["j"],x["d2"])]} works too ({x["dSpd"]:+.1f} kt) — pick whichever hand is free.'
+    # only mention a runner-up move that is actually one of the four options
+    offered={(o["t"].split(" — ")[0]) for o in opts}
+    for x in d["also"]:
+        if ACT[(x["j"],x["d2"])] in offered and x["dSpd"]>=0.1:
+            also=f' {ACT[(x["j"],x["d2"])]} works too ({x["dSpd"]:+.1f} kt) — pick whichever hand is free.'
+            break
     top=d["distractors"][0]
-    td=f' {ACT[(top["j"],top["d2"])]}, the most tempting wrong answer, {"makes it worse" if top["dSpd"]<-0.05 else "does nothing for this problem"}.'
+    td=f' {ACT[(top["j"],top["d2"])]}, the most tempting wrong answer, {"makes it worse" if top["dSpd"]<-0.05 else ("helps a little but does not fix the problem" if top["dSpd"]>=0.1 else "does nothing for this problem")}.'
     g=d["correct"]["dSpd"]
     if g>=0.15:
         gain=f'In this exact setup the simulator measures that one move buying back {g:+.1f} kt{hc}.'
     else:
-        gain=f'The gain is small but real — this is a shape fix, not a throttle: the sail returns to its designed form and the helm settles{hc}.'
+        gain=(f'The gain is small but real' if g>=0.1 else 'The speed gain barely registers here')+f' — this is a shape fix, not a throttle: the sail returns to its designed form and the helm settles{hc}.'
     e=(f'{ACT[(d["key"],d["correct"]["d2"])]} to {CLAIM[(d["key"],d["correct"]["d2"])]}. '
        f'{gain}{also}{td} (Line: {NAME[d["key"]]}.)')
     out.append({"s":s,"o":[{"t":o["t"],"dSpd":(0.0 if abs(o["dSpd"])<0.05 else o["dSpd"]),"dHeel":(0.0 if abs(o["dHeel"])<0.05 else o["dHeel"])} for o in opts],"a":a,"e":e,
