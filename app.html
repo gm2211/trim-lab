@@ -8828,10 +8828,8 @@ $("concepts").innerHTML = CONCEPTS.map(c=>`
   nav.innerHTML=`<button id="concPrev">← Prev</button><span class="dots" id="concDots"></span><button id="concNext">Next →</button>`;
   $("pane-concepts").appendChild(nav);
   const cards=[...document.querySelectorAll("#concepts .concept")];
-  const label=i=>`${i+1} / ${cards.length} · ${CONCEPTS[i].h}`;
-  // Fixed label width (monospace, so ch == chars) keeps Prev/Next from
-  // sliding as the concept title length changes.
-  $("concDots").style.minWidth=Math.max(...cards.map((_,i)=>label(i).length))+"ch";
+  // The card itself carries the kicker + title; the pager only counts.
+  const label=i=>`${i+1} / ${cards.length}`;
   function showConc(i){
     CONC_IDX=(i+cards.length)%cards.length;
     cards.forEach((c,j)=>c.classList.toggle("cur",j===CONC_IDX));
