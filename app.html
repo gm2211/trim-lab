@@ -9534,6 +9534,8 @@ function clothStep(kind, r, dt, t){
   const rowAoa=[]; for(let iy=0;iy<c.NR;iy++) rowAoa.push(rowAoaAt(kind,r,iy/(c.NR-1)));
   const hoist=clamp((kind==="main"?state.mainhal:state.jhal)/.35,0,1);
   const dropping=hoist<.98;
+  // Verlet damping as a rate so the cloth behaves the same at any frame rate
+  const damp=Math.exp(-dt*10);
   for(let i=0;i<c.p.length;i++){
     if(c.w[i]===0) continue;
     const iy=(i/NC)|0, ix=i%NC;
@@ -9543,7 +9545,10 @@ function clothStep(kind, r, dt, t){
     let n=BABYLON.Vector3.Cross(e2,e1); const nl=n.length()||1; n.scaleInPlace(1/nl);
     const dot=n.x*wx+n.z*wz;
     const luffRow=rowAoa[iy]<5;
-    const press=(luffRow?.06:.5)*aws*aws*1.6;
+    // a trimmed sail is nearly rigid: pressure only breathes the commanded
+    // shape (the shape spring below carries most of the load); starved rows
+    // get a whisper of pressure plus the travelling flog wave
+    const press=(luffRow?.1:.35)*aws*aws;
     let f=n.scale(press*dot);
     if(luffRow){ const ph=t*22+ix*1.7+iy*.9;
       f.addInPlace(n.scale(Math.sin(ph)*aws*aws*.9)); }
@@ -9551,9 +9556,9 @@ function clothStep(kind, r, dt, t){
       const ph2=ix*2.3+iy*1.1;
       f.z+=Math.sin(ph2)*6*(1-hoist); f.x+=Math.cos(ph2*1.7)*3*(1-hoist); }
     const px=c.p[i].x, py=c.p[i].y, pz=c.p[i].z;
-    c.p[i].x += (px-c.pp[i].x)*.94 + f.x*dt*dt;
-    c.p[i].y += (py-c.pp[i].y)*.94 + (f.y-25)*dt*dt;
-    c.p[i].z += (pz-c.pp[i].z)*.94 + f.z*dt*dt;
+    c.p[i].x += (px-c.pp[i].x)*damp + f.x*dt*dt;
+    c.p[i].y += (py-c.pp[i].y)*damp + (f.y-25)*dt*dt;
+    c.p[i].z += (pz-c.pp[i].z)*damp + f.z*dt*dt;
     c.pp[i].set(px,py,pz);
   }
   const flatT=[];
@@ -9562,11 +9567,12 @@ function clothStep(kind, r, dt, t){
   for(let i=0;i<c.p.length;i++){ if(c.w[i]===0) continue;
     const iy=(i/NC)|0, ix=i%NC, hf=iy/(c.NR-1);
     // the sheet tensions the jib's leech and foot: those edges hold their
-    // commanded shape firmly while the body between them breathes
+    // commanded shape at least as firmly as the body, which is itself stiff
+    // enough that a trimmed sail reads as rigid and only breathes
     const edge=kind==="jib"&&(ix===NC-1||iy===0);
-    const k=(rowAoa[iy]<5 ? .05 : edge ? .30 : .06+.22*hf*hf)*shapeK;
+    const k=(rowAoa[iy]<5 ? .05 : Math.max(edge?.30:0, .25+.2*hf*hf))*shapeK;
     c.p[i].x+=(flatT[i].x-c.p[i].x)*k; c.p[i].y+=(flatT[i].y-c.p[i].y)*k; c.p[i].z+=(flatT[i].z-c.p[i].z)*k; }
-  for(let it=0;it<5;it++) for(const [i,j,rest] of c.cons){
+  for(let it=0;it<6;it++) for(const [i,j,rest] of c.cons){
     const dx=c.p[j].x-c.p[i].x, dy=c.p[j].y-c.p[i].y, dz=c.p[j].z-c.p[i].z;
     const dEuc=Math.sqrt(dx*dx+dy*dy+dz*dz)||1e-6;
     const diff=(dEuc-rest)/dEuc, wi=c.w[i], wj=c.w[j], ws=wi+wj;
@@ -9575,9 +9581,12 @@ function clothStep(kind, r, dt, t){
     c.p[i].x+=sx*wi; c.p[i].y+=sy*wi; c.p[i].z+=sz*wi;
     c.p[j].x-=sx*wj; c.p[j].y-=sy*wj; c.p[j].z-=sz*wj;
   }
-  const rows=[];
+  return clothRows(kind);
+}
+function clothRows(kind){
+  const c=CLOTH[kind], rows=[];
   for(let iy=0;iy<c.NR;iy++){ const row=[];
-    for(let ix=0;ix<NC;ix++) row.push(c.p[iy*NC+ix]);
+    for(let ix=0;ix<c.NC;ix++) row.push(c.p[iy*c.NC+ix]);
     rows.push(row); }
   return rows;
 }
@@ -9737,17 +9746,26 @@ function tick3D(){
   if(B3.dyeOn&&B3.puffs&&B3.dyeR) stepPuffs(dt);
   // cloth dynamics every frame
   if(CLOTH.main){
-    const cdt=Math.min(dt,.033);
     // atmospheric turbulence: ~10% speed modulation + direction wander, so the
     // cloth breathes — laboratory-steady wind would hold a trimmed sail rigid
     const g=1+.10*Math.sin(B3.t*1.3)+.05*Math.sin(B3.t*3.1+1.7)+.04*Math.sin(B3.t*.55+4);
     const rT=Object.assign({},r);
     rT.aws=r.aws*g; rT.awa=r.awa+2.2*Math.sin(B3.t*.9+2)+1.2*Math.sin(B3.t*2.3);
-    const rowsM=clothStep("main", rT, cdt, B3.t);
-    const rowsJ=clothStep("jib", rT, cdt, B3.t);
+    // fixed 60 Hz substeps: forces enter the Verlet update as f*dt*dt, so a
+    // 30 fps frame used to push the cloth 4x harder per step than a 60 fps one
+    // and the sails rippled on slower machines / busy tabs
+    const CDT=1/60;
+    B3.clothAcc=Math.min((B3.clothAcc||0)+dt, CDT*3);
+    let rowsM=null, rowsJ=null;
+    while(B3.clothAcc>=CDT){
+      B3.clothAcc-=CDT;
+      rowsM=clothStep("main", rT, CDT, B3.t-B3.clothAcc);
+      rowsJ=clothStep("jib", rT, CDT, B3.t-B3.clothAcc);
+    }
     if(rowsM) B3.mainSail=BABYLON.MeshBuilder.CreateRibbon("mainSail",{pathArray:rowsM,instance:B3.mainSail});
     if(rowsJ) B3.jibSail =BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:rowsJ,instance:B3.jibSail});
-    if(B3.tt) stepTelltales(rowsM, rowsJ, rT, cdt);
+    // yarns run at frame rate against whatever the cloth currently holds
+    if(B3.tt) stepTelltales(rowsM||clothRows("main"), rowsJ||clothRows("jib"), rT, dt);
   }
   // heel to port (+z down means rotate.x negative in LH — sign tuned visually)
   const target=-S*rad(r.heel);                       // heel to leeward, whichever side that is
