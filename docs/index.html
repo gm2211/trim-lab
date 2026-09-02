@@ -7908,6 +7908,7 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror)
 }
 function compute(){
   const s = state;
+  const JIB_F=2.90, JIB_H=.85, JIB_ZCAR=.62;   // jib foot, clew height above the car, track offset from centreline
   const twsKt = s.tws + (s.gust?6:0);
   const tws = twsKt*KT;
   const twa = s.twaOv || s.twaC || POS[s.posIdx].twa;
@@ -7950,7 +7951,6 @@ function compute(){
   // with R = hypot(3.72-xCar, ZCAR), h = .85 (clew height above the car),
   // F = 2.90, d0 = atan2(ZCAR, 3.72-xCar) the angle where the sheet leads
   // straight along the foot (shortest possible sheet: two-blocked).
-  const JIB_F=2.90, JIB_H=.85, JIB_ZCAR=.62;
   function jibLead(jcar){
     const xCar=.6-.8*jcar;                       // same track as the 3D view
     const a=3.72-xCar, R=Math.hypot(a,JIB_ZCAR), d0=deg(Math.atan2(JIB_ZCAR,a));
@@ -8438,11 +8438,10 @@ function renderHeel(r){
 const easeWords = ["fully eased","eased","eased a bit","firm","hard on"];
 function word(v){ return easeWords[clamp(Math.floor(v*4.999),0,4)]; }
 function jsheetLabel(r){
-  const w=word(state.jsheet);
-  if(!r||!r.jib||r.jib.sheetT===undefined) return w;
-  const out=Math.round(r.jib.eased*100)+" cm out";
-  if(!r.jib.taut) return w+" · "+out+" · slack "+Math.round(r.jib.sheetSlack*100)+" cm";
-  return w+" · "+out+" · load "+Math.round(r.jib.sheetT/9.81)+" kg";
+  if(!r||!r.jib||r.jib.sheetT===undefined) return word(state.jsheet);
+  const out=r.jib.eased<.01?"two-blocked":Math.round(r.jib.eased*100)+" cm out";
+  if(!r.jib.taut) return out+" \u00b7 "+Math.round(r.jib.sheetSlack*100)+" cm slack";
+  return out+" \u00b7 "+Math.round(r.jib.sheetT/9.81)+" kg";
 }
 function renderVals(){
   syncJibSheetRail();
