@@ -617,17 +617,21 @@ function panelSolve(els, awa){
   for(let j=0;j<n;j++) sums[elIdx[j]]+=g[j];
   return {vor,g,sums};
 }
-function updatePanel(shM, shJ, awa){
+function updatePanelFactors(shM, shJ, awa){
   const hf=.5, chM=3.3*(1-.9*hf), chJ=2.9*(1-.9*hf);
   const angM=shM.boom+shM.twist*Math.pow(hf,1.15);
   const angJ=shJ.boom+shJ.twist*Math.pow(hf,1.15);
   const elM=panelElement(.72, chM, angM, shM.depth, shM.draft, 20);
   const elJ=panelElement(2.26, chJ, angJ, shJ.depth, shJ.draft, 20);
   const both=panelSolve([elM,elJ],awa), mOnly=panelSolve([elM],awa), jOnly=panelSolve([elJ],awa);
-  if(!both||!mOnly||!jOnly){ PANEL.ok=false; return; }
+  if(!both||!mOnly||!jOnly){ PANEL.ok=false; return false; }
   PANEL.fM=clamp(Math.abs(both.sums[0])/Math.max(Math.abs(mOnly.sums[0]),1e-6), .75, 1.25);
   PANEL.fJ=clamp(Math.abs(both.sums[1])/Math.max(Math.abs(jOnly.sums[0]),1e-6), .75, 1.25);
   PANEL.vor=both.vor; PANEL.g=[...both.g]; PANEL.ok=true;
+  return true;
+}
+function updatePanel(shM, shJ, awa){
+  if(!updatePanelFactors(shM, shJ, awa)) return;
   // per-height solutions for the dye field (geometry matches the drawn sail)
   PANEL.H=[];
   for(const y of [2.2,5,7.8]){
@@ -678,7 +682,10 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror)
     if(aoa < 1){ cl = 0; cd += .05; }                        // flogging
     else if(aoa <= stallA){ cl = Math.min(clmax, .078*aoa*(1+1.8*c))*clFac; }
     else { const p = clamp((aoa-stallA)/28, 0, 1);           // separated flow
-           cl = clmax*(1-.72*p); cd += .8*p*p + .22*p; }
+           cl = clmax*(1-.72*p); cd += .8*p*p + .22*p;
+           // deep stall → flat plate: lift dies toward 90°, drag saturates ~1.3
+           const p2 = clamp((aoa-stallA-28)/40, 0, 1);
+           if(p2>0){ cl = cl*(1-p2) + p2*Math.max(0, .9*Math.sin(2*rad(aoa))); cd += .3*p2; } }
     cl *= slotF;                                             // solved slot interaction
     cd += cl*cl/(Math.PI*geom.ar*.8);                        // induced
     const q = .5*RHO_A*aws*aws*(geom.area/5)*heelEff*blanket*.80*(aScale===undefined?1:aScale);
@@ -696,8 +703,10 @@ function compute(){
   const twa = s.twaOv || s.twaC || POS[s.posIdx].twa;
 
   let V=2.0, heel=8, lee=3, r=null;
+  PANEL.ok=false;                              // it 0 uses factor 1; deterministic per-compute
   for(let it=0; it<16; it++){
     r = step(V, heel, lee);
+    if(it===1) updatePanelFactors(r.sh.m, r.sh.j, r.awa);
     V    = clamp(V*.55 + r.Vnew*.45, .05, 4.2);
     heel = heel*.55 + r.heelNew*.45;
     lee  = lee*.55 + r.leeNew*.45;
@@ -1075,7 +1084,10 @@ function renderDeck(r){
 
 /* ---------------- render: twist from astern ---------------- */
 function renderTwist(r){
-  const EX=2.3;   // display exaggeration — angles are small; labeled below
+  // display exaggeration — small upwind angles are stretched ×2.3, but never
+  // past 80° on screen so an eased boom/clew off the wind does not fold back
+  const maxAng=Math.max(1, Math.abs(r.main.boom)+r.main.twist, Math.abs(r.main.boom)+tgt(r).mt, Math.abs(r.jib.clew)+r.jib.twist);
+  const EX=Math.min(2.3, 80/maxAng);
   // looking at the boat from dead astern: mast vertical, each height's chord
   // sticks out to leeward (left) by sin(local angle) * chord length
   const baseX=250, footY=300, headY=30, H=footY-headY;
@@ -1122,7 +1134,7 @@ function renderTwist(r){
   for(let i=1;i<4;i++){ const y=footY-H*.92*i/4;
     out += `<line x1="60" y1="${y}" x2="${baseX}" y2="${y}" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"/>`; }
   const topAoa=r.awa+7-(r.main.boom+r.main.twist);
-  out += `<text x="20" y="${footY+16}" font-size="12.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° · head opens +${fmt1(r.main.twist)}° · angles ×${EX}</text>
+  out += `<text x="20" y="${footY+16}" font-size="12.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° · head opens +${fmt1(r.main.twist)}° · angles ×${EX.toFixed(1)}</text>
     <text x="40" y="${headY+2}" font-size="10" fill="var(--good)">■ driving</text>
     <text x="40" y="${headY+16}" font-size="10" fill="var(--ink3)">■ spilling</text>
     <text x="40" y="${headY+30}" font-size="10" fill="var(--warn)">■ soft</text>
@@ -1210,8 +1222,10 @@ const LINEMETA = {
   gust:{name:"Gust",job:"+6 kt on top of true wind"},
   perfect:{name:"Perfect trim",job:"physics optimum (close-hauled: best VMG)"},
 };
+let LAST_FX_SRC=null;
 function renderFx(src,a,b){
   const M=LINEMETA[src]; if(!M) return;
+  LAST_FX_SRC=src;
   const distBand=(x,lo,hi)=>x<lo?lo-x:x>hi?x-hi:0;
   const chips=[];
   const add=(label,ov,nv,eps,f,dOld,dNew)=>{
@@ -1224,6 +1238,7 @@ function renderFx(src,a,b){
   add("main belly",a.main.depth,b.main.depth,.004,pc,Math.abs(a.main.depth-a.idl.depth),Math.abs(b.main.depth-b.idl.depth));
   add("main draft",a.main.draft,b.main.draft,.007,pc,Math.abs(a.main.draft-a.idl.draftPos),Math.abs(b.main.draft-b.idl.draftPos));
   add("boom angle",a.main.boom,b.main.boom,1.5,dg,0,0);
+  add("jib angle",a.jib.clew,b.jib.clew,1.5,dg,0,0);
   add("jib twist",a.jib.twist,b.jib.twist,.8,dg,Math.abs(a.jib.twist-a.idl.twist),Math.abs(b.jib.twist-b.idl.twist));
   add("jib belly",a.jib.depth,b.jib.depth,.004,pc,Math.abs(a.jib.depth-a.idl.depth),Math.abs(b.jib.depth-b.idl.depth));
   add("heel",a.heel,b.heel,.5,dg,distBand(a.heel,12,22),distBand(b.heel,12,22));
@@ -1234,7 +1249,13 @@ function renderFx(src,a,b){
   $("fxJob").textContent=M.job;
   $("fxChips").innerHTML = chips.length ? chips.slice(0,4).map(c=>c.html).join("")
     : `<span class="idle">no measurable change \u2014 try a bigger pull</span>`;
-  // NEXT MOVE: the solver's biggest remaining gain across every line
+  renderNext(src);
+}
+// NEXT MOVE: the solver's biggest remaining gain across every line. Split out
+// from renderFx so scheduleOptims() can refresh it once OPT re-solves 500ms
+// later, without needing renderFx's before/after (a,b) snapshot.
+function renderNext(src){
+  const M=LINEMETA[src]; if(!M) return;
   const nextEl=$("fxNext");
   if(!OPT){ $("fxMove").textContent="\u2026solver warming up"; $("fxSub").textContent=""; nextEl.className="fx-zone fx-next"; return; }
   let worst=null, wd=0;
@@ -1402,6 +1423,7 @@ function scheduleOptims(){
   optTimer=setTimeout(()=>{ OPT=solvePerfectTrim(true);
     try{ OPT_R=computeWith(OPT); }catch(e){ OPT_R=null; }
     renderOptims();
+    if(LAST_FX_SRC) renderNext(LAST_FX_SRC);
     if(lastR){ renderTiles(lastR); renderTable(lastR); renderSections(lastR); renderTwist(lastR); }
   }, 500);
 }
