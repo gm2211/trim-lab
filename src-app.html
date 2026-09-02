@@ -664,11 +664,10 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror)
     const awy = Vt*Math.sin(rad(twa))*Math.cos(heelR);
     const aws = Math.hypot(awx,awy);
     const awa = clamp(deg(Math.atan2(awy,awx)), 2, 178);
-    const delta = Math.abs(sh.boom) + sh.twist*Math.pow(hf,1.15);   // local chord angle off centreline
-    // a sail set to windward (wing-on-wing) meets the wind on its other face:
-    // incidence is measured from the reversed chord and its lift flips side
-    const aoa = mirror ? 180 - awa - delta : awa - delta;
-    const liftSign = mirror ? -1 : 1;
+    const delta = (mirror?Math.abs(sh.boom):sh.boom) + sh.twist*Math.pow(hf,1.15);   // local chord angle
+    // a sail set to windward (wing-on-wing) is filled from astern on its inner
+    // face: incidence is how far the flow has swung past the sail's plane
+    const aoa = mirror ? awa + delta - 180 : awa - delta;
     const c = sh.depth*(1-.25*hf);                           // local camber
     const stallA = 11 + 55*c;
     const clmax = (0.95 + 2.5*c)*clFac;
@@ -681,9 +680,9 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror)
     cd += cl*cl/(Math.PI*geom.ar*.8);                        // induced
     const q = .5*RHO_A*aws*aws*(geom.area/5)*heelEff*blanket*.80*(aScale===undefined?1:aScale);
     const L=q*cl, D=q*cd, sA=Math.sin(rad(awa)), cA=Math.cos(rad(awa));
-    drive += liftSign*L*sA - D*cA;
-    side  += liftSign*L*cA + D*sA;
-    hm    += (liftSign*L*cA + D*sA)*z;
+    drive += L*sA - D*cA;
+    side  += L*cA + D*sA;
+    hm    += (L*cA + D*sA)*z;
   }
   return {drive, side, hm};
 }
@@ -744,7 +743,7 @@ function compute(){
     // wing-on-wing: deep downwind, with the leeward sheet eased right off and the
     // windward (lazy) sheet taken up, the jib flies out on the windward side in
     // clear air. The windward sheet's paid-out length sets how far it squares out.
-    const wowF = clamp((awa-150)/10,0,1) * clamp((s.jsheetw-.10)/.15,0,1) * clamp((.35-s.jsheet)/.15,0,1);
+    const wowF = clamp((awa-135)/15,0,1) * clamp((s.jsheetw-.10)/.15,0,1) * clamp((.35-s.jsheet)/.15,0,1);
     const clewWind = -(4 + (1-s.jsheetw)*72);
     const clewJ = clewLee*(1-wowF) + clewWind*wowF;
     const wow = wowF>.5;
@@ -765,7 +764,7 @@ function compute(){
     const blanketJ = shadowJ*(1-sh.wowF) + 1*sh.wowF;                  // wing-on-wing flies in clear air
     const hoistM = clamp(s.mainhal/.35, 0, 1), hoistJ = clamp(s.jhal/.35, 0, 1);
     const FM = segForces(sh.m, BOAT.main, tws, twa, V, heelR, 1, PANEL.ok?PANEL.fM:1, Math.pow(hoistM,1.6));
-    const FJ = segForces(sh.j, BOAT.jib,  tws, twa, V, heelR, blanketJ, PANEL.ok?PANEL.fJ:1, Math.pow(hoistJ,1.6), sh.j.boom<0);
+    const FJ = segForces(sh.j, BOAT.jib,  tws, twa, V, heelR, blanketJ, PANEL.ok?PANEL.fJ:1, Math.pow(hoistJ,1.6), sh.j.wow);
     const drive = FM.drive + FJ.drive;
     const side  = FM.side + FJ.side;
     const hm    = FM.hm + FJ.hm;
@@ -791,7 +790,7 @@ function compute(){
     const {aws,awa,sh} = rr;
     const off = awa>90;
     const aoaM = awa - sh.m.boom - sh.m.twist*.5;
-    const aoaJ = sh.j.boom<0 ? 180 - awa - Math.abs(sh.j.boom) - sh.j.twist*.5 : awa - sh.j.boom - sh.j.twist*.5;
+    const aoaJ = sh.j.wow ? awa + Math.abs(sh.j.boom) + sh.j.twist*.5 - 180 : awa - sh.j.boom - sh.j.twist*.5;
     const idl = ideals(twsKt, awa);
     function sailEff(sp, aoa, aoaIdl, dpIdl){
       if(off){
@@ -830,9 +829,9 @@ function coachAdvice(r){
   if(r.heel>26) push(10+(r.heel-26), "<b>Overpowered.</b> First move: traveler down. Then flatten — backstay and outhaul on — and let the top twist open (ease mainsheet a touch, keep vang moderate).");
   if(off){
     if(OPT && OPT.jsheet < state.jsheet-.15) push(7, "The jib is strapped in for this course — <b>ease the jib sheet</b> toward "+Math.round(OPT.jsheet*100)+" and let it swing out with the wind.");
-    else if(r.jib.wow) push(1.5, "Jib is flying <b>wing-on-wing</b> to windward, in clear air. Hold the course: heading up much past 150° apparent collapses it behind the main.");
-    else if(r.awa>150) push(3, "Dead downwind the jib is blanketed behind the main. <b>Ease the leeward jib sheet right off and take up the windward sheet</b> to fly it wing-on-wing on the other side.");
-    else if(r.awa>115) push(2.5, "Deep downwind the jib sits in the main's wind shadow — without a whisker pole it can't fly squared-out, so some sheet tension just keeps it from collapsing. Past ~150° apparent you can fly it wing-on-wing instead.");
+    else if(r.jib.wow) push(1.5, "Jib is flying <b>wing-on-wing</b> to windward, in clear air. Hold the course: heading up onto a reach collapses it against the forestay.");
+    else if(r.awa>145) push(3, "Dead downwind the jib is blanketed behind the main. <b>Ease the leeward jib sheet right off and take up the windward sheet</b> to fly it wing-on-wing on the other side.");
+    else if(r.awa>115) push(2.5, "Deep downwind the jib sits in the main's wind shadow — without a whisker pole it can't fly squared-out, so some sheet tension just keeps it from collapsing. Deeper than ~145° apparent you can fly it wing-on-wing instead.");
     if(r.main.boom < 45) push(6, "Off the wind, <b>ease the mainsheet</b> well out — the sail should hang square to the apparent wind. The boom can go out until it nearly touches the side wires holding the mast.");
     if(r.main.twist>30) push(4, "Boom lifting and the top of the main spilling? <b>Vang on</b> — off the wind the vang, not the sheet, holds the leech.");
     if(r.main.twist<12) push(3, "Leech clamped shut for a run — <b>ease the vang</b> a little so the top can breathe.");
@@ -1062,7 +1061,7 @@ function renderTwist(r){
   let out=`<line x1="${baseX}" y1="${headY-8}" x2="${baseX}" y2="${footY+8}" stroke="var(--ink2)" stroke-width="2.5"/>
     <text x="${baseX+8}" y="${headY+2}" font-size="10" fill="var(--ink3)">mast</text>`;
   function airColor(hf, boom, twist){
-    const aoa = boom<-30 ? 180 - r.awa - 7*hf - (Math.abs(boom) + twist*Math.pow(hf,1.15))
+    const aoa = boom<-30 ? r.awa + 7*hf + (Math.abs(boom) + twist*Math.pow(hf,1.15)) - 180
                          : r.awa + 7*hf - (boom + twist*Math.pow(hf,1.15));
     if(r.awa>90){                                    // off the wind: the sail works as a drag device
       if(aoa<6) return "var(--ink3)";                // spilling / luffing
@@ -2099,7 +2098,7 @@ function clothStep(kind, r, dt, t){
   const wingSet = kind==="jib" && r.jib.wow;
   const rowAoa=[]; for(let iy=0;iy<c.NR;iy++){ const hf=iy/(c.NR-1);
     const ang = Math.abs(sailAng) + sailTw*Math.pow(hf,1.15);
-    rowAoa.push(wingSet ? 180 - r.awa - 7*hf - ang : r.awa + 7*hf - (sailAng + sailTw*Math.pow(hf,1.15))); }
+    rowAoa.push(wingSet ? r.awa + 7*hf + ang - 180 : r.awa + 7*hf - (sailAng + sailTw*Math.pow(hf,1.15))); }
   const hoist=clamp((kind==="main"?state.mainhal:state.jhal)/.35,0,1);
   const dropping=hoist<.98;
   for(let i=0;i<c.p.length;i++){
