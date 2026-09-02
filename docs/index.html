@@ -7858,7 +7858,7 @@ const BOAT={
   jib :{area:13.9, span:8.2,  z0:1.0, ar:4.6},
   keel:{area:1.55, slope:3.6, effDepth:1.15},
 };
-function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale){
+function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror){
   // sh: {twist,depth,draft,boom}  geom: BOAT.main/jib  → {drive, side, hm}
   let drive=0, side=0, hm=0;
   const heelEff = Math.pow(Math.cos(heelR), 1.3);
@@ -7872,8 +7872,10 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale){
     const awy = Vt*Math.sin(rad(twa))*Math.cos(heelR);
     const aws = Math.hypot(awx,awy);
     const awa = clamp(deg(Math.atan2(awy,awx)), 2, 178);
-    const delta = sh.boom + sh.twist*Math.pow(hf,1.15);      // local chord angle
-    const aoa = awa - delta;
+    const delta = (mirror?Math.abs(sh.boom):sh.boom) + sh.twist*Math.pow(hf,1.15);   // local chord angle
+    // a sail set to windward (wing-on-wing) is filled from astern on its inner
+    // face: incidence is how far the flow has swung past the sail's plane
+    const aoa = mirror ? awa + delta - 180 : awa - delta;
     const c = sh.depth*(1-.25*hf);                           // local camber
     const stallA = 11 + 55*c;
     const clmax = (0.95 + 2.5*c)*clFac;
@@ -7945,10 +7947,17 @@ function compute(){
     // fixed sheet length = fixed max clew angle; the wind can luff the jib
     // (weathervane at awa-4) but can never trim it — only the sheet does that
     const clewLimit = 4 + (1-s.jsheet)*72;
-    const clewJ  = clamp(Math.min(awa-4, clewLimit) - s.jsheetw*30, -25, 80);
-    return {upwind,
+    const clewLee = clamp(Math.min(awa-4, clewLimit) - s.jsheetw*30, -25, 80);
+    // wing-on-wing: deep downwind, with the leeward sheet eased right off and the
+    // windward (lazy) sheet taken up, the jib flies out on the windward side in
+    // clear air. The windward sheet's paid-out length sets how far it squares out.
+    const wowF = clamp((awa-135)/15,0,1) * clamp((s.jsheetw-.10)/.15,0,1) * clamp((.35-s.jsheet)/.15,0,1);
+    const clewWind = -(4 + (1-s.jsheetw)*72);
+    const clewJ = clewLee*(1-wowF) + clewWind*wowF;
+    const wow = wowF>.5;
+    return {upwind, wowF,
       m:{leech:leechM,twist:twistM,depth:depthM,draft:draftM,boom:boomM,slack:sheetSlack},
-      j:{leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ}};
+      j:{leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ,wow}};
   }
 
   function step(V, heel, lee){
@@ -7959,10 +7968,11 @@ function compute(){
     const aws = Math.hypot(awx,awy);
     const awa = clamp(deg(Math.atan2(awy,awx)), 8, 178);
     const sh = shapes(awa);
-    const blanketJ = awa>140 ? clamp(1-(awa-140)/40*.65, .35, 1) : 1;  // jib in main's shadow on a run
+    const shadowJ = awa>140 ? clamp(1-(awa-140)/40*.65, .35, 1) : 1;  // jib in main's shadow on a run
+    const blanketJ = shadowJ*(1-sh.wowF) + 1*sh.wowF;                  // wing-on-wing flies in clear air
     const hoistM = clamp(s.mainhal/.35, 0, 1), hoistJ = clamp(s.jhal/.35, 0, 1);
     const FM = segForces(sh.m, BOAT.main, tws, twa, V, heelR, 1, PANEL.ok?PANEL.fM:1, Math.pow(hoistM,1.6));
-    const FJ = segForces(sh.j, BOAT.jib,  tws, twa, V, heelR, blanketJ, PANEL.ok?PANEL.fJ:1, Math.pow(hoistJ,1.6));
+    const FJ = segForces(sh.j, BOAT.jib,  tws, twa, V, heelR, blanketJ, PANEL.ok?PANEL.fJ:1, Math.pow(hoistJ,1.6), sh.j.wow);
     const drive = FM.drive + FJ.drive;
     const side  = FM.side + FJ.side;
     const hm    = FM.hm + FJ.hm;
@@ -7988,7 +7998,7 @@ function compute(){
     const {aws,awa,sh} = rr;
     const off = awa>90;
     const aoaM = awa - sh.m.boom - sh.m.twist*.5;
-    const aoaJ = awa - sh.j.boom - sh.j.twist*.5;
+    const aoaJ = sh.j.wow ? awa + Math.abs(sh.j.boom) + sh.j.twist*.5 - 180 : awa - sh.j.boom - sh.j.twist*.5;
     const idl = ideals(twsKt, awa);
     function sailEff(sp, aoa, aoaIdl, dpIdl){
       if(off){
@@ -8008,7 +8018,7 @@ function compute(){
     const J = sailEff(sh.j, aoaJ, idl.aoa-4, idl.draftPosJ);
     const eff = M.eff*.58 + J.eff*.42;
     const helm = clamp(-1 + Math.max(0,heel-8)*.42 + (sh.m.draft-.43)*28 + Math.max(0,s.trav)*1.2 + (sh.m.depth-.11)*30*sh.upwind, -4, 15);
-    return {tws:twsKt, twa, aws:aws/KT, awa, upwind:sh.upwind, off,
+    return {tws:twsKt, twa, aws:aws/KT, awa, upwind:sh.upwind, wowF:sh.wowF, off,
       main:{...sh.m, aoa:aoaM, eff:M.eff, luff:M.luff, stall:M.stall},
       jib:{...sh.j, clew:sh.j.boom, aoa:aoaJ, eff:J.eff, luff:J.luff, stall:J.stall},
       idl, eff, heel:clamp(heel,0,40), helm, leeway:lee, sheetSlack:sh.m.slack, speed:V/KT};
@@ -8023,11 +8033,13 @@ function coachAdvice(r){
   if((state.twaC||POS[state.posIdx].twa)<27) push(32, "<b>In irons.</b> The bow is inside the no-sail zone — no sail trim can make lift here; the sails can only flap. Drag the wind back to at least the close-hauled mark to fill them.");
   if(state.mainhal<.35) push(30, "<b>Main halyard released — the main is coming down.</b> Hoist it back up (halyard to the top of its range) before trimming anything else.");
   if(state.jhal<.35) push(28, "<b>Jib halyard released — the jib is dropping.</b> Hoist first, then set luff tension.");
-  if(state.jsheetw>.25) push(26, "<b>Windward jib sheet is hauled — the jib is backed.</b> That's how you heave-to on purpose; release it to sail normally.");
+  if(state.jsheetw>.25 && !r.jib.wow) push(26, "<b>Windward jib sheet is hauled — the jib is backed.</b> That's how you heave-to on purpose; release it to sail normally.");
   if(r.heel>26) push(10+(r.heel-26), "<b>Overpowered.</b> First move: traveler down. Then flatten — backstay and outhaul on — and let the top twist open (ease mainsheet a touch, keep vang moderate).");
   if(off){
     if(OPT && OPT.jsheet < state.jsheet-.15) push(7, "The jib is strapped in for this course — <b>ease the jib sheet</b> toward "+Math.round(OPT.jsheet*100)+" and let it swing out with the wind.");
-    else if(r.awa>115) push(2.5, "Deep downwind the jib sits in the main's wind shadow — without a whisker pole it can't fly squared-out, so some sheet tension just keeps it from collapsing. (Poling out / wing-on-wing isn't modeled yet.)");
+    else if(r.jib.wow) push(1.5, "Jib is flying <b>wing-on-wing</b> to windward, in clear air. Hold the course: heading up onto a reach collapses it against the forestay.");
+    else if(r.awa>145) push(3, "Dead downwind the jib is blanketed behind the main. <b>Ease the leeward jib sheet right off and take up the windward sheet</b> to fly it wing-on-wing on the other side.");
+    else if(r.awa>115) push(2.5, "Deep downwind the jib sits in the main's wind shadow — without a whisker pole it can't fly squared-out, so some sheet tension just keeps it from collapsing. Deeper than ~145° apparent you can fly it wing-on-wing instead.");
     if(r.main.boom < 45) push(6, "Off the wind, <b>ease the mainsheet</b> well out — the sail should hang square to the apparent wind. The boom can go out until it nearly touches the side wires holding the mast.");
     if(r.main.twist>30) push(4, "Boom lifting and the top of the main spilling? <b>Vang on</b> — off the wind the vang, not the sheet, holds the leech.");
     if(r.main.twist<12) push(3, "Leech clamped shut for a run — <b>ease the vang</b> a little so the top can breathe.");
@@ -8119,11 +8131,11 @@ function renderTable(r){
 }
 
 /* ---------------- render: sail sections ---------------- */
-function sectionPath(x0,y0,ang,L,depth,draftPos){
+function sectionPath(x0,y0,ang,L,depth,draftPos,flip){
   // chord from luff (x0,y0), aft is straight down, ang rotates it to port (left);
   // wind from starboard (right), so camber bulges to leeward (left of chord)
   const cx=-Math.sin(rad(ang)), cy=Math.cos(rad(ang));   // chord unit vector
-  const nx=-cy, ny=cx;                                    // leeward normal (90° CW on screen)
+  const nx=(flip?cy:-cy), ny=(flip?-cx:cx);               // leeward normal (90° CW on screen); flip mirrors to the other face
   const px = x0 + cx*L*draftPos + nx*depth*L*2;
   const py = y0 + cy*L*draftPos + ny*depth*L*2;
   const ex = x0 + cx*L, ey = y0 + cy*L;
@@ -8142,17 +8154,17 @@ function arrow(x,y,angDeg,len,color,label,dash){
 
 // horizontal section: luff at (x0,y0), bow to the LEFT, chord runs right and droops
 // down (leeward) by ang degrees; camber bulges leeward (down)
-function hSectionGeom(x0,y0,ang,L,depth,draftPos){
+function hSectionGeom(x0,y0,ang,L,depth,draftPos,flip){
   const a=clamp(ang,-5,40);
   const cx=Math.cos(rad(a)), cy=Math.sin(rad(a));
-  const nx=-cy, ny=cx; // 90° CW = leeward
+  const nx=(flip?cy:-cy), ny=(flip?-cx:cx); // 90° CW = leeward; flip mirrors to the other face
   const P0=[x0,y0];
   const Pc=[x0 + cx*L*draftPos + nx*depth*L*2, y0 + cy*L*draftPos + ny*depth*L*2];
   const P2=[x0+cx*L, y0+cy*L];
   const at=t=>{const u=1-t; return [u*u*P0[0]+2*t*u*Pc[0]+t*t*P2[0], u*u*P0[1]+2*t*u*Pc[1]+t*t*P2[1]];};
   return {d:`M ${P0[0]} ${P0[1]} Q ${Pc[0]} ${Pc[1]} ${P2[0]} ${P2[1]}`, at};
 }
-function hSection(x0,y0,ang,L,depth,draftPos){ return hSectionGeom(x0,y0,ang,L,depth,draftPos).d; }
+function hSection(x0,y0,ang,L,depth,draftPos,flip){ return hSectionGeom(x0,y0,ang,L,depth,draftPos,flip).d; }
 // wind arrow for section view: bow points left, awa measured off the bow toward the top
 function hArrow(tx,ty,awa,len,color,label){
   const ux=-Math.cos(rad(awa)), uy=-Math.sin(rad(awa));
@@ -8197,7 +8209,7 @@ function renderSections(r){
     out += `<circle cx="${xm}" cy="${row.y}" r="3" fill="var(--ink)"/>`;
     const jIdl = T.jt*(Math.pow(row.h,1.15)-Math.pow(.15,1.15));
     out += `<path class="sailpath" d="${hSection(xj,row.y,jIdl,row.Lj,T.jd*depthTaper,T.mdr)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
-    { const g=hSectionGeom(xj,row.y,jAng,row.Lj,r.jib.depth*depthTaper,r.jib.draft);
+    { const g=hSectionGeom(xj,row.y,jAng,row.Lj,r.jib.depth*depthTaper,r.jib.draft,r.jib.wow);
       out += `<path class="sailpath" d="${g.d}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
       const [dx2,dy2]=g.at(r.jib.draft), [tx2,ty2]=g.at(T.mdr);
       out += `<circle cx="${tx2}" cy="${ty2}" r="4" fill="none" stroke="var(--ghost)" stroke-width="1.4"/>`;
@@ -8221,18 +8233,18 @@ function renderDeck(r){
           <text x="${cx}" y="${mastY+94}" font-size="12" fill="var(--ink3)" text-anchor="middle">traveler</text>`;
   // sail feet: aft is down, boom/clew swing to port (left), belly to leeward
   out += `<path class="sailpath" d="${sectionPath(cx,mastY,r.main.boom,118,r.main.depth,r.main.draft)}" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round"/>`;
-  out += `<path class="sailpath" d="${sectionPath(cx,tackY,r.jib.clew,92,r.jib.depth,r.jib.draft)}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
+  out += `<path class="sailpath" d="${sectionPath(cx,tackY,r.jib.clew,92,r.jib.depth,r.jib.draft,r.jib.wow)}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
   out += `<circle cx="${cx}" cy="${mastY}" r="4" fill="var(--ink)"/><circle cx="${cx}" cy="${tackY}" r="3" fill="var(--ink)"/>`;
   // jib fairlead tracks + car + working sheet (port = leeward side)
   const trkTop=tackY+52, trkBot=tackY+96;
   const carY=trkTop+(trkBot-trkTop)*state.jcar;
   out += `<line x1="${cx-22}" y1="${trkTop}" x2="${cx-22}" y2="${trkBot}" stroke="var(--ink2)" stroke-width="2.5"/>
           <line x1="${cx+22}" y1="${trkTop}" x2="${cx+22}" y2="${trkBot}" stroke="var(--ink2)" stroke-width="2.5"/>
-          <circle cx="${cx-22}" cy="${carY}" r="4" fill="var(--accent)"/>
-          <circle cx="${cx+22}" cy="${carY}" r="3" fill="var(--ink3)"/>
+          <circle cx="${cx-22}" cy="${carY}" r="4" fill="${r.jib.wow?"var(--ink3)":"var(--accent)"}"/>
+          <circle cx="${cx+22}" cy="${carY}" r="3" fill="${r.jib.wow?"var(--accent)":"var(--ink3)"}"/>
           <text x="${cx-30}" y="${trkBot+12}" font-size="12" fill="var(--ink3)" text-anchor="end">fairlead car</text>`;
   { const a=rad(r.jib.clew), clewX=cx-Math.sin(a)*92, clewY=tackY+Math.cos(a)*92;
-    out += `<line x1="${clewX}" y1="${clewY}" x2="${cx-22}" y2="${carY}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
+    out += `<line x1="${clewX}" y1="${clewY}" x2="${r.jib.wow?cx+22:cx-22}" y2="${carY}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
   { const a=rad(r.main.boom), endX=cx-Math.sin(a)*118, endY=mastY+Math.cos(a)*118;
     out += `<line x1="${endX}" y1="${endY}" x2="${cx + state.trav*24}" y2="${mastY+76}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
   // wind arrows from starboard (right side); direction from bow = twa/awa
@@ -8257,7 +8269,8 @@ function renderTwist(r){
   let out=`<line x1="${baseX}" y1="${headY-8}" x2="${baseX}" y2="${footY+8}" stroke="var(--ink2)" stroke-width="2.5"/>
     <text x="${baseX+8}" y="${headY+2}" font-size="10" fill="var(--ink3)">mast</text>`;
   function airColor(hf, boom, twist){
-    const aoa=r.awa + 7*hf - (boom + twist*Math.pow(hf,1.15));
+    const aoa = boom<-30 ? r.awa + 7*hf + (Math.abs(boom) + twist*Math.pow(hf,1.15)) - 180
+                         : r.awa + 7*hf - (boom + twist*Math.pow(hf,1.15));
     if(r.awa>90){                                    // off the wind: the sail works as a drag device
       if(aoa<6) return "var(--ink3)";                // spilling / luffing
       if(aoa<22) return "var(--warn)";               // soft — could square out more
@@ -8350,7 +8363,7 @@ function renderVals(){
   $("v-cunn").textContent = state.cunn<.2?"slack":state.cunn<.6?"snug":"hard";
   $("v-backstay").textContent = state.backstay<.25?"soft · sag":state.backstay<.65?"medium":"hard · bent mast";
   $("v-jsheet").textContent = word(state.jsheet);
-  $("v-jsheetw").textContent = state.jsheetw<.08?"slack (lazy)":state.jsheetw<.5?"taking up — backing!":"hauled — jib backed";
+  $("v-jsheetw").textContent = (lastR&&lastR.jib&&lastR.jib.wow) ? "trimmed — wing-on-wing" : state.jsheetw<.08?"slack (lazy)":state.jsheetw<.5?"taking up — backing!":"hauled — jib backed";
   $("v-mainhal").textContent = state.mainhal<.35?"DROPPED "+Math.round(state.mainhal/.35*100)+"%":state.mainhal<.7?"hoisted · soft":"hoisted · tight";
   $("v-jcar").textContent = state.jcar<.33?"forward · power":state.jcar<.7?"middle":"aft · twist";
   $("v-jhal").textContent = state.jhal<.35?"DROPPED "+Math.round(state.jhal/.35*100)+"%":state.jhal<.7?"hoisted · snug":"hoisted · hard";
@@ -8376,7 +8389,7 @@ const LINEMETA = {
   jcar:{name:"Fairlead car",job:"jib twist vs foot"},
   jhal:{name:"Jib halyard",job:"hoist, then jib draft position"},
   mainhal:{name:"Main halyard",job:"hoist, then main luff tension"},
-  jsheetw:{name:"Windward jib sheet",job:"backs the jib when hauled"},
+  jsheetw:{name:"Windward jib sheet",job:"backs the jib upwind; flies it wing-on-wing on a run"},
   tws:{name:"True wind",job:"conditions changed"},
   pos:{name:"Point of sail",job:"conditions changed"},
   gust:{name:"Gust",job:"+6 kt on top of true wind"},
@@ -8948,6 +8961,7 @@ function sailPathArray(kind, sh, forceFull){
     const delta=rad((kind==="main"?sh.boom:sh.clew) + sh.twist*Math.pow(hf,1.15));
     const cdir=V3(-Math.cos(delta),0,Math.sin(delta));      // aft, swung to port
     const ndir=V3(Math.sin(delta),0,Math.cos(delta));       // leeward normal
+    if(sh.wow) ndir.scaleInPlace(-1);                         // windward-set jib: belly blows forward, away from the wind
     const c=sh.depth*(1-.25*hf);
     const row=[];
     for(let ix=0; ix<NC; ix++){
@@ -9289,8 +9303,10 @@ function clothStep(kind, r, dt, t){
   const NC=c.NC;
   const sailAng=kind==="main"?r.main.boom:r.jib.clew;
   const sailTw=kind==="main"?r.main.twist:r.jib.twist;
+  const wingSet = kind==="jib" && r.jib.wow;
   const rowAoa=[]; for(let iy=0;iy<c.NR;iy++){ const hf=iy/(c.NR-1);
-    rowAoa.push(r.awa + 7*hf - (sailAng + sailTw*Math.pow(hf,1.15))); }
+    const ang = Math.abs(sailAng) + sailTw*Math.pow(hf,1.15);
+    rowAoa.push(wingSet ? r.awa + 7*hf + ang - 180 : r.awa + 7*hf - (sailAng + sailTw*Math.pow(hf,1.15))); }
   const hoist=clamp((kind==="main"?state.mainhal:state.jhal)/.35,0,1);
   const dropping=hoist<.98;
   for(let i=0;i<c.p.length;i++){
@@ -9343,7 +9359,8 @@ function tick3D(){
   B3.t+=dt;
   if(B3dirty){
     const shM={boom:Math.max(r.main.boom,2),twist:r.main.twist,depth:r.main.depth,draft:r.main.draft};
-    const shJ={clew:Math.max(r.jib.clew,3),twist:r.jib.twist,depth:r.jib.depth,draft:r.jib.draft};
+    const cj=r.jib.clew;
+    const shJ={clew:cj<0?Math.min(cj,-3):Math.max(cj,3),twist:r.jib.twist,depth:r.jib.depth,draft:r.jib.draft,wow:r.jib.wow};
     const tgtM=sailPathArray("main",shM,true), tgtJ=sailPathArray("jib",shJ,true);
     const pinM=sailPathArray("main",shM,false), pinJ=sailPathArray("jib",shJ,false);
     if(!CLOTH.main){ clothInit("main",tgtM,pinM); clothInit("jib",tgtJ,pinJ); }
@@ -9385,7 +9402,7 @@ function tick3D(){
       // mainsheet: 3-part tackle boom->car->boom->car, tail to the helm
       sheet:[sagLine(boomMid, car.add(V3(0,.10,0)), r.sheetSlack).concat(
              sagLine(car.add(V3(0,.10,0)), V3(-2.2,.75,.3), .08).slice(1))],
-      jsheet:[[clew, B3.jibCar.position.clone(), V3(-.7,.72,.8)]],
+      jsheet:[sagLine(clew, B3.jibCar.position.clone(), r.jib.wow?.45:0).concat([V3(-.7,.72,.8)])],
       jsheetw:[sagLine(clew, V3(2.0-.8*state.jcar,.98,-.95), (1-state.jsheetw)*.5).concat(
                sagLine(V3(2.0-.8*state.jcar,.98,-.95), V3(-.7,.72,-.8), (1-state.jsheetw)*.15).slice(1))],
       jcar:[[V3(2.0-.8*state.jcar,1.02,.95), V3(2.0-.8*state.jcar,.90,.95)]],
