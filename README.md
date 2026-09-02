@@ -15,13 +15,19 @@ twist-from-astern, heel gauge, drills and concept guides.
 ## Build
 ```bash
 ./build-tools/fetch-assets.sh   # once, or after Babylon version bumps
-python3 build.py                # emits trim-lab.html (~2.3 MB, self-contained)
+python3 build.py                # splices src-app.html + babylon.lib.js + rope textures
 ```
+`build.py` writes two identical self-contained pages (~2.5 MB each): `app.html` at the
+repo root and `docs/index.html`. Both are committed; rebuild and commit them whenever
+`src-app.html` or the bundled library changes.
 
 ## Deploy
-Published as a Claude artifact (single self-contained page):
-https://claude.ai/code/artifact/0f10d493-cfc5-4752-bfd5-d856ba4f6ea7
-Republish by passing that URL as `url` when publishing `trim-lab.html`.
+GitHub Pages serves `docs/` from `main` at https://gm2211.github.io/trim-lab/,
+so merging to `main` is the deploy:
+
+1. `python3 build.py`
+2. Commit the rebuilt `app.html` and `docs/index.html` alongside the source change.
+3. Open a PR and merge to `main`. Pages picks up the new `docs/index.html` within a minute or two.
 
 ## Environment gotchas (hard-won)
 - Artifact iframes deny the `gamepad` Permissions-Policy feature; Babylon's camera
