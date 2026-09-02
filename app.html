@@ -9259,7 +9259,7 @@ function stepPuffs(dt){
   const upX=Math.cos(rad(r.awa)), upZ=-Math.sin(rad(r.awa));
   const vm=B3.scene.activeCamera.getViewMatrix().m;
   const cx=vm[2], cy=vm[6], cz=vm[10];                    // camera forward, world frame
-  const TAU=.10, W=.022;                                  // streak = the last 100 ms of travel
+  const TAU=.055, W=.011;                                 // streak = the last 55 ms of travel
   for(let i=0;i<PUFF_N;i++){
     let x=pp[i*3], y=pp[i*3+1], z=pp[i*3+2];
     const [vx,vz]=flowVel(x,z,y,r);
