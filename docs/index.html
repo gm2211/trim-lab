@@ -9295,7 +9295,8 @@ function clothInit(kind, targets, pins){
     p.push(t.clone()); pp.push(t.clone());
     const pinnedLuff = ix===0;
     const pinnedFoot = kind==="main" && iy===0;
-    w.push(pinnedLuff||pinnedFoot?0:1);
+    const pinnedClew = kind==="jib" && iy===0 && ix===NC-1;   // the sheet holds the clew
+    w.push(pinnedLuff||pinnedFoot||pinnedClew?0:1);
   }
   const cons=[];
   const idx=(iy,ix)=>iy*NC+ix;
@@ -9411,19 +9412,29 @@ function tick3D(){
     const cunTop=V3(.72,1.78,.09), cunBot=V3(.70,1.02,.09);
     const cunMid=cunTop.add(cunBot).scale(.5).add(V3(-.02,0,cunSag+.03));
     function sagLine(a,b,slack,parts){
-      if(!slack||slack<.02) return [a,b];
-      parts=parts||6; const pts=[];
+      // a line with `slack` metres more length than the span hangs in a curve
+      // whose depth follows the parabolic catenary: d = sqrt(3 L s / 8)
+      if(!slack||slack<.005) return [a,b];
+      const L=BABYLON.Vector3.Distance(a,b), d=Math.sqrt(3*L*slack/8);
+      parts=parts||10; const pts=[];
       for(let i=0;i<=parts;i++){const q=i/parts;
-        const pt=BABYLON.Vector3.Lerp(a,b,q); pt.y-=Math.sin(Math.PI*q)*slack*.6; pts.push(pt);}
+        const pt=BABYLON.Vector3.Lerp(a,b,q); pt.y-=4*q*(1-q)*d; pts.push(pt);}
       return pts;
     }
     const car=B3.travCar.position;
     const boomMid2=V3(.72,1.42,0).add(boomDir.scale(1.95));
     const mastBase=V3(.66,1.0,0);
     const ropes={
-      // mainsheet: 3-part tackle boom->car->boom->car, tail to the helm
-      sheet:[sagLine(boomMid, car.add(V3(0,.10,0)), r.sheetSlack).concat(
-             sagLine(car.add(V3(0,.10,0)), V3(-2.2,.75,.3), .08).slice(1))],
+      // mainsheet: 3-part tackle — three falls between the boom block and the
+      // car block, then the tail aft to the helm. Slack only when the wind
+      // has swung the boom short of the sheet's limit.
+      sheet:(()=>{
+        const bb=boomMid.add(V3(0,-.05,0)), cb=car.add(V3(0,.09,0)), off=boomDir.scale(.035);
+        const s3=r.sheetSlack/3;
+        return [sagLine(bb.subtract(off), cb.subtract(off), s3),
+                sagLine(cb, bb, s3),
+                sagLine(bb.add(off), cb.add(off), s3).concat(sagLine(cb.add(off), V3(-2.2,.75,.3), .02).slice(1))];
+      })(),
       jsheet:[sagLine(clew, B3.jibCar.position.clone(), r.jib.wow?.45:0).concat([V3(-.7,.72,.8)])],
       jsheetw:[sagLine(clew, V3(2.0-.8*state.jcar,.98,-.95), (1-state.jsheetw)*.5).concat(
                sagLine(V3(2.0-.8*state.jcar,.98,-.95), V3(-.7,.72,-.8), (1-state.jsheetw)*.15).slice(1))],
@@ -9473,7 +9484,8 @@ function tick3D(){
     for(const key in ropes){
       B3.tubes[key]=ropes[key].map((path,i)=>{
         const hot=key===B3.hiKey;
-        const t2=BABYLON.MeshBuilder.CreateTube("rope_"+key+i,{path,radius:hot?.032:(steelKeys[key]?.008:.016)},B3.scene);
+        // 10 mm braid, 6 mm wire; the highlighted line is drawn a touch heavier and glows
+        const t2=BABYLON.MeshBuilder.CreateTube("rope_"+key+i,{path,radius:hot?.0075:(steelKeys[key]?.003:.005),tessellation:10},B3.scene);
         t2.material=hot?B3.ropeHi:(steelKeys[key]?B3.steelMat:(B3.ropeMats[key]||B3.ropeMat)); t2.parent=B3.boat; return t2;
       });
     }
