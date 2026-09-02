@@ -1058,7 +1058,7 @@ function renderDeck(r){
   out += `<path class="sailpath" d="${sectionPath(cx,tackY,clewD,92,r.jib.depth,r.jib.draft,(S<0)!==!!r.jib.wow)}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
   out += `<circle cx="${cx}" cy="${mastY}" r="4" fill="var(--ink)"/><circle cx="${cx}" cy="${tackY}" r="3" fill="var(--ink)"/>`;
   // jib fairlead tracks + car + working sheet (port = leeward side)
-  const trkTop=tackY+52, trkBot=tackY+96;
+  const trkTop=mastY-2, trkBot=mastY+33;   // beside/aft of the mast, as on the boat
   const carY=trkTop+(trkBot-trkTop)*state.jcar;
   out += `<line x1="${cx-22}" y1="${trkTop}" x2="${cx-22}" y2="${trkBot}" stroke="var(--ink2)" stroke-width="2.5"/>
           <line x1="${cx+22}" y1="${trkTop}" x2="${cx+22}" y2="${trkBot}" stroke="var(--ink2)" stroke-width="2.5"/>
@@ -1806,7 +1806,9 @@ function sailPathArray(kind, sh, forceFull){
     for(let ix=0; ix<NC; ix++){
       const cf=ix/(NC-1);
       const off=c*chord*Math.sin(Math.PI*Math.pow(cf,k));
-      row.push(luff.add(cdir.scale(chord*cf)).add(ndir.scale(off)));
+      const pt=luff.add(cdir.scale(chord*cf)).add(ndir.scale(off));
+      if(kind==="jib") pt.y+=.19*chord*cf;   // foot rises from the tack to a clew ~0.55 m above deck
+      row.push(pt);
     }
     rows.push(row);
   }
@@ -1976,9 +1978,10 @@ function ensure3Dinner(canvas){
   travTrack.position=V3(-.95,.96,0); travTrack.material=sparM; travTrack.parent=boat;
   const travCar=BABYLON.MeshBuilder.CreateBox("travCar",{width:.12,height:.09,depth:.14},scene);
   travCar.material=sparM; travCar.parent=boat;
+  // jib tracks on the side decks aft of the mast: a 100% jib sheets aft, not forward
   const jibTrackP=BABYLON.MeshBuilder.CreateBox("jibTrackP",{width:.9,height:.04,depth:.06},scene);
-  jibTrackP.position=V3(1.6,.94,.95); jibTrackP.material=sparM; jibTrackP.parent=boat;
-  const jibTrackS=jibTrackP.clone("jibTrackS"); jibTrackS.position=V3(1.6,.94,-.95); jibTrackS.parent=boat;
+  jibTrackP.position=V3(.2,.71,.95); jibTrackP.material=sparM; jibTrackP.parent=boat;
+  const jibTrackS=jibTrackP.clone("jibTrackS"); jibTrackS.position=V3(.2,.71,-.95); jibTrackS.parent=boat;
   const jibCar=BABYLON.MeshBuilder.CreateBox("jibCar",{width:.14,height:.08,depth:.1},scene);
   jibCar.material=sparM; jibCar.parent=boat;
 
@@ -1991,6 +1994,7 @@ function ensure3Dinner(canvas){
   }
   const winch=BABYLON.MeshBuilder.CreateCylinder("winch",{height:.14,diameterBottom:.16,diameterTop:.12},scene);
   winch.position=V3(-.65,.82,.5); winch.material=sparM; winch.parent=boat;
+  const winchP=winch.clone("winchP"); winchP.position=V3(-.65,.82,-.5); winchP.parent=boat;
   const fiddle=BABYLON.MeshBuilder.CreateBox("fiddle",{width:.07,height:.1,depth:.07},scene);
   fiddle.material=sparM; fiddle.parent=boat; fiddle.position=V3(-.95,1.06,0);
 
@@ -2360,11 +2364,12 @@ function tick3D(){
     B3.boomMesh.rotation.z=Math.PI/2; B3.boomMesh.rotation.x=0;
     // deck hardware follows the lines
     B3.travCar.position=V3(-.95,1.0,-S*state.trav*.75);
-    B3.jibCar.position=V3(2.0-.8*state.jcar,.98,S*.95);
+    const jcarX=.6-.8*state.jcar;                    // forward (x .6) .. aft (x -.2), both aft of the mast
+    B3.jibCar.position=V3(jcarX,.75,S*.95);
     // running rigging: mainsheet (mid-boom -> traveler car) + working jib sheet (clew -> car)
     const boomMid=V3(.72,1.42,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(1.7));
-    const dj=rad(shJ.clew);
-    const clew=V3(3.72,1.05,0).add(V3(-Math.cos(dj),0,Math.sin(dj)).scale(2.9));
+    // the sheet starts exactly where the cloth's clew particle is pinned
+    const clew=pinJ[0][pinJ[0].length-1].clone();
     if(rebuildRopes){
     if(B3.tubes){ for(const k in B3.tubes) B3.tubes[k].forEach(m=>m.dispose()); }
     B3.tubes={};
@@ -2378,14 +2383,17 @@ function tick3D(){
     const cunSag=(1-state.cunn)*.10;
     const cunTop=V3(.72,1.78,.09), cunBot=V3(.70,1.02,.09);
     const cunMid=cunTop.add(cunBot).scale(.5).add(V3(-.02,0,cunSag+.03));
-    function sagLine(a,b,slack,parts){
+    function sagLine(a,b,slack,floor,parts){
       // a line with `slack` metres more length than the span hangs in a curve
-      // whose depth follows the parabolic catenary: d = sqrt(3 L s / 8)
+      // whose depth follows the parabolic catenary: d = sqrt(3 L s / 8).
+      // `floor` (optional) is the deck/cabin surface the slack line drapes on.
       if(!slack||slack<.005) return [a,b];
       const L=BABYLON.Vector3.Distance(a,b), d=Math.sqrt(3*L*slack/8);
       parts=parts||10; const pts=[];
       for(let i=0;i<=parts;i++){const q=i/parts;
-        const pt=BABYLON.Vector3.Lerp(a,b,q); pt.y-=4*q*(1-q)*d; pts.push(pt);}
+        const pt=BABYLON.Vector3.Lerp(a,b,q); pt.y-=4*q*(1-q)*d;
+        if(floor!==undefined) pt.y=Math.max(pt.y,floor);
+        pts.push(pt);}
       return pts;
     }
     const car=B3.travCar.position;
@@ -2402,10 +2410,15 @@ function tick3D(){
                 sagLine(cb, bb, s3),
                 sagLine(bb.add(off), cb.add(off), s3).concat(sagLine(cb.add(off), V3(-2.2,.75,.3), .02).slice(1))];
       })(),
-      jsheet:[sagLine(clew, B3.jibCar.position.clone(), r.jib.wow?.45:0).concat([V3(-.7,.72,S*.8)])],
-      jsheetw:[sagLine(clew, V3(2.0-.8*state.jcar,.98,-S*.95), (1-state.jsheetw)*.5).concat(
-               sagLine(V3(2.0-.8*state.jcar,.98,-S*.95), V3(-.7,.72,-S*.8), (1-state.jsheetw)*.15).slice(1))],
-      jcar:[[V3(2.0-.8*state.jcar,1.02,.95), V3(2.0-.8*state.jcar,.90,.95)]],
+      // working sheet: clew -> leeward car -> leeward winch drum -> tail into the cockpit
+      jsheet:[sagLine(clew, B3.jibCar.position.clone(), r.jib.wow?.45:0, .74).concat(
+               [V3(-.62,.87,S*.59), V3(-.95,.72,S*.42)])],
+      // lazy sheet: clew -> forward round the mast over the cabin roof -> windward car -> windward winch
+      jsheetw:[sagLine(clew, V3(1.05,1.02,-S*.2), (1-state.jsheetw)*.3, 1.0).concat(
+               sagLine(V3(1.05,1.02,-S*.2), V3(jcarX,.75,-S*.95), (1-state.jsheetw)*.2, .74).slice(1),
+               sagLine(V3(jcarX,.75,-S*.95), V3(-.62,.87,-S*.59), (1-state.jsheetw)*.15, .74).slice(1),
+               [V3(-.95,.72,-S*.42)])],
+      jcar:[[V3(jcarX,.80,.95), V3(jcarX,.70,.95)]],
       // vang: 2-part cascade boom bale <-> mast step, tail aft
       vang:[[boomVangPt.add(V3(0,-.02,.04)), mastBase.add(V3(0,.04,.06)), boomVangPt.add(V3(-.06,-.06,.02)), mastBase.add(V3(0,0,.10)), V3(-.2,.78,.20)]],
       // outhaul: clew -> boom end sheave -> forward under the boom -> gooseneck cleat
