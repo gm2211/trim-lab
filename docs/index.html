@@ -8133,29 +8133,10 @@ function renderTable(r){
 }
 
 /* ---------------- render: sail sections ---------------- */
-// The physics model always holds starboard tack (the boat is symmetric), so on
-// port tack every boat view is drawn mirrored. Geometry flips as a group; each
-// text label is un-mirrored about its own anchor so it still reads normally,
-// and its anchor side is swapped so it still points away from what it labels.
-function onPortTack(){ return (state.twaSide||1)<0; }
-function mirrorSvg(inner, W, H, vertical){
-  const fixed=inner.replace(/<text\b([^>]*)>/g,(m,attrs)=>{
-    const gx=/\bx="([-\d.]+)"/.exec(attrs), gy=/\by="([-\d.]+)"/.exec(attrs);
-    const x=gx?+gx[1]:0, y=gy?+gy[1]:0;
-    const un=vertical?`translate(0 ${2*y}) scale(1 -1)`:`translate(${2*x} 0) scale(-1 1)`;
-    let a=attrs;
-    if(!vertical){
-      if(/text-anchor="end"/.test(a)) a=a.replace('text-anchor="end"','text-anchor="start"');
-      else if(/text-anchor="start"/.test(a)) a=a.replace('text-anchor="start"','text-anchor="end"');
-      else if(!/text-anchor=/.test(a)) a+=' text-anchor="end"';
-    }
-    const gt=/\btransform="([^"]*)"/.exec(a);
-    a=gt?a.replace(gt[0],`transform="${un} ${gt[1]}"`):a+` transform="${un}"`;
-    return `<text${a}>`;
-  });
-  const flip=vertical?`translate(0 ${H}) scale(1 -1)`:`translate(${W} 0) scale(-1 1)`;
-  return `<g transform="${flip}">${fixed}</g>`;
-}
+// The physics model always holds starboard tack (the boat is symmetric). Every
+// boat view draws signed display angles instead: tackSign() * model angle, so
+// on port tack the sails set to starboard and the wind arrows come from port.
+function tackSign(){ return (state.twaSide||1)<0?-1:1; }
 function sectionPath(x0,y0,ang,L,depth,draftPos,flip){
   // chord from luff (x0,y0), aft is straight down, ang rotates it to port (left);
   // wind from starboard (right), so camber bulges to leeward (left of chord)
@@ -8174,22 +8155,24 @@ function arrow(x,y,angDeg,len,color,label,dash){
   const hx2 = x + Math.sin(rad(angDeg-22))*9, hy2 = y - Math.cos(rad(angDeg-22))*9;
   return `<g class="windarrow"><line x1="${ux}" y1="${uy}" x2="${x}" y2="${y}" stroke="${color}" stroke-width="2" ${dash?`stroke-dasharray="5 4"`:""}/>
     <path d="M ${x} ${y} L ${hx1} ${hy1} M ${x} ${y} L ${hx2} ${hy2}" stroke="${color}" stroke-width="2" fill="none"/>
-    ${label?`<text x="${ux+4}" y="${uy-4}" font-size="10" fill="${color}" font-weight="700">${label}</text>`:""}</g>`;
+    ${label?`<text x="${angDeg<0?ux-4:ux+4}" y="${uy-4}" font-size="10" fill="${color}" font-weight="700" text-anchor="${angDeg<0?"end":"start"}">${label}</text>`:""}</g>`;
 }
 
 // horizontal section: luff at (x0,y0), bow to the LEFT, chord runs right and droops
 // down (leeward) by ang degrees; camber bulges leeward (down)
-function hSectionGeom(x0,y0,ang,L,depth,draftPos,flip){
+function hSectionGeom(x0,y0,ang,L,depth,draftPos,flip,side){
+  const S=side||1;                          // -1 on port tack: chord droops and belly bulge go up instead
   const a=clamp(ang,-5,40);
-  const cx=Math.cos(rad(a)), cy=Math.sin(rad(a));
-  const nx=(flip?cy:-cy), ny=(flip?-cx:cx); // 90° CW = leeward; flip mirrors to the other face
+  const cx=Math.cos(rad(a)), cy=S*Math.sin(rad(a));
+  let nx=-Math.sin(rad(a)), ny=S*cx;        // 90° toward leeward
+  if(flip){ nx=-nx; ny=-ny; }               // flip = the wind is on the sail's other face
   const P0=[x0,y0];
   const Pc=[x0 + cx*L*draftPos + nx*depth*L*2, y0 + cy*L*draftPos + ny*depth*L*2];
   const P2=[x0+cx*L, y0+cy*L];
   const at=t=>{const u=1-t; return [u*u*P0[0]+2*t*u*Pc[0]+t*t*P2[0], u*u*P0[1]+2*t*u*Pc[1]+t*t*P2[1]];};
   return {d:`M ${P0[0]} ${P0[1]} Q ${Pc[0]} ${Pc[1]} ${P2[0]} ${P2[1]}`, at};
 }
-function hSection(x0,y0,ang,L,depth,draftPos,flip){ return hSectionGeom(x0,y0,ang,L,depth,draftPos,flip).d; }
+function hSection(x0,y0,ang,L,depth,draftPos,flip,side){ return hSectionGeom(x0,y0,ang,L,depth,draftPos,flip,side).d; }
 // wind arrow for section view: bow points left, awa measured off the bow toward the top
 function hArrow(tx,ty,awa,len,color,label){
   const ux=-Math.cos(rad(awa)), uy=-Math.sin(rad(awa));
@@ -8208,7 +8191,7 @@ function renderSections(r){
     {lab:"FOOT", h:.15, y:294, Lm:205, Lj:145},
   ];
   const xm=40, xj=406; // luff x for main, jib columns
-  const idl=r.idl;
+  const idl=r.idl, S=tackSign();
   let out=`<text x="14" y="22" font-size="13" fill="var(--ink3)" letter-spacing="2">LOOKING DOWN THE MAST · BOW ◀</text>
     <text x="${xm+70}" y="42" font-size="14" font-weight="700" fill="var(--ink2)">MAIN</text>
     <text x="${xj+50}" y="42" font-size="14" font-weight="700" fill="var(--ink2)">JIB</text>`;
@@ -8224,17 +8207,17 @@ function renderSections(r){
     out += `<line x1="24" y1="${row.y}" x2="616" y2="${row.y}" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"/>
       <text x="24" y="${row.y-8}" font-size="12.5" fill="var(--ink3)" letter-spacing="1.5">${row.lab}</text>
       <text x="238" y="${row.y-8}" font-size="10" fill="var(--ink2)" font-family="var(--mono)">+${fmt1(mAng)}° twist</text>`;
-    out += hArrow(xm+34, row.y-14, clamp(awaLocal,12,150), 40, "var(--teal)", ri===0?"apparent wind":"");
-    out += `<path class="sailpath" d="${hSection(xm,row.y,mIdl,row.Lm,T.md*depthTaper,T.mdr)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
-    { const g=hSectionGeom(xm,row.y,mAng,row.Lm,r.main.depth*depthTaper,r.main.draft);
+    out += hArrow(xm+34, row.y-14*S, clamp(awaLocal,12,150)*S, 40, "var(--teal)", ri===0?"apparent wind":"");
+    out += `<path class="sailpath" d="${hSection(xm,row.y,mIdl,row.Lm,T.md*depthTaper,T.mdr,false,S)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
+    { const g=hSectionGeom(xm,row.y,mAng,row.Lm,r.main.depth*depthTaper,r.main.draft,false,S);
       out += `<path class="sailpath" d="${g.d}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
       const [dx2,dy2]=g.at(r.main.draft), [tx2,ty2]=g.at(T.mdr);
       out += `<circle cx="${tx2}" cy="${ty2}" r="4" fill="none" stroke="var(--ghost)" stroke-width="1.4"/>`;
       out += `<circle cx="${dx2}" cy="${dy2}" r="3.2" fill="var(--accent)" stroke="var(--bg)" stroke-width="1"/>`; }
     out += `<circle cx="${xm}" cy="${row.y}" r="3" fill="var(--ink)"/>`;
     const jIdl = T.jt*(Math.pow(row.h,1.15)-Math.pow(.15,1.15));
-    out += `<path class="sailpath" d="${hSection(xj,row.y,jIdl,row.Lj,T.jd*depthTaper,T.mdr)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
-    { const g=hSectionGeom(xj,row.y,jAng,row.Lj,r.jib.depth*depthTaper,r.jib.draft,r.jib.wow);
+    out += `<path class="sailpath" d="${hSection(xj,row.y,jIdl,row.Lj,T.jd*depthTaper,T.mdr,false,S)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
+    { const g=hSectionGeom(xj,row.y,jAng,row.Lj,r.jib.depth*depthTaper,r.jib.draft,r.jib.wow,S);
       out += `<path class="sailpath" d="${g.d}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
       const [dx2,dy2]=g.at(r.jib.draft), [tx2,ty2]=g.at(T.mdr);
       out += `<circle cx="${tx2}" cy="${ty2}" r="4" fill="none" stroke="var(--ghost)" stroke-width="1.4"/>`;
@@ -8242,47 +8225,48 @@ function renderSections(r){
     out += `<circle cx="${xj}" cy="${row.y}" r="3" fill="var(--ink)"/>`;
   });
   out += `<text x="14" y="350" font-size="13" fill="var(--ink3)">Head opens +${fmt1(r.main.twist)}° · ● = draft (deepest point, cunningham/halyard move it) · ○ = its target.</text>`;
-  $("svg-sections").innerHTML = onPortTack()?mirrorSvg(out,640,360,true):out;
+  $("svg-sections").innerHTML = out;
 }
 
 /* ---------------- render: deck view ---------------- */
 function renderDeck(r){
-  const cx=150, bowY=38, sternY=300, mastY=180, tackY=64;
+  const cx=150, bowY=38, sternY=300, mastY=180, tackY=64, S=tackSign();
+  const boomD=S*r.main.boom, clewD=S*r.jib.clew;   // display angles: + swings to port
   const hull = `M ${cx} ${bowY} C ${cx+34} ${bowY+50} ${cx+42} ${sternY-70} ${cx+34} ${sternY}
                 L ${cx-34} ${sternY} C ${cx-42} ${sternY-70} ${cx-34} ${bowY+50} ${cx} ${bowY} Z`;
   let out = `<path d="${hull}" fill="var(--panel2)" stroke="var(--ink2)" stroke-width="1.5"/>
     <line x1="${cx}" y1="${bowY}" x2="${cx}" y2="${sternY}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 4"/>`;
   // traveler track + car position
   out += `<line x1="${cx-30}" y1="${mastY+76}" x2="${cx+30}" y2="${mastY+76}" stroke="var(--ink2)" stroke-width="2.5"/>
-          <circle cx="${cx + state.trav*24}" cy="${mastY+76}" r="4.5" fill="var(--accent)"/>
+          <circle cx="${cx + S*state.trav*24}" cy="${mastY+76}" r="4.5" fill="var(--accent)"/>
           <text x="${cx}" y="${mastY+94}" font-size="12" fill="var(--ink3)" text-anchor="middle">traveler</text>`;
   // sail feet: aft is down, boom/clew swing to port (left), belly to leeward
-  out += `<path class="sailpath" d="${sectionPath(cx,mastY,r.main.boom,118,r.main.depth,r.main.draft)}" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round"/>`;
-  out += `<path class="sailpath" d="${sectionPath(cx,tackY,r.jib.clew,92,r.jib.depth,r.jib.draft,r.jib.wow)}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
+  out += `<path class="sailpath" d="${sectionPath(cx,mastY,boomD,118,r.main.depth,r.main.draft,S<0)}" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round"/>`;
+  out += `<path class="sailpath" d="${sectionPath(cx,tackY,clewD,92,r.jib.depth,r.jib.draft,(S<0)!==!!r.jib.wow)}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
   out += `<circle cx="${cx}" cy="${mastY}" r="4" fill="var(--ink)"/><circle cx="${cx}" cy="${tackY}" r="3" fill="var(--ink)"/>`;
   // jib fairlead tracks + car + working sheet (port = leeward side)
   const trkTop=tackY+52, trkBot=tackY+96;
   const carY=trkTop+(trkBot-trkTop)*state.jcar;
   out += `<line x1="${cx-22}" y1="${trkTop}" x2="${cx-22}" y2="${trkBot}" stroke="var(--ink2)" stroke-width="2.5"/>
           <line x1="${cx+22}" y1="${trkTop}" x2="${cx+22}" y2="${trkBot}" stroke="var(--ink2)" stroke-width="2.5"/>
-          <circle cx="${cx-22}" cy="${carY}" r="4" fill="${r.jib.wow?"var(--ink3)":"var(--accent)"}"/>
-          <circle cx="${cx+22}" cy="${carY}" r="3" fill="${r.jib.wow?"var(--accent)":"var(--ink3)"}"/>
-          <text x="${cx-30}" y="${trkBot+12}" font-size="12" fill="var(--ink3)" text-anchor="end">fairlead car</text>`;
-  { const a=rad(r.jib.clew), clewX=cx-Math.sin(a)*92, clewY=tackY+Math.cos(a)*92;
-    out += `<line x1="${clewX}" y1="${clewY}" x2="${r.jib.wow?cx+22:cx-22}" y2="${carY}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
-  { const a=rad(r.main.boom), endX=cx-Math.sin(a)*118, endY=mastY+Math.cos(a)*118;
-    out += `<line x1="${endX}" y1="${endY}" x2="${cx + state.trav*24}" y2="${mastY+76}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
-  // wind arrows from starboard (right side); direction from bow = twa/awa
-  out += arrow(258, 84, r.twa, 60, "var(--ink2)", "true "+fmt1(r.tws)+" kt", true);
-  out += arrow(258, 168, r.awa, 60, "var(--teal)", "apparent "+fmt1(r.aws)+" kt", false);
+          <circle cx="${cx-22*S}" cy="${carY}" r="4" fill="${r.jib.wow?"var(--ink3)":"var(--accent)"}"/>
+          <circle cx="${cx+22*S}" cy="${carY}" r="3" fill="${r.jib.wow?"var(--accent)":"var(--ink3)"}"/>
+          <text x="${cx-30*S}" y="${trkBot+12}" font-size="12" fill="var(--ink3)" text-anchor="${S>0?"end":"start"}">fairlead car</text>`;
+  { const a=rad(clewD), clewX=cx-Math.sin(a)*92, clewY=tackY+Math.cos(a)*92;
+    out += `<line x1="${clewX}" y1="${clewY}" x2="${r.jib.wow?cx+22*S:cx-22*S}" y2="${carY}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
+  { const a=rad(boomD), endX=cx-Math.sin(a)*118, endY=mastY+Math.cos(a)*118;
+    out += `<line x1="${endX}" y1="${endY}" x2="${cx + S*state.trav*24}" y2="${mastY+76}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
+  // wind arrows on the windward side; direction from bow = twa/awa, signed by tack
+  out += arrow(cx+108*S, 84, S*r.twa, 60, "var(--ink2)", "true "+fmt1(r.tws)+" kt", true);
+  out += arrow(cx+108*S, 168, S*r.awa, 60, "var(--teal)", "apparent "+fmt1(r.aws)+" kt", false);
   { const helmDeg=r.helm, sev=helmDeg>8?"var(--crit)":helmDeg>5.5?"var(--warn)":"var(--good)";
     const ra=rad(clamp(helmDeg,-6,15)*2.5);            // deflection exaggerated 2.5x to read
-    const rx=cx+Math.sin(ra)*26, ry=sternY+Math.cos(ra)*26;
+    const rx=cx+S*Math.sin(ra)*26, ry=sternY+Math.cos(ra)*26;
     out += `<line x1="${cx}" y1="${sternY-2}" x2="${rx}" y2="${ry}" stroke="${sev}" stroke-width="4" stroke-linecap="round"/>
       <text x="${cx+34}" y="${sternY+10}" font-size="12" fill="var(--ink3)">rudder ${fmt1(helmDeg)}° (×2.5)</text>`; }
   out += `<text x="16" y="318" font-size="12.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° off centerline · ${Math.round(state.twaC||POS[state.posIdx].twa)}° true · rudder shows helm you must hold</text>`;
-  $("svg-deck").innerHTML = onPortTack()?mirrorSvg(out,360,330,false):out;
-  if($("deckHint")) $("deckHint").textContent=(onPortTack()?"wind on port":"wind on starboard")+" · dotted = sheets";
+  $("svg-deck").innerHTML = out;
+  if($("deckHint")) $("deckHint").textContent=(S<0?"wind on port":"wind on starboard")+" · dotted = sheets";
 }
 
 /* ---------------- render: twist from astern ---------------- */
@@ -8291,7 +8275,7 @@ function renderTwist(r){
   // looking at the boat from dead astern: mast vertical, each height's chord
   // sticks out to leeward (left) by sin(local angle) * chord length
   const baseX=250, footY=300, headY=30, H=footY-headY;
-  const idl=r.idl;
+  const idl=r.idl, S=tackSign();
   let out=`<line x1="${baseX}" y1="${headY-8}" x2="${baseX}" y2="${footY+8}" stroke="var(--ink2)" stroke-width="2.5"/>
     <text x="${baseX+8}" y="${headY+2}" font-size="10" fill="var(--ink3)">mast</text>`;
   function airColor(hf, boom, twist){
@@ -8313,7 +8297,7 @@ function renderTwist(r){
       const hf=i/10, y=footY-H*hf*.92;
       const ang=(boom+twist*Math.pow(hf,1.15))*EX;
       const len=footLen*(1-taper*Math.pow(hf,1.05));
-      px.push([baseX-Math.sin(rad(ang))*len, y, hf]);
+      px.push([baseX-S*Math.sin(rad(ang))*len, y, hf]);
     }
     if(dash){
       return `<polyline points="${px.map(p=>p[0]+','+p[1]).join(' ')}" fill="none" stroke="${color}" stroke-width="${w}" stroke-dasharray="5 5" stroke-linecap="round"/>`;
@@ -8339,29 +8323,30 @@ function renderTwist(r){
     <text x="40" y="${headY+16}" font-size="10" fill="var(--ink3)">■ spilling</text>
     <text x="40" y="${headY+30}" font-size="10" fill="var(--warn)">■ soft</text>
     <text x="40" y="${headY+44}" font-size="10" fill="var(--crit)">■ stalled</text>`;
-  if(topAoa<6) out += `<text x="${baseX-160}" y="${headY+8}" font-size="11" font-weight="700" fill="var(--ink3)">SPILLING AT THE HEAD ◢</text>`;
-  $("svg-twist").innerHTML=onPortTack()?mirrorSvg(out,360,330,false):out;
+  if(topAoa<6) out += `<text x="${S>0?baseX-160:baseX+16}" y="${headY+8}" font-size="11" font-weight="700" fill="var(--ink3)">SPILLING AT THE HEAD ◢</text>`;
+  $("svg-twist").innerHTML=out;
 }
 
 /* ---------------- render: heel gauge ---------------- */
-function heelArc(cx,cy,R,a0,a1,color,w){
-  const p = a=>[cx - R*Math.sin(rad(a)), cy - R*Math.cos(rad(a))];
+function heelArc(cx,cy,R,a0,a1,color,w,S){
+  S=S||1;                                   // gauge sits on the leeward side: left on starboard tack, right on port
+  const p = a=>[cx - S*R*Math.sin(rad(a)), cy - R*Math.cos(rad(a))];
   const [x0,y0]=p(a0), [x1,y1]=p(a1);
-  return `<path d="M ${x0} ${y0} A ${R} ${R} 0 0 0 ${x1} ${y1}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linecap="butt"/>`;
+  return `<path d="M ${x0} ${y0} A ${R} ${R} 0 0 ${S>0?0:1} ${x1} ${y1}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linecap="butt"/>`;
 }
 function renderHeel(r){
-  const cx=205, cy=185, R=140;
+  const cx=205, cy=185, R=140, S=tackSign();
   let out = "";
-  out += heelArc(cx,cy,R, 0,12, "var(--panel2)", 10);
-  out += heelArc(cx,cy,R, 12,22, "var(--good)", 10);
-  out += heelArc(cx,cy,R, 22,30, "var(--warn)", 10);
-  out += heelArc(cx,cy,R, 30,40, "var(--crit)", 10);
+  out += heelArc(cx,cy,R, 0,12, "var(--panel2)", 10, S);
+  out += heelArc(cx,cy,R, 12,22, "var(--good)", 10, S);
+  out += heelArc(cx,cy,R, 22,30, "var(--warn)", 10, S);
+  out += heelArc(cx,cy,R, 30,40, "var(--crit)", 10, S);
   [0,10,20,30,40].forEach(a=>{
-    const x=cx-(R+14)*Math.sin(rad(a)), y=cy-(R+14)*Math.cos(rad(a));
+    const x=cx-S*(R+14)*Math.sin(rad(a)), y=cy-(R+14)*Math.cos(rad(a));
     out += `<text x="${x}" y="${y}" font-size="10" fill="var(--ink3)" text-anchor="middle" font-family="var(--mono)">${a}°</text>`;
   });
   // boat stern silhouette rotated by heel (heels to port = left)
-  out += `<g class="heelboat" transform="rotate(${-r.heel} ${cx} ${cy})">
+  out += `<g class="heelboat" transform="rotate(${-S*r.heel} ${cx} ${cy})">
     <path d="M ${cx-46} ${cy-12} Q ${cx} ${cy+16} ${cx+46} ${cy-12} L ${cx+38} ${cy-26} L ${cx-38} ${cy-26} Z" fill="var(--panel2)" stroke="var(--ink2)" stroke-width="1.5"/>
     <line x1="${cx}" y1="${cy-26}" x2="${cx}" y2="${cy-118}" stroke="var(--ink)" stroke-width="2.5"/>
     <line x1="${cx}" y1="${cy+14}" x2="${cx}" y2="${cy+44}" stroke="var(--ink2)" stroke-width="4"/>
@@ -8369,8 +8354,8 @@ function renderHeel(r){
   const cls = r.heel>28?"var(--crit)":r.heel>22?"var(--warn)":"var(--ink)";
   out += `<text x="30" y="178" font-size="30" font-weight="600" fill="${cls}" font-family="var(--mono)">${fmt1(r.heel)}°</text>
     <text x="30" y="194" font-size="12.5" fill="var(--ink3)" letter-spacing="1.5">HEEL</text>
-    <text x="${cx+62}" y="${cy+8}" font-size="12.5" fill="var(--ink3)">keel</text>`;
-  $("svg-heel").innerHTML = onPortTack()?mirrorSvg(out,360,205,false):out;
+    <text x="${cx+62*S}" y="${cy+8}" font-size="12.5" fill="var(--ink3)" text-anchor="${S>0?"start":"end"}">keel</text>`;
+  $("svg-heel").innerHTML = out;
 }
 
 /* ---------------- slider value labels ---------------- */
@@ -8987,7 +8972,7 @@ function sailPathArray(kind, sh, forceFull){
     const delta=rad((kind==="main"?sh.boom:sh.clew) + sh.twist*Math.pow(hf,1.15));
     const cdir=V3(-Math.cos(delta),0,Math.sin(delta));      // aft, swung to port
     const ndir=V3(Math.sin(delta),0,Math.cos(delta));       // leeward normal
-    if(sh.wow) ndir.scaleInPlace(-1);                         // windward-set jib: belly blows forward, away from the wind
+    if(sh.flip) ndir.scaleInPlace(-1);                        // wind on the other face (port tack, or a windward-set jib)
     const c=sh.depth*(1-.25*hf);
     const row=[];
     for(let ix=0; ix<NC; ix++){
@@ -9210,6 +9195,9 @@ function ensure3Dinner(canvas){
 // one bound vortex per sail (strength from that sail's local lift), so the
 // slot, upwash and stall all show up in the dye for real physical reasons
 function flowVel(x,z,y,r){
+  // the panel solution lives in the starboard-tack frame; on port tack the
+  // query is mirrored in and the cross-flow component mirrored back out
+  const S=r.S||1; z*=S;
   const aws=r.aws*KT*Math.pow(Math.max(y,1)/10,.11);
   const awaR=rad(r.awa);
   let vx=-Math.cos(awaR)*aws, vz=Math.sin(awaR)*aws;
@@ -9224,7 +9212,7 @@ function flowVel(x,z,y,r){
       vz +=  gj/(2*Math.PI*r2)*dx;
     }
   }
-  return [vx,vz];
+  return [vx,S*vz];
 }
 function segX(ax,az,bx,bz,cx,cz,dx,dz){ // 2D segment intersection -> t along ab or -1
   const rx=bx-ax, rz=bz-az, sx=dx-cx, sz=dz-cz;
@@ -9269,7 +9257,7 @@ function initPuffs(){
 }
 function seedPuff(pp,i,anywhere){
   const r=B3.dyeR||{awa:30};
-  const upX=Math.cos(rad(r.awa)), upZ=-Math.sin(rad(r.awa));
+  const upX=Math.cos(rad(r.awa)), upZ=-(r.S||1)*Math.sin(rad(r.awa));
   const lane=i%PUFF_LANES, hi=((i/PUFF_LANES)|0)%PUFF_HEIGHTS.length;
   const k=(i/(PUFF_LANES*PUFF_HEIGHTS.length))|0;
   const lat=(lane/(PUFF_LANES-1)*2-1)*7.2;
@@ -9282,7 +9270,7 @@ function seedPuff(pp,i,anywhere){
 }
 function stepPuffs(dt){
   const dtc=Math.min(dt,.05), pp=B3.pp, pos=B3.puffPos, r=B3.dyeR;
-  const upX=Math.cos(rad(r.awa)), upZ=-Math.sin(rad(r.awa));
+  const upX=Math.cos(rad(r.awa)), upZ=-(r.S||1)*Math.sin(rad(r.awa));
   const vm=B3.scene.activeCamera.getViewMatrix().m;
   const cx=vm[2], cy=vm[6], cz=vm[10];                    // camera forward, world frame
   const TAU=.035, W=.007;                                 // streak = the last 35 ms of travel
@@ -9348,7 +9336,7 @@ function clothStep(kind, r, dt, t){
   const c=CLOTH[kind]; if(!c) return;
   const aws=r.aws*KT;
   const awaR=rad(r.awa);
-  const wx=-Math.cos(awaR), wz=Math.sin(awaR);
+  const wx=-Math.cos(awaR), wz=tackSign()*Math.sin(awaR);
   const NC=c.NC;
   const sailAng=kind==="main"?r.main.boom:r.jib.clew;
   const sailTw=kind==="main"?r.main.twist:r.jib.twist;
@@ -9406,10 +9394,24 @@ function tick3D(){
   if(!B3||!lastR) return;
   const r=lastR, dt=B3.engine.getDeltaTime()/1000;
   B3.t+=dt;
-  if(B3dirty){
-    const shM={boom:Math.max(r.main.boom,2),twist:r.main.twist,depth:r.main.depth,draft:r.main.draft};
-    const cj=r.jib.clew;
-    const shJ={clew:cj<0?Math.min(cj,-3):Math.max(cj,3),twist:r.jib.twist,depth:r.jib.depth,draft:r.jib.draft,wow:r.jib.wow};
+  // Display-frame sail angles are signed by tack (+ = set to port) and eased
+  // toward their targets, so a tack or gybe swings the boom and jib across the
+  // centreline instead of snapping to the mirror image.
+  const S=tackSign();
+  const tb=S*Math.max(r.main.boom,2);
+  const cj=r.jib.clew, tc=S*(cj<0?Math.min(cj,-3):Math.max(cj,3));
+  if(B3.boomShow===undefined){ B3.boomShow=tb; B3.clewShow=tc; }
+  const kA=Math.min(1,dt*3.2);
+  B3.boomShow+=(tb-B3.boomShow)*kA; B3.clewShow+=(tc-B3.clewShow)*kA;
+  const swinging=Math.abs(tb-B3.boomShow)>.05||Math.abs(tc-B3.clewShow)>.05;
+  if(!swinging){ B3.boomShow=tb; B3.clewShow=tc; }
+  const settled=!swinging&&B3.swingPrev; B3.swingPrev=swinging;
+  // the cloth retargets every frame of a swing, but the rigging tubes are
+  // rebuilt meshes, so they follow at ~8 Hz and snap exact once the swing ends
+  const rebuildRopes=B3dirty||settled||!B3.tubes||(B3.t-(B3.ropeT||0))>.12;
+  if(B3dirty||swinging){
+    const shM={boom:B3.boomShow,twist:r.main.twist,depth:r.main.depth,draft:r.main.draft,flip:B3.boomShow<0};
+    const shJ={clew:B3.clewShow,twist:r.jib.twist,depth:r.jib.depth,draft:r.jib.draft,wow:r.jib.wow,flip:(S<0)!==!!r.jib.wow};
     const tgtM=sailPathArray("main",shM,true), tgtJ=sailPathArray("jib",shJ,true);
     const pinM=sailPathArray("main",shM,false), pinJ=sailPathArray("jib",shJ,false);
     if(!CLOTH.main){ clothInit("main",tgtM,pinM); clothInit("jib",tgtJ,pinJ); }
@@ -9419,12 +9421,13 @@ function tick3D(){
     B3.boomMesh.position=V3(.72,1.42,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(1.7));
     B3.boomMesh.rotation.z=Math.PI/2; B3.boomMesh.rotation.x=0;
     // deck hardware follows the lines
-    B3.travCar.position=V3(-.95,1.0,-state.trav*.75);
-    B3.jibCar.position=V3(2.0-.8*state.jcar,.98,.95);
+    B3.travCar.position=V3(-.95,1.0,-S*state.trav*.75);
+    B3.jibCar.position=V3(2.0-.8*state.jcar,.98,S*.95);
     // running rigging: mainsheet (mid-boom -> traveler car) + working jib sheet (clew -> car)
     const boomMid=V3(.72,1.42,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(1.7));
     const dj=rad(shJ.clew);
     const clew=V3(3.72,1.05,0).add(V3(-Math.cos(dj),0,Math.sin(dj)).scale(2.9));
+    if(rebuildRopes){
     if(B3.tubes){ for(const k in B3.tubes) B3.tubes[k].forEach(m=>m.dispose()); }
     B3.tubes={};
     const boomDir=V3(-Math.cos(d),0,Math.sin(d));
@@ -9461,9 +9464,9 @@ function tick3D(){
                 sagLine(cb, bb, s3),
                 sagLine(bb.add(off), cb.add(off), s3).concat(sagLine(cb.add(off), V3(-2.2,.75,.3), .02).slice(1))];
       })(),
-      jsheet:[sagLine(clew, B3.jibCar.position.clone(), r.jib.wow?.45:0).concat([V3(-.7,.72,.8)])],
-      jsheetw:[sagLine(clew, V3(2.0-.8*state.jcar,.98,-.95), (1-state.jsheetw)*.5).concat(
-               sagLine(V3(2.0-.8*state.jcar,.98,-.95), V3(-.7,.72,-.8), (1-state.jsheetw)*.15).slice(1))],
+      jsheet:[sagLine(clew, B3.jibCar.position.clone(), r.jib.wow?.45:0).concat([V3(-.7,.72,S*.8)])],
+      jsheetw:[sagLine(clew, V3(2.0-.8*state.jcar,.98,-S*.95), (1-state.jsheetw)*.5).concat(
+               sagLine(V3(2.0-.8*state.jcar,.98,-S*.95), V3(-.7,.72,-S*.8), (1-state.jsheetw)*.15).slice(1))],
       jcar:[[V3(2.0-.8*state.jcar,1.02,.95), V3(2.0-.8*state.jcar,.90,.95)]],
       // vang: 2-part cascade boom bale <-> mast step, tail aft
       vang:[[boomVangPt.add(V3(0,-.02,.04)), mastBase.add(V3(0,.04,.06)), boomVangPt.add(V3(-.06,-.06,.02)), mastBase.add(V3(0,0,.10)), V3(-.2,.78,.20)]],
@@ -9515,11 +9518,13 @@ function tick3D(){
         t2.material=hot?B3.ropeHi:(steelKeys[key]?B3.steelMat:(B3.ropeMats[key]||B3.ropeMat)); t2.parent=B3.boat; return t2;
       });
     }
+    B3.ropeT=B3.t;
+    }
     // wind dye streamlines (steady flow -> rebuild only when trim changes)
     if(B3.dyeOn){
       if(!B3.puffs) initPuffs();
       B3.puffs.setEnabled(true);
-      B3.dyeR={aws:r.aws, awa:r.awa};        // flow field inputs for advection
+      B3.dyeR={aws:r.aws, awa:r.awa, S};     // flow field inputs for advection (S mirrors the field on port tack)
     } else if(B3.puffs){ B3.puffs.setEnabled(false); B3.dyeR=null; }
     if($("hud3d")) $("hud3d").innerHTML=
       `${fmt1(r.speed)} kt &nbsp;·&nbsp; heel ${fmt1(r.heel)}° &nbsp;·&nbsp; leeway ${fmt1(r.leeway)}°<br>`+
@@ -9543,12 +9548,11 @@ function tick3D(){
     if(rowsJ) B3.jibSail =BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:rowsJ,instance:B3.jibSail});
   }
   // heel to port (+z down means rotate.x negative in LH — sign tuned visually)
-  const target=-rad(r.heel);
+  const target=-S*rad(r.heel);                       // heel to leeward, whichever side that is
   B3.heelCur += (target-B3.heelCur)*Math.min(1,dt*3);
   B3.boat.rotation.x=B3.heelCur;
-  B3.boat.scaling.z=onPortTack()?-1:1;                 // port tack: mirror the whole boat, sails, lines and dye
   const rud=B3.scene.getMeshByName("rudder");
-  if(rud) rud.rotation.y += ((rad(clamp(r.helm,-6,15))) - rud.rotation.y)*Math.min(1,dt*4);
+  if(rud) rud.rotation.y += ((S*rad(clamp(r.helm,-6,15))) - rud.rotation.y)*Math.min(1,dt*4);
   B3.boat.rotation.z=Math.sin(B3.t*.8)*.012 + clamp(r.speed,0,7)*.004; // gentle pitch + bow-up with speed
   // heeled hull rotates about the keel line here, so add the buoyant rise a
   // real hull gets as its leeward volume immerses
