@@ -700,6 +700,7 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror)
 }
 function compute(){
   const s = state;
+  const JIB_F=2.90, JIB_H=.85, JIB_ZCAR=.62;   // jib foot, clew height above the car, track offset from centreline
   const twsKt = s.tws + (s.gust?6:0);
   const tws = twsKt*KT;
   const twa = s.twaOv || s.twaC || POS[s.posIdx].twa;
@@ -734,6 +735,22 @@ function compute(){
     const ang=best===null?argmin:best;
     return {ang, dist};
   }
+  // The jib sheet is an inextensible line from the clew to the fairlead car.
+  // The clew swings on the foot's arc (2.90 m from the tack at x 3.72, 0.55 m
+  // above the tack, matching sailPathArray); the car sits on the track at
+  // (xCar, .75, ZCAR). Distance clew->car as a function of clew angle d:
+  //   dist^2 = R^2 + h^2 + F^2 - 2 F R cos(d - d0)
+  // with R = hypot(3.72-xCar, ZCAR), h = .85 (clew height above the car),
+  // F = 2.90, d0 = atan2(ZCAR, 3.72-xCar) the angle where the sheet leads
+  // straight along the foot (shortest possible sheet: two-blocked).
+  function jibLead(jcar){
+    const xCar=.6-.8*jcar;                       // same track as the 3D view
+    const a=3.72-xCar, R=Math.hypot(a,JIB_ZCAR), d0=deg(Math.atan2(JIB_ZCAR,a));
+    const K=R*R+JIB_H*JIB_H+JIB_F*JIB_F;
+    const dist=d=>Math.sqrt(Math.max(0,K-2*JIB_F*R*Math.cos(rad(d-d0))));
+    const angFor=L=>d0+deg(Math.acos(clamp((K-L*L)/(2*JIB_F*R),-1,1)));
+    return {xCar,d0,dist,angFor};
+  }
   function shapes(awa){
     const upwind = clamp(1-(awa-35)/80, 0, 1);
     const leechM = clamp(s.sheet*upwind*0.95 + s.vang*0.6*(1-0.4*upwind), 0, 1.15);
@@ -750,12 +767,20 @@ function compute(){
     const depthJ = .08 + .075*(1 - .45*s.backstay - .40*s.jcar);
     const jTension = clamp((s.jhal-.35)/.65, 0, 1);
     const draftJ = clamp(.41 + .011*(twsKt-8) - .12*jTension, .32, .60);
-    // fixed sheet length = fixed max clew angle; the wind can luff the jib
-    // (weathervane at awa-4) but can never trim it — only the sheet does that.
-    // Quadratic: the first part of sheet ease opens the leech (twist) while the
-    // clew barely swings; the clew only goes out wide once the sheet is well eased.
-    const clewLimit = 4 + Math.pow(1-s.jsheet,2)*72;
-    const clewLee = clamp(Math.min(awa-4, clewLimit) - s.jsheetw*30, -25, 80);
+    // The slider measures sheet paid out beyond block-to-block (the shortest
+    // lead the current car allows) — like a trimmer counting inches eased off
+    // the winch — calibrated on the mid-track lead so the ease progression
+    // feels like the old curve (cubic: the first part of ease opens the leech
+    // while the clew barely swings). The car no longer two-blocks the sheet;
+    // it shifts the clew angle a degree or two for the same ease and moves
+    // the load between leech and foot. The wind can luff the jib (weathervane
+    // at awa-4) but never trims it — only the sheet.
+    const leadRef=jibLead(.5), lead=jibLead(s.jcar);
+    const clewStar=leadRef.d0 + Math.pow(1-s.jsheet,3)*(78-leadRef.d0);
+    const eased=leadRef.dist(clewStar)-leadRef.dist(leadRef.d0);
+    const Ljib=lead.dist(lead.d0)+eased;
+    const clewSheet=lead.angFor(Ljib);            // sheet-limited clew angle at the actual car
+    const clewLee = clamp(Math.min(awa-4, clewSheet) - s.jsheetw*30, -25, 80);
     // wing-on-wing: deep downwind, with the leeward sheet eased right off and the
     // windward (lazy) sheet taken up, the jib flies out on the windward side in
     // clear air. The windward sheet's paid-out length sets how far it squares out.
@@ -765,7 +790,7 @@ function compute(){
     const wow = wowF>.5;
     return {upwind, wowF,
       m:{leech:leechM,twist:twistM,depth:depthM,draft:draftM,boom:boomM,slack:sheetSlack},
-      j:{leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ,wow}};
+      j:{leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ,wow,sheetLen:Ljib,clewSheet,eased}};
   }
 
   function step(V, heel, lee){
@@ -799,11 +824,11 @@ function compute(){
     const Rheel = (Rf+Rr)*.3*Math.pow(Math.sin(heelR),1.5);
     const Rtot = Rf+Rr+Rheel+Di+2;
     const Vnew = clamp(V*Math.pow(Math.max(drive,0.1)/Rtot, .28), .05, 4.2);
-    return {aws,awa,sh,heelNew,leeNew,Vnew,drive,side};
+    return {aws,awa,sh,heelNew,leeNew,Vnew,drive,side,FJ};
   }
 
   function finish(rr, V, heel, lee){
-    const {aws,awa,sh} = rr;
+    const {aws,awa,sh,FJ} = rr;
     const off = awa>90;
     const aoaM = awa - sh.m.boom - sh.m.twist*.5;
     const aoaJ = sh.j.wow ? awa + Math.abs(sh.j.boom) + sh.j.twist*.5 - 180 : awa - sh.j.boom - sh.j.twist*.5;
@@ -826,9 +851,25 @@ function compute(){
     const J = sailEff(sh.j, aoaJ, idl.aoa-4, idl.draftPosJ);
     const eff = M.eff*.58 + J.eff*.42;
     const helm = clamp(-1 + Math.max(0,heel-8)*.42 + (sh.m.draft-.43)*28 + Math.max(0,s.trav)*1.2 + (sh.m.depth-.11)*30*sh.upwind, -4, 15);
+    // jib sheet load. The sail is a membrane: the in-plane tension needed to
+    // react a normal load Fn over a camber `depth` is ~Fn/(8*depth) (cable-sag
+    // relation). The sheet supplies that at the clew; a lead that pulls nearly
+    // along the foot (sn -> 0) restrains the sail less per unit tension, so
+    // the load climbs. Slack when the wind holds the clew short of the sheet.
+    const jl = jibLead(s.jcar);
+    const dJ = Math.abs(sh.j.boom);
+    const taut = sh.j.wow || dJ >= sh.j.clewSheet - .05;
+    const cJ = {x:3.72-JIB_F*Math.cos(rad(dJ)), y:1.60, z:JIB_F*Math.sin(rad(dJ))};
+    const sv = {x:jl.xCar-cJ.x, y:.75-cJ.y, z:JIB_ZCAR-cJ.z};
+    const sl = Math.hypot(sv.x,sv.y,sv.z)||1;
+    const sn = clamp(-(sv.x/sl*Math.sin(rad(dJ)) + sv.z/sl*Math.cos(rad(dJ))), 0, 1);
+    const Fn = Math.hypot(FJ.drive, FJ.side);
+    const sheetT = taut ? Fn/(8*Math.max(sh.j.depth,.06))*(1+.6*(1-sn)) : 0;   // newtons
+    const sheetSlackJ = taut ? 0 : Math.max(0, sh.j.sheetLen - jl.dist(dJ));  // metres
     return {tws:twsKt, twa, aws:aws/KT, awa, upwind:sh.upwind, wowF:sh.wowF, off,
       main:{...sh.m, aoa:aoaM, eff:M.eff, luff:M.luff, stall:M.stall},
-      jib:{...sh.j, clew:sh.j.boom, aoa:aoaJ, eff:J.eff, luff:J.luff, stall:J.stall},
+      jib:{...sh.j, clew:sh.j.boom, aoa:aoaJ, eff:J.eff, luff:J.luff, stall:J.stall,
+        sheetT, sheetSlack:sheetSlackJ, sheetLen:sh.j.sheetLen, eased:sh.j.eased, taut},
       idl, eff, heel:clamp(heel,0,40), helm, leeway:lee, sheetSlack:sh.m.slack, speed:V/KT};
   }
 }
@@ -1070,13 +1111,14 @@ function renderDeck(r){
   // jib fairlead tracks + car + working sheet (port = leeward side)
   const trkTop=mastY-2, trkBot=mastY+33;   // beside/aft of the mast, as on the boat
   const carY=trkTop+(trkBot-trkTop)*state.jcar;
-  out += `<line x1="${cx-22}" y1="${trkTop}" x2="${cx-22}" y2="${trkBot}" stroke="var(--ink2)" stroke-width="2.5"/>
-          <line x1="${cx+22}" y1="${trkTop}" x2="${cx+22}" y2="${trkBot}" stroke="var(--ink2)" stroke-width="2.5"/>
-          <circle cx="${cx-22*S}" cy="${carY}" r="4" fill="${r.jib.wow?"var(--ink3)":"var(--accent)"}"/>
-          <circle cx="${cx+22*S}" cy="${carY}" r="3" fill="${r.jib.wow?"var(--accent)":"var(--ink3)"}"/>
+  const TRK=20;
+  out += `<line x1="${cx-TRK}" y1="${trkTop}" x2="${cx-TRK}" y2="${trkBot}" stroke="var(--ink2)" stroke-width="2.5"/>
+          <line x1="${cx+TRK}" y1="${trkTop}" x2="${cx+TRK}" y2="${trkBot}" stroke="var(--ink2)" stroke-width="2.5"/>
+          <circle cx="${cx-TRK*S}" cy="${carY}" r="4" fill="${r.jib.wow?"var(--ink3)":"var(--accent)"}"/>
+          <circle cx="${cx+TRK*S}" cy="${carY}" r="3" fill="${r.jib.wow?"var(--accent)":"var(--ink3)"}"/>
           <text x="${cx-30*S}" y="${trkBot+12}" font-size="12" fill="var(--ink3)" text-anchor="${S>0?"end":"start"}">fairlead car</text>`;
   { const a=rad(clewD), clewX=cx-Math.sin(a)*92, clewY=tackY+Math.cos(a)*92;
-    out += `<line x1="${clewX}" y1="${clewY}" x2="${r.jib.wow?cx+22*S:cx-22*S}" y2="${carY}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
+    out += `<line x1="${clewX}" y1="${clewY}" x2="${r.jib.wow?cx+TRK*S:cx-TRK*S}" y2="${carY}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
   { const a=rad(boomD), endX=cx-Math.sin(a)*118, endY=mastY+Math.cos(a)*118;
     out += `<line x1="${endX}" y1="${endY}" x2="${cx + S*state.trav*24}" y2="${mastY+76}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
   // wind arrows on the windward side; direction from bow = twa/awa, signed by tack
@@ -1187,6 +1229,12 @@ function renderHeel(r){
 /* ---------------- slider value labels ---------------- */
 const easeWords = ["fully eased","eased","eased a bit","firm","hard on"];
 function word(v){ return easeWords[clamp(Math.floor(v*4.999),0,4)]; }
+function jsheetLabel(r){
+  if(!r||!r.jib||r.jib.sheetT===undefined) return word(state.jsheet);
+  const out=r.jib.eased<.01?"two-blocked":Math.round(r.jib.eased*100)+" cm out";
+  if(!r.jib.taut) return out+" \u00b7 "+Math.round(r.jib.sheetSlack*100)+" cm slack";
+  return out+" \u00b7 "+Math.round(r.jib.sheetT/9.81)+" kg";
+}
 function renderVals(){
   syncJibSheetRail();
   $("v-tws").textContent = state.tws+" kt"+(state.gust?" (+6 gust)":"");
@@ -1200,7 +1248,7 @@ function renderVals(){
   $("v-outhaul").textContent = state.outhaul<.33?"eased · belly":state.outhaul<.7?"medium":"tight · flat";
   $("v-cunn").textContent = state.cunn<.2?"slack":state.cunn<.6?"snug":"hard";
   $("v-backstay").textContent = state.backstay<.25?"soft · sag":state.backstay<.65?"medium":"hard · bent mast";
-  $("v-"+jibSheetSideId("jsheet")).textContent = word(state.jsheet);
+  $("v-"+jibSheetSideId("jsheet")).textContent = jsheetLabel(lastR);
   $("v-"+jibSheetSideId("jsheetw")).textContent = (lastR&&lastR.jib&&lastR.jib.wow) ? "trimmed — wing-on-wing" : state.jsheetw<.08?"slack (lazy)":state.jsheetw<.5?"taking up — backing!":"hauled — jib backed";
   $("v-mainhal").textContent = state.mainhal<.35?"DROPPED "+Math.round(state.mainhal/.35*100)+"%":state.mainhal<.7?"hoisted · soft":"hoisted · tight";
   $("v-jcar").textContent = state.jcar<.33?"forward · power":state.jcar<.7?"middle":"aft · twist";
@@ -1308,6 +1356,7 @@ function update(src){
   if(src && lastR) renderFx(src,lastR,r);
   if(src && B3 && TRIM_KEYS.includes(src)) B3.hiKey=src;
   lastR=r;
+  $("v-"+jibSheetSideId("jsheet")).textContent = jsheetLabel(r);
   B3dirty=true;
   if($("awCard")) $("awCard").innerHTML = "Apparent wind is what the sails actually feel: <b>"+fmt1(r.aws)+" kt</b> at <b>"+Math.round(r.awa)+"\u00B0</b> off the bow.";
   if(src){ renderOptims(); scheduleOptims(); }
@@ -1564,14 +1613,14 @@ const LINES = [
   tight:"Flat main, tight forestay, higher pointing, less heel.", ease:"Straight mast, sagging forestay, both sails get fuller — power for light air.",
   when:"Overpowered upwind: on. Light air or reaching: off.",
   c26:"Split backstay with an adjuster at the transom apex — crew can play it from the rail."},
- {n:"Jib sheet", tag:"jib angle + leech", t:"The jib's mainsheet: sets angle of attack and, through the clew, leech tension. Trim to the telltales — windward lifting means sheet on or head up; leeward stalling means ease.",
+ {n:"Jib sheet", tag:"jib angle + leech", t:"The jib's mainsheet: sets angle of attack and, through the clew, leech tension. Trim to the telltales — windward lifting means sheet on or head up; leeward stalling means ease. The sheet is an inextensible line: its length sets where the clew can swing to, the wind loads it, and the label under the slider shows the load (kg) or the slack.",
   tight:"Closes the slot, points higher, risks backwinding the main.", ease:"Opens the slot, twists the top, forgiving.",
   when:"Constantly upwind. Both telltale pairs streaming aft = trimmed.",
   c26:"Non-overlapping jib — it sheets inside the shrouds and responds instantly. Two-inch adjustments."},
  {n:"Jib fairlead car", tag:"jib twist + foot", t:"Where the sheet turns down to the deck. Moves the pull between leech (car forward) and foot (car aft).",
   tight:"Forward: leech tensions, foot bellies — power, but closes the top.", ease:"Aft: foot flattens, top twists open — depower for breeze.",
   when:"Rough guide: sheet should bisect the clew angle. Top telltale breaks first → car forward. Overpowered → car aft.",
-  c26:"Track on the side deck with pin stops — set it before the tack on the new side. Common trap: car aft is NOT the fast setting — it is the depower setting. In moderate air an open top costs power and pointing; go aft only when overpowered."},
+  c26:"Track on the inboard side deck, close to the cabin, for a tight ~10° sheeting angle; pin stops — set it before the tack on the new side. Common trap: car aft is NOT the fast setting — it is the depower setting. In moderate air an open top costs power and pointing; go aft only when overpowered."},
  {n:"Jib halyard", tag:"jib draft position", t:"Luff tension for the jib — the jib's cunningham. More wind stretches the luff and lets draft slide aft; halyard tension pulls it forward.",
   tight:"Draft forward, fine entry, points well.", ease:"Sagging arcs between the clips that hold the sail to the wire; draft aft, round entry.",
   when:"Set for the day's breeze; snug it when the wind builds.",
@@ -2041,8 +2090,8 @@ function ensure3Dinner(canvas){
   travCar.material=sparM; travCar.parent=boat;
   // jib tracks on the side decks aft of the mast: a 100% jib sheets aft, not forward
   const jibTrackP=BABYLON.MeshBuilder.CreateBox("jibTrackP",{width:.9,height:.04,depth:.06},scene);
-  jibTrackP.position=V3(.2,.71,.95); jibTrackP.material=sparM; jibTrackP.parent=boat;
-  const jibTrackS=jibTrackP.clone("jibTrackS"); jibTrackS.position=V3(.2,.71,-.95); jibTrackS.parent=boat;
+  jibTrackP.position=V3(.2,.71,.62); jibTrackP.material=sparM; jibTrackP.parent=boat;
+  const jibTrackS=jibTrackP.clone("jibTrackS"); jibTrackS.position=V3(.2,.71,-.62); jibTrackS.parent=boat;
   const jibCar=BABYLON.MeshBuilder.CreateBox("jibCar",{width:.14,height:.08,depth:.1},scene);
   jibCar.material=sparM; jibCar.parent=boat;
 
@@ -2442,7 +2491,7 @@ function tick3D(){
     // deck hardware follows the lines
     B3.travCar.position=V3(-.95,1.0,-S*state.trav*.75);
     const jcarX=.6-.8*state.jcar;                    // forward (x .6) .. aft (x -.2), both aft of the mast
-    B3.jibCar.position=V3(jcarX,.75,S*.95);
+    B3.jibCar.position=V3(jcarX,.75,S*.62);
     // running rigging: mainsheet (mid-boom -> traveler car) + working jib sheet (clew -> car)
     const boomMid=V3(.72,1.42,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(1.7));
     // the sheet starts exactly where the cloth's clew particle is pinned
@@ -2488,14 +2537,14 @@ function tick3D(){
                 sagLine(bb.add(off), cb.add(off), s3).concat(sagLine(cb.add(off), V3(-2.2,.75,.3), .02).slice(1))];
       })(),
       // working sheet: clew -> leeward car -> leeward winch drum -> tail into the cockpit
-      jsheet:[sagLine(clew, B3.jibCar.position.clone(), r.jib.wow?.45:0, .74).concat(
+      jsheet:[sagLine(clew, B3.jibCar.position.clone(), r.jib.wow?.45:Math.min(.5, r.jib.sheetSlack*.6), .74).concat(
                [V3(-.62,.87,S*.59), V3(-.95,.72,S*.42)])],
       // lazy sheet: clew -> forward round the mast over the cabin roof -> windward car -> windward winch
       jsheetw:[sagLine(clew, V3(1.05,1.02,-S*.2), (1-state.jsheetw)*.3, 1.0).concat(
-               sagLine(V3(1.05,1.02,-S*.2), V3(jcarX,.75,-S*.95), (1-state.jsheetw)*.2, .74).slice(1),
-               sagLine(V3(jcarX,.75,-S*.95), V3(-.62,.87,-S*.59), (1-state.jsheetw)*.15, .74).slice(1),
+               sagLine(V3(1.05,1.02,-S*.2), V3(jcarX,.75,-S*.62), (1-state.jsheetw)*.2, .74).slice(1),
+               sagLine(V3(jcarX,.75,-S*.62), V3(-.62,.87,-S*.59), (1-state.jsheetw)*.15, .74).slice(1),
                [V3(-.95,.72,-S*.42)])],
-      jcar:[[V3(jcarX,.80,.95), V3(jcarX,.70,.95)]],
+      jcar:[[V3(jcarX,.80,.62), V3(jcarX,.70,.62)]],
       // vang: 2-part cascade boom bale <-> mast step, tail aft
       vang:[[boomVangPt.add(V3(0,-.02,.04)), mastBase.add(V3(0,.04,.06)), boomVangPt.add(V3(-.06,-.06,.02)), mastBase.add(V3(0,0,.10)), V3(-.2,.78,.20)]],
       // outhaul: clew -> boom end sheave -> forward under the boom -> gooseneck cleat
