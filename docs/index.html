@@ -9104,6 +9104,43 @@ function hullPaths(){
   return paths;
 }
 
+// Coachroof (cabin trunk). One description of the surface serves two jobs: it
+// lofts the mesh, and it tells the rope router how high the roof is under a
+// given point, so sheets drape over the trunk instead of through it.
+const TRUNK={xAft:.80, xFwd:2.35, hzAft:.74, hzFwd:.46, yAft:1.00, yFwd:.94,
+             yBase:.66, camber:.055, tumble:.94};
+function trunkT(x){ return clamp((x-TRUNK.xAft)/(TRUNK.xFwd-TRUNK.xAft),0,1); }
+function trunkHalfZ(x){
+  // plan view tapers forward, easing rather than straight-lining into the bow
+  const t=trunkT(x);
+  return TRUNK.hzAft+(TRUNK.hzFwd-TRUNK.hzAft)*Math.pow(t,1.35);
+}
+function trunkCrown(x){
+  const t=trunkT(x);
+  return TRUNK.yAft+(TRUNK.yFwd-TRUNK.yAft)*t;
+}
+// height of the roof at (x,z), or -Infinity clear of the trunk footprint
+function trunkTopY(x,z){
+  if(x<TRUNK.xAft||x>TRUNK.xFwd) return -Infinity;
+  const hz=trunkHalfZ(x), az=Math.abs(z);
+  if(az>hz) return -Infinity;
+  return trunkCrown(x)+TRUNK.camber*(1-(az/hz)*(az/hz));
+}
+// transverse section of the trunk: rail, up the topside, across the cambered
+// roof, back down the other side
+function trunkSection(x,inset){
+  inset=inset||0;
+  const hz=trunkHalfZ(x)-inset, crown=trunkCrown(x), row=[];
+  row.push(V3(x,TRUNK.yBase,hz));
+  const NT=12;
+  for(let j=0;j<=NT;j++){
+    const q=j/NT, z=hz*TRUNK.tumble*(1-2*q), az=Math.abs(z)/(hz*TRUNK.tumble);
+    row.push(V3(x,crown+TRUNK.camber*(1-az*az),z));
+  }
+  row.push(V3(x,TRUNK.yBase,-hz));
+  return row;
+}
+
 function sailPathArray(kind, sh, forceFull){
   // kind 'main'|'jib'; sh: {boom|clew, twist, depth, draft}
   const rows=[], NR=11, NC=13;
@@ -9260,8 +9297,40 @@ function ensure3Dinner(canvas){
   sailM.backFaceCulling=false; sailM.twoSidedLighting=true;
 
   // cabin trunk + deck hardware (photo-matched: low trunk forward, long open cockpit)
-  const cabin=BABYLON.MeshBuilder.CreateBox("cabin",{width:1.9,height:.26,depth:1.5},scene);
-  cabin.position=V3(1.75,.85,0); cabin.material=hullM; cabin.parent=boat;
+  // the trunk is lofted from TRUNK/trunkSection rather than being a box: it
+  // tapers forward, the roof is cambered, and the base sits below the sheer so
+  // it reads as moulded into the deck instead of parked on top of it
+  const trunkRows=[];
+  const TRUNK_ST=12;
+  for(let i=0;i<=TRUNK_ST;i++)
+    trunkRows.push(trunkSection(TRUNK.xFwd+(TRUNK.xAft-TRUNK.xFwd)*(i/TRUNK_ST)));
+  const cabin=BABYLON.MeshBuilder.CreateRibbon("cabin",{pathArray:trunkRows,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
+  cabin.material=hullM; cabin.parent=boat;
+  // cap the open fore and aft ends, the same fan trick the transom uses
+  for(const row of [trunkRows[0],trunkRows[trunkRows.length-1]]){
+    const cz=row.map(pt=>V3(pt.x,pt.y,0));
+    const cap=BABYLON.MeshBuilder.CreateRibbon("cabinCap",{pathArray:[row,cz],sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
+    cap.material=hullM; cap.parent=boat;
+  }
+  // nonskid panel on the roof: inset from the moulded edge, lifted a few mm
+  const nonskidRows=trunkRows.slice(1,-1).map(r=>{
+    // take the inset section's plan outline but read the height off the real
+    // roof surface, so the panel floats just proud of it and never sinks in
+    const inset=trunkSection(r[0].x,.07);
+    return inset.slice(1,-1).map(pt=>V3(pt.x,trunkTopY(pt.x,pt.z)+.006,pt.z));
+  });
+  // nonskid is a shade darker and flatter than the gloss moulding, which is
+  // what stops the roof reading as one white slab
+  const nonskidM=new BABYLON.PBRMaterial("nonskidM",scene);
+  nonskidM.albedoTexture=makeDeckTexture();
+  nonskidM.albedoTexture.uScale=3; nonskidM.albedoTexture.vScale=3;
+  nonskidM.albedoColor=new BABYLON.Color3(.72,.71,.67);
+  nonskidM.metallic=0; nonskidM.roughness=.95;
+  const cabinTop=BABYLON.MeshBuilder.CreateRibbon("cabinTop",{pathArray:nonskidRows,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
+  cabinTop.material=nonskidM; cabinTop.parent=boat;
+  // forehatch, sitting flush in the crown
+  const hatch=BABYLON.MeshBuilder.CreateBox("forehatch",{width:.44,height:.05,depth:.44},scene);
+  hatch.position=V3(1.85,trunkTopY(1.85,0)+.01,0); hatch.material=sparM; hatch.parent=boat;
   const sole=BABYLON.MeshBuilder.CreateBox("sole",{width:3.1,height:.05,depth:1.1},scene);
   sole.position=V3(-1.5,.42,0); sole.material=deckM; sole.parent=boat;
   const benchP=BABYLON.MeshBuilder.CreateBox("benchP",{width:3.0,height:.09,depth:.42},scene);
@@ -9721,16 +9790,25 @@ function tick3D(){
     function sagLine(a,b,slack,floor,parts){
       // a line with `slack` metres more length than the span hangs in a curve
       // whose depth follows the parabolic catenary: d = sqrt(3 L s / 8).
-      // `floor` (optional) is the deck/cabin surface the slack line drapes on.
-      if(!slack||slack<.005) return [a,b];
-      const L=BABYLON.Vector3.Distance(a,b), d=Math.sqrt(3*L*slack/8);
-      parts=parts||10; const pts=[];
+      // `floor` is the surface the line rests on: a number for a flat height,
+      // or a function of the point for the deck-plus-coachroof surface. A taut
+      // line still gets tessellated when a floor is given, because a straight
+      // chord can cut through the trunk even with no sag in it.
+      const fl = typeof floor==="function" ? floor
+               : (floor===undefined ? null : ()=>floor);
+      const sag = (!slack||slack<.005) ? 0 : slack;
+      if(!sag&&!fl) return [a,b];
+      const L=BABYLON.Vector3.Distance(a,b), d=sag?Math.sqrt(3*L*sag/8):0;
+      parts=parts||(fl?14:10); const pts=[];
       for(let i=0;i<=parts;i++){const q=i/parts;
         const pt=BABYLON.Vector3.Lerp(a,b,q); pt.y-=4*q*(1-q)*d;
-        if(floor!==undefined) pt.y=Math.max(pt.y,floor);
+        if(fl) pt.y=Math.max(pt.y,fl(pt));
         pts.push(pt);}
       return pts;
     }
+    // the deck at height y0, raised over the coachroof wherever the line
+    // crosses it — a rope radius clear of the moulding
+    const overTrunk=y0=>pt=>Math.max(y0, trunkTopY(pt.x,pt.z)+.03);
     const car=B3.travCar.position;
     const boomMid2=V3(.72,1.42,0).add(boomDir.scale(1.95));
     const mastBase=V3(.66,1.0,0);
@@ -9746,11 +9824,12 @@ function tick3D(){
                 sagLine(bb.add(off), cb.add(off), s3).concat(sagLine(cb.add(off), V3(-2.2,.75,.3), .02).slice(1))];
       })(),
       // working sheet: clew -> leeward car -> leeward winch drum -> tail into the cockpit
-      jsheet:[sagLine(clew, B3.jibCar.position.clone(), r.jib.wow?.45:Math.min(.5, r.jib.sheetSlack*.6), .74).concat(
+      jsheet:[sagLine(clew, B3.jibCar.position.clone(), r.jib.wow?.45:Math.min(.5, r.jib.sheetSlack*.6), overTrunk(.74)).concat(
                [V3(-.62,.87,S*.59), V3(-.95,.72,S*.42)])],
-      // lazy sheet: clew -> forward round the mast over the cabin roof -> windward car -> windward winch
-      jsheetw:[sagLine(clew, V3(1.05,1.02,-S*.2), (1-state.jsheetw)*.3, 1.0).concat(
-               sagLine(V3(1.05,1.02,-S*.2), V3(jcarX,.75,-S*.62), (1-state.jsheetw)*.2, .74).slice(1),
+      // lazy sheet: clew -> across the coachroof to the windward car -> windward
+      // winch. There is no block between the clew and the car, so the run is a
+      // single span; its only bend comes from lying on the roof on the way down.
+      jsheetw:[sagLine(clew, V3(jcarX,.75,-S*.62), (1-state.jsheetw)*.45, overTrunk(.74), 18).concat(
                sagLine(V3(jcarX,.75,-S*.62), V3(-.62,.87,-S*.59), (1-state.jsheetw)*.15, .74).slice(1),
                [V3(-.95,.72,-S*.42)])],
       jcar:[[V3(jcarX,.80,.62), V3(jcarX,.70,.62)]],
