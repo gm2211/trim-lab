@@ -8803,10 +8803,9 @@ function lineFig(key, label){
     jhal:{extra:`<polyline points="176,28 160,14 161,100 118,96" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>`, mx:118, my:96, txt:"cabin-top clutch"},
   };
   const o=overlays[key]||{extra:"",mx:150,my:104,txt:""};
-  const leader=`<line x1="${o.mx}" y1="${o.my}" x2="150" y2="156" stroke="var(--ink3)" stroke-width="1"/>`;
   const marker=`<circle cx="${o.mx}" cy="${o.my}" r="4.5" fill="var(--accent)" stroke="var(--bg)" stroke-width="1.5"/>`;
   const text=`<text x="150" y="164" font-size="11" fill="var(--ink2)" text-anchor="middle">${o.txt}</text>`;
-  return `<svg viewBox="0 0 300 170" class="linefig" role="img" aria-label="Where the ${label} is on the boat">${base}${o.extra}${leader}${marker}${text}</svg>`;
+  return `<svg viewBox="0 0 300 170" class="linefig" role="img" aria-label="Where the ${label} is on the boat">${base}${o.extra}${marker}${text}</svg>`;
 }
 
 $("linecards").innerHTML = LINES.map((l,i)=>`
