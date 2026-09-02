@@ -178,6 +178,7 @@
   .card dt{font-family:var(--disp);font-size:10.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink2);margin-top:8px}
   .card dd{margin:2px 0 0;font-size:13.5px}
   .card p{font-size:13.5px;margin:8px 0 0}
+  .card .linefig{width:100%;height:auto;display:block;background:var(--panel2);border:1px solid var(--line);border-radius:4px;margin:8px 0 2px}
   .note{background:var(--panel2);border-radius:3px;padding:7px 10px;font-size:12.5px;margin-top:10px;color:var(--ink2)}
   .note b{color:var(--ink)}
 
@@ -335,6 +336,7 @@
     #pane-lines .card p,#pane-lines .card dd{font-size:12.5px;line-height:1.45}
     #pane-lines .card dt{border-top:1px solid var(--line);padding-top:7px;margin-top:9px}
     #pane-lines .card dl{margin-top:6px;margin-bottom:10px}
+    #pane-lines .card .linefig{flex:0 0 auto;margin:6px 0 0}
     #pane-lines .card .try{margin-top:10px;align-self:flex-start}
     /* Concepts: one per page + pager */
     #pane-concepts.active{height:100%;display:flex;flex-direction:column;min-height:0}
@@ -1567,8 +1569,41 @@ const LINES = [
   c26:"Led aft to the cabin-top clutch — easy to tweak without leaving the cockpit."},
 ];
 const LINE_CTL=["sheet","trav","vang","outhaul","cunn","backstay","jsheet","jcar","jhal"];
+
+function lineFig(key, label){
+  const base=`
+    <line x1="10" y1="132" x2="290" y2="132" stroke="var(--line)" stroke-dasharray="3 4"/>
+    <path d="M 270 104 C 250 106 90 108 34 110 L 34 128 C 90 140 200 136 268 126 Z" fill="var(--panel2)" stroke="var(--ink2)" stroke-width="1.5"/>
+    <path d="M 150 137 L 180 136 L 172 158 L 158 158 Z" fill="var(--panel2)" stroke="var(--ink2)" stroke-width="1.2"/>
+    <path d="M 46 130 L 58 129 L 56 150 L 48 150 Z" fill="var(--panel2)" stroke="var(--ink2)" stroke-width="1.2"/>
+    <path d="M 110 105 L 114 94 L 202 92 L 208 104" fill="var(--panel2)" stroke="var(--ink2)" stroke-width="1.2"/>
+    <line x1="160" y1="100" x2="160" y2="14" stroke="var(--ink)" stroke-width="2"/>
+    <line x1="160" y1="86" x2="72" y2="88" stroke="var(--ink)" stroke-width="2"/>
+    <line x1="160" y1="14" x2="268" y2="104" stroke="var(--ink3)" stroke-width="1"/>
+    <line x1="160" y1="14" x2="36" y2="108" stroke="var(--ink3)" stroke-width="1"/>
+    <path d="M 160 16 L 160 86 L 74 87 C 100 62 132 38 160 16 Z" fill="var(--ghost)" fill-opacity=".18" stroke="var(--ghost)" stroke-width="1"/>
+    <path d="M 176 28 L 263 100 L 186 100 C 178 76 176 52 176 28 Z" fill="var(--ghost)" fill-opacity=".18" stroke="var(--ghost)" stroke-width="1"/>`;
+  const overlays={
+    sheet:{extra:`<line x1="115" y1="87" x2="115" y2="104" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>`, mx:115, my:104, txt:"mid-boom → cockpit"},
+    trav:{extra:`<line x1="100" y1="104" x2="118" y2="104" stroke="var(--accent)" stroke-width="3"/><line x1="109" y1="104" x2="109" y2="87" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>`, mx:109, my:104, txt:"track at companionway"},
+    vang:{extra:`<line x1="160" y1="99" x2="126" y2="87" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>`, mx:126, my:87, txt:"mast base → boom"},
+    outhaul:{extra:`<line x1="96" y1="88" x2="74" y2="88" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>`, mx:76, my:87, txt:"clew, end of boom"},
+    cunn:{extra:`<line x1="160" y1="72" x2="160" y2="98" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>`, mx:160, my:78, txt:"luff, just above the tack"},
+    backstay:{extra:`<line x1="160" y1="14" x2="36" y2="108" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>`, mx:40, my:105, txt:"masthead → transom adjuster"},
+    jsheet:{extra:`<polyline points="186,100 142,104 100,104" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>`, mx:100, my:104, txt:"clew → car → cockpit winch"},
+    jcar:{extra:`<line x1="186" y1="100" x2="142" y2="104" stroke="var(--ghost)" stroke-width="1.5" stroke-dasharray="2 3"/><line x1="128" y1="104" x2="158" y2="104" stroke="var(--accent)" stroke-width="3"/>`, mx:142, my:104, txt:"track on the side deck"},
+    jhal:{extra:`<polyline points="176,28 160,14 161,100 118,96" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>`, mx:118, my:96, txt:"cabin-top clutch"},
+  };
+  const o=overlays[key]||{extra:"",mx:150,my:104,txt:""};
+  const leader=`<line x1="${o.mx}" y1="${o.my}" x2="150" y2="156" stroke="var(--ink3)" stroke-width="1"/>`;
+  const marker=`<circle cx="${o.mx}" cy="${o.my}" r="4.5" fill="var(--accent)" stroke="var(--bg)" stroke-width="1.5"/>`;
+  const text=`<text x="150" y="164" font-size="11" fill="var(--ink2)" text-anchor="middle">${o.txt}</text>`;
+  return `<svg viewBox="0 0 300 170" class="linefig" role="img" aria-label="Where the ${label} is on the boat">${base}${o.extra}${leader}${marker}${text}</svg>`;
+}
+
 $("linecards").innerHTML = LINES.map((l,i)=>`
  <div class="card"><span class="tag">${l.tag}</span><h3>${l.n}</h3>
+  ${lineFig(LINE_CTL[i], l.n)}
   <p>${l.t}</p>
   <dl><dt>Tighten →</dt><dd>${l.tight}</dd><dt>Ease →</dt><dd>${l.ease}</dd><dt>Reach for it when</dt><dd>${l.when}</dd></dl>
   <div class="note"><b>On the Colgate 26:</b> ${l.c26}</div>
