@@ -2290,6 +2290,10 @@ function clothInit(kind, targets, pins){
     if(ix+1<NC) cons.push([idx(iy,ix),idx(iy,ix+1),0]);
     if(iy+1<NR) cons.push([idx(iy,ix),idx(iy+1,ix),0]);
     if(ix+1<NC&&iy+1<NR){ cons.push([idx(iy,ix),idx(iy+1,ix+1),0]); cons.push([idx(iy,ix+1),idx(iy+1,ix),0]); }
+    // bending constraints along the tensioned edges: a leech under sheet load
+    // (and a jib foot) is a taut, smooth curve, not a free hem that can fold
+    if(ix===NC-1&&iy+2<NR) cons.push([idx(iy,ix),idx(iy+2,ix),0]);
+    if(kind==="jib"&&iy===0&&ix+2<NC) cons.push([idx(iy,ix),idx(iy,ix+2),0]);
   }
   CLOTH[kind]={p,pp,w,cons,NR,NC,targets:null};
   clothRetarget(kind,targets,pins||targets);
@@ -2348,8 +2352,11 @@ function clothStep(kind, r, dt, t){
   for(let iy=0;iy<c.NR;iy++)for(let ix=0;ix<NC;ix++) flatT.push(c.targets[iy][ix]);
   const shapeK=hoist*hoist;   // dropped cloth is free fabric, not commanded shape
   for(let i=0;i<c.p.length;i++){ if(c.w[i]===0) continue;
-    const hf=((i/NC)|0)/(c.NR-1);
-    const k=(rowAoa[(i/NC)|0]<5 ? .05 : .06+.22*hf*hf)*shapeK;
+    const iy=(i/NC)|0, ix=i%NC, hf=iy/(c.NR-1);
+    // the sheet tensions the jib's leech and foot: those edges hold their
+    // commanded shape firmly while the body between them breathes
+    const edge=kind==="jib"&&(ix===NC-1||iy===0);
+    const k=(rowAoa[iy]<5 ? .05 : edge ? .30 : .06+.22*hf*hf)*shapeK;
     c.p[i].x+=(flatT[i].x-c.p[i].x)*k; c.p[i].y+=(flatT[i].y-c.p[i].y)*k; c.p[i].z+=(flatT[i].z-c.p[i].z)*k; }
   for(let it=0;it<5;it++) for(const [i,j,rest] of c.cons){
     const dx=c.p[j].x-c.p[i].x, dy=c.p[j].y-c.p[i].y, dz=c.p[j].z-c.p[i].z;
