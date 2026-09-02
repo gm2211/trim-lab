@@ -434,7 +434,7 @@
           <div id="shape-table"></div>
         </figure>
         <figure class="viz">
-          <figcaption>Deck plan <span class="hint">wind on starboard · dotted = sheets</span></figcaption>
+          <figcaption>Deck plan <span class="hint" id="deckHint">wind on starboard · dotted = sheets</span></figcaption>
           <svg id="svg-deck" viewBox="0 0 360 330" role="img" aria-label="Top-down view of boat, sails and wind"></svg>
         </figure>
         <figure class="viz">
@@ -923,6 +923,29 @@ function renderTable(r){
 }
 
 /* ---------------- render: sail sections ---------------- */
+// The physics model always holds starboard tack (the boat is symmetric), so on
+// port tack every boat view is drawn mirrored. Geometry flips as a group; each
+// text label is un-mirrored about its own anchor so it still reads normally,
+// and its anchor side is swapped so it still points away from what it labels.
+function onPortTack(){ return (state.twaSide||1)<0; }
+function mirrorSvg(inner, W, H, vertical){
+  const fixed=inner.replace(/<text\b([^>]*)>/g,(m,attrs)=>{
+    const gx=/\bx="([-\d.]+)"/.exec(attrs), gy=/\by="([-\d.]+)"/.exec(attrs);
+    const x=gx?+gx[1]:0, y=gy?+gy[1]:0;
+    const un=vertical?`translate(0 ${2*y}) scale(1 -1)`:`translate(${2*x} 0) scale(-1 1)`;
+    let a=attrs;
+    if(!vertical){
+      if(/text-anchor="end"/.test(a)) a=a.replace('text-anchor="end"','text-anchor="start"');
+      else if(/text-anchor="start"/.test(a)) a=a.replace('text-anchor="start"','text-anchor="end"');
+      else if(!/text-anchor=/.test(a)) a+=' text-anchor="end"';
+    }
+    const gt=/\btransform="([^"]*)"/.exec(a);
+    a=gt?a.replace(gt[0],`transform="${un} ${gt[1]}"`):a+` transform="${un}"`;
+    return `<text${a}>`;
+  });
+  const flip=vertical?`translate(0 ${H}) scale(1 -1)`:`translate(${W} 0) scale(-1 1)`;
+  return `<g transform="${flip}">${fixed}</g>`;
+}
 function sectionPath(x0,y0,ang,L,depth,draftPos,flip){
   // chord from luff (x0,y0), aft is straight down, ang rotates it to port (left);
   // wind from starboard (right), so camber bulges to leeward (left of chord)
@@ -1009,7 +1032,7 @@ function renderSections(r){
     out += `<circle cx="${xj}" cy="${row.y}" r="3" fill="var(--ink)"/>`;
   });
   out += `<text x="14" y="350" font-size="13" fill="var(--ink3)">Head opens +${fmt1(r.main.twist)}° · ● = draft (deepest point, cunningham/halyard move it) · ○ = its target.</text>`;
-  $("svg-sections").innerHTML = out;
+  $("svg-sections").innerHTML = onPortTack()?mirrorSvg(out,640,360,true):out;
 }
 
 /* ---------------- render: deck view ---------------- */
@@ -1048,7 +1071,8 @@ function renderDeck(r){
     out += `<line x1="${cx}" y1="${sternY-2}" x2="${rx}" y2="${ry}" stroke="${sev}" stroke-width="4" stroke-linecap="round"/>
       <text x="${cx+34}" y="${sternY+10}" font-size="12" fill="var(--ink3)">rudder ${fmt1(helmDeg)}° (×2.5)</text>`; }
   out += `<text x="16" y="318" font-size="12.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° off centerline · ${Math.round(state.twaC||POS[state.posIdx].twa)}° true · rudder shows helm you must hold</text>`;
-  $("svg-deck").innerHTML = out;
+  $("svg-deck").innerHTML = onPortTack()?mirrorSvg(out,360,330,false):out;
+  if($("deckHint")) $("deckHint").textContent=(onPortTack()?"wind on port":"wind on starboard")+" · dotted = sheets";
 }
 
 /* ---------------- render: twist from astern ---------------- */
@@ -1106,7 +1130,7 @@ function renderTwist(r){
     <text x="40" y="${headY+30}" font-size="10" fill="var(--warn)">■ soft</text>
     <text x="40" y="${headY+44}" font-size="10" fill="var(--crit)">■ stalled</text>`;
   if(topAoa<6) out += `<text x="${baseX-160}" y="${headY+8}" font-size="11" font-weight="700" fill="var(--ink3)">SPILLING AT THE HEAD ◢</text>`;
-  $("svg-twist").innerHTML=out;
+  $("svg-twist").innerHTML=onPortTack()?mirrorSvg(out,360,330,false):out;
 }
 
 /* ---------------- render: heel gauge ---------------- */
@@ -1136,7 +1160,7 @@ function renderHeel(r){
   out += `<text x="30" y="178" font-size="30" font-weight="600" fill="${cls}" font-family="var(--mono)">${fmt1(r.heel)}°</text>
     <text x="30" y="194" font-size="12.5" fill="var(--ink3)" letter-spacing="1.5">HEEL</text>
     <text x="${cx+62}" y="${cy+8}" font-size="12.5" fill="var(--ink3)">keel</text>`;
-  $("svg-heel").innerHTML = out;
+  $("svg-heel").innerHTML = onPortTack()?mirrorSvg(out,360,205,false):out;
 }
 
 /* ---------------- slider value labels ---------------- */
@@ -1299,7 +1323,7 @@ function renderDial(){
   }
   const hint=$("twaHint");
   if(hint) hint.textContent=(state.twaSide||1)<0
-    ? "wind on the port side — boat views draw the mirror image"
+    ? "wind on the port side — sails set to starboard"
     : "drag the dial to change heading";
   el.innerHTML=`
     <circle cx="${c}" cy="${c}" r="${R}" fill="var(--panel2)" stroke="var(--line)"/>
@@ -2312,6 +2336,7 @@ function tick3D(){
   const target=-rad(r.heel);
   B3.heelCur += (target-B3.heelCur)*Math.min(1,dt*3);
   B3.boat.rotation.x=B3.heelCur;
+  B3.boat.scaling.z=onPortTack()?-1:1;                 // port tack: mirror the whole boat, sails, lines and dye
   const rud=B3.scene.getMeshByName("rudder");
   if(rud) rud.rotation.y += ((rad(clamp(r.helm,-6,15))) - rud.rotation.y)*Math.min(1,dt*4);
   B3.boat.rotation.z=Math.sin(B3.t*.8)*.012 + clamp(r.speed,0,7)*.004; // gentle pitch + bow-up with speed
