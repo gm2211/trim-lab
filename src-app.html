@@ -348,7 +348,7 @@
     .conc-nav{display:flex;gap:10px;align-items:center;justify-content:center;padding:6px 0 0}
     .conc-nav button{font-family:var(--disp);font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
       background:var(--ink);color:var(--bg);border:none;border-radius:3px;padding:7px 14px;cursor:pointer}
-    .conc-nav .dots{font-family:var(--mono);font-size:12px;color:var(--ink2)}
+    .conc-nav .dots{font-family:var(--mono);font-size:12px;color:var(--ink2);text-align:center;white-space:nowrap}
     /* Drills: locked, centered */
     #pane-drills.active{height:100%;overflow:hidden;display:flex;flex-direction:column;min-height:0}
     #pane-drills .prose h2{margin:4px 0 6px;font-size:15px}
@@ -1620,10 +1620,14 @@ $("concepts").innerHTML = CONCEPTS.map(c=>`
   nav.innerHTML=`<button id="concPrev">← Prev</button><span class="dots" id="concDots"></span><button id="concNext">Next →</button>`;
   $("pane-concepts").appendChild(nav);
   const cards=[...document.querySelectorAll("#concepts .concept")];
+  const label=i=>`${i+1} / ${cards.length} · ${CONCEPTS[i].h}`;
+  // Fixed label width (monospace, so ch == chars) keeps Prev/Next from
+  // sliding as the concept title length changes.
+  $("concDots").style.minWidth=Math.max(...cards.map((_,i)=>label(i).length))+"ch";
   function showConc(i){
     CONC_IDX=(i+cards.length)%cards.length;
     cards.forEach((c,j)=>c.classList.toggle("cur",j===CONC_IDX));
-    $("concDots").textContent=`${CONC_IDX+1} / ${cards.length} · ${CONCEPTS[CONC_IDX].h}`;
+    $("concDots").textContent=label(CONC_IDX);
   }
   $("concPrev").addEventListener("click",()=>showConc(CONC_IDX-1));
   $("concNext").addEventListener("click",()=>showConc(CONC_IDX+1));
