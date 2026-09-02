@@ -9213,7 +9213,7 @@ function segX(ax,az,bx,bz,cx,cz,dx,dz){ // 2D segment intersection -> t along ab
 // same path and the lanes read as streamlines: bunching and lengthening where
 // the air accelerates through the slot, spreading and shortening in the wake,
 // bending into the upwash ahead of the jib.
-const PUFF_LANES=36, PUFF_HEIGHTS=[2.2,5.0,7.8], PUFF_PER=18;
+const PUFF_LANES=60, PUFF_HEIGHTS=[1.8,4.0,6.2,8.4], PUFF_PER=22;
 const PUFF_N=PUFF_LANES*PUFF_HEIGHTS.length*PUFF_PER;
 function initPuffs(){
   // one custom updatable mesh of quads (the recovered engine bundle has no
@@ -9259,7 +9259,7 @@ function stepPuffs(dt){
   const upX=Math.cos(rad(r.awa)), upZ=-Math.sin(rad(r.awa));
   const vm=B3.scene.activeCamera.getViewMatrix().m;
   const cx=vm[2], cy=vm[6], cz=vm[10];                    // camera forward, world frame
-  const TAU=.055, W=.011;                                 // streak = the last 55 ms of travel
+  const TAU=.035, W=.007;                                 // streak = the last 35 ms of travel
   for(let i=0;i<PUFF_N;i++){
     let x=pp[i*3], y=pp[i*3+1], z=pp[i*3+2];
     const [vx,vz]=flowVel(x,z,y,r);
