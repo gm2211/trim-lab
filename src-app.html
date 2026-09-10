@@ -2215,8 +2215,8 @@ function ensure3Dinner(canvas){
   const tiller=importBoatAsset("tiller","woodenTiller",scene,rudder,materials);
   const lowerBlock=importBoatAsset("block","travelerBlock",scene,travCar,materials);lowerBlock.position.y=RIG.blockRise;
   const boomBlock=importBoatAsset("block","boomBlock",scene,boat,materials);
-  const jibBlock=importBoatAsset("block","jibBlock",scene,jibCar,materials);jibBlock.scaling=V3(.65,.65,.65);jibBlock.position.y=.06;
-  const lazyBlock=importBoatAsset("block","lazyBlock",scene,lazyCar,materials);lazyBlock.scaling.copyFrom(jibBlock.scaling);lazyBlock.position.y=.06;
+  const jibBlock=importBoatAsset("fairlead","jibBlock",scene,boat,materials);
+  const lazyBlock=importBoatAsset("fairlead","lazyBlock",scene,boat,materials);
   const rigidVang=importBoatAsset("vang","solidVang",scene,boat,materials);
   const vangBlock=importBoatAsset("block","vangBlock",scene,boat,materials);vangBlock.scaling=V3(.65,.65,.65);
   const vangBase=importBoatAsset("block","vangBase",scene,boat,materials);vangBase.scaling=V3(.65,.65,.65);vangBase.position=V3(RIG.mastX-.08,1.12,0);
@@ -2239,7 +2239,7 @@ function ensure3Dinner(canvas){
   mainSail.material=sailM;jibSail.material=sailJ;mainSail.parent=boat;jibSail.parent=boat;
   [...model.getChildMeshes(),...mast.getChildMeshes(),...boom.getChildMeshes(),mainSail,jibSail].forEach(m=>wm.addToRenderList(m));
 
-  B3={engine,scene,cam,boat,wm,mainSail,jibSail,boomMesh:boom,travCar,jibCar,lazyCar,boomBlock,vangBlock,vangBase,lowerBlock,sheetLead,ratchet,rigidVang,rudder,materials,
+  B3={engine,scene,cam,boat,wm,mainSail,jibSail,boomMesh:boom,travCar,jibCar,lazyCar,boomBlock,jibBlock,lazyBlock,vangBlock,vangBase,lowerBlock,sheetLead,ratchet,rigidVang,rudder,materials,
       runLines:null,puffs:null,dyeR:null,dyeOn:false,t:0,heelCur:0};
   B3dirty=true;
   initTelltales();
@@ -2681,9 +2681,6 @@ function tick3D(){
         pts.push(pt);}
       return pts;
     }
-    // the deck at height y0, raised over the coachroof wherever the line
-    // crosses it — a rope radius clear of the moulding
-    const overTrunk=y0=>pt=>Math.max(y0, trunkTopY(pt.x,pt.z)+.03);
     const car=B3.travCar.position;
     // All running rigging follows hardware centers. Four mainsheet falls,
     // two vang falls, deck lanes, winch turns and hanging tails stay separate.
@@ -2695,16 +2692,67 @@ function tick3D(){
       const a=i/96*Math.PI*8,r=.075+.016*i/96;
       return center.add(V3(Math.cos(a)*r*1.7,.0004*i,side*Math.sin(a)*r));
     });
-    const winchPath=(side,slack)=>{
-      const lead=V3(jcarX,RIG.carY+.06,side*RIG.jibTrackZ),wc=V3(RIG.winchX,RIG.winchY+.035,side*RIG.winchZ);
-      // Three turns rise up the drum; the tail then leads off to the cockpit seat.
-      const turns=Array.from({length:85},(_,i)=>{
-        const a=side*(Math.PI*.10+i/84*Math.PI*6);
-        return wc.add(V3(.090*Math.cos(a),i/84*.07,.090*Math.sin(a)));
+    function jibRoute(side,loaded,block){
+      const C=V3(jcarX,RIG.carY+.06,side*RIG.jibTrackZ);
+      const W=V3(RIG.winchX,RIG.winchY+.045,side*RIG.winchZ),radius=.094,wrise=.073;
+      const tail=Array.from({length:145},(_,i)=>{
+        const a=side*(Math.PI/2+i/144*Math.PI*6),r=.115-.064*i/144;
+        return V3(-.30+1.4*r*Math.cos(a),.505,side*.75+r*Math.sin(a));
       });
-      const tail=coil(V3(-.25,.505,side*.80),side);
-      return sagLine(lead,turns[0],slack,.80,10).concat(turns.slice(1),sagLine(turns.at(-1),tail[0],.03,.50,12).slice(1),tail.slice(1));
-    };
+      // Lazy sheet passes forward of the mast, rests on the roof, then drops
+      // over its actual edge. Never lift each sample independently into stairs.
+      let prefix=[clew],approach=clew;
+      if(!loaded){
+        const fromSide=clew.z>=0?1:-1,roofY=trunkTopY(RIG.mastX,0)+.025;
+        const mastArc=Array.from({length:25},(_,i)=>{
+          const a=fromSide*Math.PI/2*(1-2*i/24);
+          return V3(RIG.mastX+.18*Math.cos(a),roofY,.18*Math.sin(a));
+        });
+        const edgeX=Math.max(.40,jcarX+.10),edgeZ=side*(.78-(edgeX-.25)*(.46/2.4)-.07);
+        const edge=V3(edgeX,trunkCrown(edgeX)+.025,edgeZ);
+        prefix=sagLine(clew,mastArc[0],.012,undefined,18).concat(mastArc.slice(1),[edge]);
+        approach=edge;
+      }
+      const tangent=(p,entry)=>{
+        const phi=Math.atan2(p.z-W.z,p.x-W.x),d=Math.hypot(p.x-W.x,p.z-W.z);
+        return phi+(entry?1:-1)*Math.acos(clamp(radius/d,-1,1));
+      };
+      // Solve both tangencies together: rope wraps the fairlead wheel, then
+      // touches the winch cylinder tangentially. Both winches turn clockwise.
+      function sheaveRoute(A,B){
+        const u=A.subtract(C).normalize(),vb=B.subtract(C),n=BABYLON.Vector3.Cross(u,vb).normalize();
+        const v=BABYLON.Vector3.Cross(n,u).normalize(),r=.038;
+        const theta=Math.atan2(BABYLON.Vector3.Dot(vb,v),BABYLON.Vector3.Dot(vb,u));
+        const a=-Math.acos(clamp(r/BABYLON.Vector3.Distance(A,C),-1,1));
+        let b=theta+Math.acos(clamp(r/vb.length(),-1,1));while(b>a)b-=Math.PI*2;
+        const points=Array.from({length:33},(_,i)=>{const t=lerp(a,b,i/32);return C.add(u.scale(r*Math.cos(t))).add(v.scale(r*Math.sin(t)));});
+        return {points,u,v,n};
+      }
+      let entryAngle=tangent(C,true),contact,sheave;
+      for(let i=0;i<8;i++){
+        contact=W.add(V3(radius*Math.cos(entryAngle),0,radius*Math.sin(entryAngle)));
+        sheave=sheaveRoute(approach,contact);entryAngle=tangent(sheave.points.at(-1),true);
+      }
+      contact=W.add(V3(radius*Math.cos(entryAngle),0,radius*Math.sin(entryAngle)));
+      sheave=sheaveRoute(approach,contact);
+      block.position.copyFrom(C);
+      block.rotation=BABYLON.Vector3.RotationFromAxis(sheave.u,sheave.v,sheave.n);
+      let exitAngle=tangent(tail[0],false);
+      while(exitAngle<entryAngle)exitAngle+=Math.PI*2;
+      exitAngle+=Math.PI*6;
+      const steps=Math.ceil((exitAngle-entryAngle)*28);
+      const turns=Array.from({length:steps+1},(_,i)=>{
+        const t=i/steps,a=lerp(entryAngle,exitAngle,t);
+        return W.add(V3(radius*Math.cos(a),t*wrise,radius*Math.sin(a)));
+      });
+      const lead=sagLine(approach,sheave.points[0],loaded?(side===S?Math.min(.04,r.jib.sheetSlack):0):.004,undefined,20);
+      const tailRun=sagLine(turns.at(-1),tail[0],.035,.505,20);
+      const path=prefix.concat(lead.slice(1),sheave.points.slice(1),turns,tailRun.slice(1),tail.slice(1));
+      return {path,loaded,side,winch:W,radius,turns,sheave:sheave.points,center:C,tail:tailRun,prefix,entryAngle,exitAngle};
+    }
+    const windwardLoaded=r.jib.wow||(r.jib.clew<0&&state.jsheetw>0);
+    const working=jibRoute(S,!windwardLoaded,B3.jibBlock),lazy=jibRoute(-S,!!windwardLoaded,B3.lazyBlock);
+    B3.jibRoutes=[working,lazy];
     const lane=(z,top)=>{
       const lz=Math.sign(z)*(.43+Math.abs(z)-.14);
       return [top,V3(1.25,1.14,lz),V3(.95,1.16,lz),V3(.72,1.16,lz),V3(.36,1.16,lz),V3(.20,1.08,lz),
@@ -2724,8 +2772,8 @@ function tick3D(){
     B3.mainSheetFalls=[[cb,bb],[bb,cb],[cb,bb],[front,ratchet]];
     const ropes={
       sheet:[mainSheet.concat(sagLine(mainSheet.at(-1),mainTail[0],.05,.23,14).slice(1),mainTail.slice(1))],
-      jsheet:[sagLine(clew,V3(jcarX,RIG.carY+.06,S*RIG.jibTrackZ),r.jib.wow?.16:Math.min(.16,r.jib.sheetSlack),overTrunk(.75),20).concat(winchPath(S,0).slice(1))],
-      jsheetw:[sagLine(clew,V3(jcarX,RIG.carY+.06,-S*RIG.jibTrackZ),(1-state.jsheetw)*.20,overTrunk(.75),24).concat(winchPath(-S,.03).slice(1))],
+      jsheet:[working.path],
+      jsheetw:[lazy.path],
       jcar:[],
       vang:[[vangLow.add(V3(-.035,0,-.017)),vangTop.add(V3(-.035,0,-.017)),
         ...arc(vangTop.add(V3(0,0,-.017)),.037,Math.PI,0).slice(1),vangLow.add(V3(.035,0,-.017)),

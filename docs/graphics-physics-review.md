@@ -22,7 +22,7 @@ The Blender normal/roughness bakes remain, with runtime albedo detail appropriat
 to each sail. They are not frozen Blender sail meshes.
 
 Running rigging uses three aft mainsheet falls plus a forward return to the central cockpit
-ratchet, two vang falls, three turns around each winch, separate deck lead lanes,
+ratchet, two vang falls, at least three clockwise turns around each winch, separate deck lead lanes,
 hanging halyard coils and separate jib sheet coils on the seats. Halyards and outhaul runs inside the
 extrusions are not drawn as loose external diagonals. Rope color has braid and
 tracer detail, with metre-based UV repeats. Wind dye starts off for inspection.
@@ -61,9 +61,10 @@ stacking, keyboard wind control and accessible selection states.
 
 - Eleven physics tests pass, including 120 extreme-state cases. Five earlier
   regressions reproduce against the original source.
-- 28 browser WebGL checks cover imported Blender geometry, material readiness,
+- 36 browser WebGL checks cover imported Blender geometry, material readiness,
   map color spaces, manufactured hardware, shared layout anchors, matching tackle spans, hanging tails,
-  finite rope paths, tack mirroring, pause, physical rope UVs and camera distances.
+  finite rope paths, winch entry/exit tangencies, cylinder clearance, swiveling
+  jib fairlead grooves, tack mirroring, pause, physical rope UVs and camera distances.
 - Exported position/normal/UV counts and triangle indices are valid.
 - Actual deck/rigging close-ups and full-boat views reviewed in the browser.
 - Editable Blender scene rendered separately to verify its geometry.

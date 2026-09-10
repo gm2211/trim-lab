@@ -5,10 +5,14 @@
 <h1>Trim Lab scene checks</h1>
 <p>Local WebGL integration checks. No external dependencies.</p>
 <ol id="results"></ol>
+<p><button onclick="inspectJib(1)">Inspect port jib gear</button> <button onclick="inspectJib(-1)">Inspect starboard jib gear</button></p>
 <iframe src="../app.html" title="Simulator under test"></iframe>
 <script>
 const frame=document.querySelector('iframe'), results=document.querySelector('#results');
 const check=(name,pass)=>{const li=document.createElement('li');li.textContent=(pass?'PASS: ':'FAIL: ')+name;li.className=pass?'':'fail';results.append(li);};
+function inspectJib(side){
+  frame.contentWindow.eval(`state.twaSide=1;state.twaC=45;state.jcar=.5;state.sheet=.85;state.trav=0;state.jsheet=.75;state.jsheetw=0;update("jcar");B3.paused=true;tick3D();B3.cam.setTarget(V3(.55,1.02,${side*.70}));B3.cam.lowerRadiusLimit=.4;B3.cam.radius=1.55;B3.cam.alpha=${side>0?2.2:-2.2};B3.cam.beta=.82;B3.scene.render();`);
+}
 frame.onload=async()=>{
   const w=frame.contentWindow;
   try{
@@ -34,6 +38,28 @@ frame.onload=async()=>{
     check('Halyard tails hang beside companionway',w.eval('["halyard","jhal","cunn","vang"].every(k=>{const p=B3.ropePaths[k].at(-1).at(-1);return p.x<.25&&p.x>.10&&p.y>.6&&p.y<1.1})'));
     check('All rope paths remain finite',w.eval('Object.values(B3.ropePaths).flat(2).every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z))'));
     if(w.document.querySelector('#pause3d').getAttribute('aria-pressed')!=='true') w.document.querySelector('#pause3d').click();
+    const routing=w.eval(`(()=>{
+      const saved={...state},ok={single:true,entry:true,exit:true,wrap:true,fairlead:true,lazy:true,finite:true,clearance:true};
+      for(const side of [-1,1])for(const car of [0,.5,1])for(const mode of ["normal","backed","wing"]){
+        Object.assign(state,saved,{twaSide:side,jcar:car,twaC:mode==="wing"?165:45,jsheet:mode==="wing"?.05:.75,jsheetw:mode==="wing"?.6:mode==="backed"?.9:0});update("jcar");tick3D();
+        ok.single&&=B3.tubes.jsheet.length===1&&B3.tubes.jsheetw.length===1;
+        const blocks=[B3.jibBlock,B3.lazyBlock];
+        B3.jibRoutes.forEach((q,k)=>{
+          const dot=(a,b,c)=>{const dx=b.x-a.x,dz=b.z-a.z;return Math.abs((dx*(b.x-c.x)+dz*(b.z-c.z))/Math.hypot(dx,dz)/q.radius);};
+          ok.entry&&=dot(q.sheave.at(-1),q.turns[0],q.winch)<1e-5;
+          ok.exit&&=dot(q.tail[1],q.tail[0],q.winch)<1e-5;
+          ok.wrap&&=q.exitAngle-q.entryAngle>=Math.PI*6&&q.turns.every(p=>Math.abs(Math.hypot(p.x-q.winch.x,p.z-q.winch.z)-q.radius)<1e-8);
+          const inverse=blocks[k].computeWorldMatrix(true).clone().invert(),boat=B3.boat.computeWorldMatrix(true);
+          ok.fairlead&&=q.sheave.every(p=>{const local=BABYLON.Vector3.TransformCoordinates(BABYLON.Vector3.TransformCoordinates(p,boat),inverse);return Math.abs(local.z)<1e-5&&Math.abs(local.length()-.038)<1e-5;});
+          ok.lazy&&=q.loaded?q.prefix.length===1:q.prefix.some(p=>p.x>RIG.mastX+.17);
+          ok.finite&&=q.path.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z));
+          const spans=[[q.sheave.at(-1),q.turns[0]],[q.tail[0],q.tail.at(-1)]];
+          ok.clearance&&=spans.every(([a,b])=>Array.from({length:101},(_,i)=>BABYLON.Vector3.Lerp(a,b,i/100)).every(p=>Math.hypot(p.x-q.winch.x,p.z-q.winch.z)>=q.radius-1e-7));
+        });
+      }
+      Object.assign(state,saved);update("jcar");tick3D();return ok;
+    })()`);
+    for(const [key,label] of Object.entries({single:'One continuous path per jib sheet',entry:'Jib sheets enter both winches tangentially',exit:'Jib tails leave both winches tangentially',wrap:'Both winches wrap clockwise without cutting drums',fairlead:'Sheets follow actual swiveling fairlead grooves',lazy:'Only lazy sheet routes around mast and over roof',finite:'Jib routing stays finite across tacks, car travel, backed jib and wing-on-wing',clearance:'Winch leads and tails stay outside drum cylinders'}))check(label,routing[key]);
     w.eval('state.sheet=1; state.trav=1; update("trav"); tick3D();');
     check('Windward boom matches solved negative angle',w.eval('lastR.main.boom<0 && Math.abs(B3.boomShow-lastR.main.boom)<1e-8'));
     check('Blocks follow traveler and jib cars',w.eval('B3.scene.getTransformNodeByName("travelerBlock").parent===B3.travCar && B3.lazyCar.position.z===-B3.jibCar.position.z'));

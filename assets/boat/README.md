@@ -51,3 +51,21 @@ simplified. Moving the mast also updates the aerodynamic panel geometry.
 Deforming sails remain owned by the cloth solver. Their albedo, seams and clear
 window layers are generated at runtime; Blender supplies cloth normal/roughness
 maps. Stippled deck inserts replace the earlier diamond-pattern pigment.
+
+## Jib sheet routing
+
+Each jib sheet is one continuous mesh path from clew to its own fairlead, winch
+and cockpit tail. A dedicated single-sheave Blender fairlead swivels into the
+plane of the two leads. The router solves contact tangencies around that groove
+and the winch cylinder. Both winches wrap in the same clockwise direction, with
+at least three full turns, separated wraps and a tangent tail exit.
+
+The working lead is direct, with slack only when the solver reports it. The lazy
+lead crosses forward of the mast and rests over the roof edge before reaching
+its opposite fairlead. Backing the jib or sailing wing-on-wing switches these roles. This removes the old
+per-sample roof-height clamp that made floating stair steps. Drum tails leave
+below the self-tailer; this pass does not simulate feeder jaws or a trimmer's hand.
+
+`tests/scene.html` checks tangencies, cylinder clearance, groove alignment and
+continuous paths over both tacks, three car positions, a backed jib and wing-on-wing. Its two
+inspection buttons provide close-up views of the actual rendered gear.

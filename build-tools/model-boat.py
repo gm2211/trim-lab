@@ -180,6 +180,13 @@ for z in [-.0275,.0275]:
  cylinder('Grooved pulley sheave',(0,-.005,z),.057,.033,'sheave','block',axis='z')
  torus('Sheave outer flange',(0,-.005,z-.014),.049,.008,'sheave','block',axis='z')
  torus('Sheave outer flange',(0,-.005,z+.014),.049,.008,'sheave','block',axis='z')
+# Single articulating jib fairlead: rope center follows its 38 mm groove radius.
+# Separate from the double mainsheet blocks; no duplicate unused jib sheave.
+cylinder('Jib fairlead sheave',(0,0,0),.032,.023,'sheave','fairlead',axis='z')
+for z in [-.016,.016]:
+ torus('Jib sheave flange',(0,0,z),.033,.004,'sheave','fairlead',axis='z')
+ cylinder('Jib fairlead cheek',(0,0,z*1.6),.046,.008,'rubber','fairlead',axis='z')
+ cylinder('Fairlead axle',(0,0,z*1.9),.010,.010,'steel','fairlead',axis='z')
 # A stainless eye / shackle makes the connection visible.
 torus('Block shackle',(0,.11,0),.032,.007,'steel','block',axis='z')
 box('Mast extrusion',(0,0,0),(.14,10.6,.095),'steel',.044,'mast')
@@ -232,7 +239,7 @@ print('EXPORTED',sum(len(a['indices'])//3 for a in assets.values()),'triangles',
 # when the .blend opens. Linked copies preserve editable modifier stacks.
 placements={
  'mast':[((R['mastX'],6,0),0,1)], 'boom':[((R['mastX']-R['boomLength']/2,R['boomY'],0),-math.pi/2,1)],
- 'rudder':[((R['rudderX'],.10,0),0,1)],'tiller':[((R['rudderX'],.10,0),0,1)],'vang':[((R['mastX']-.615,1.435,0),-.98,1)],
+ 'rudder':[((R['rudderX'],.10,0),0,1)],'tiller':[((R['rudderX'],.10,0),0,1)],'vang':[((R['mastX']-.615,1.435,0),-.98,1)],'fairlead':[((.8,R['carY']+.06,R['jibTrackZ']),0,1),((.8,R['carY']+.06,-R['jibTrackZ']),0,1)],
  'car':[((R['travelerX'],R['travelerY'],0),0,1),((.8,R['carY'],R['jibTrackZ']),0,.7),((.8,R['carY'],-R['jibTrackZ']),0,.7)],
  'block':[((R['travelerX'],R['travelerY']+R['blockRise'],0),0,1),((R['mastX']-R['sheetRadius'],R['boomY']-R['blockDrop'],0),0,1),((R['pedestalX'],R['pedestalY'],0),0,1)]}
 originals=[o for o in bpy.context.scene.objects if o.get('asset') in placements]
