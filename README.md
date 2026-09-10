@@ -1,6 +1,6 @@
 # Trim Lab — Colgate 26 sail-trim trainer
 
-Interactive trainer: VPP-grade physics (segment aero, two-element vortex panel method,
+Interactive trainer: approximate steady-state physics (segment aero, two-element vortex panel method,
 heel/leeway force balance), Babylon.js 3D with PBD sail cloth (folding, flogging),
 wind-dye streamlines from solved circulation, per-slider trim-optimality indicators,
 and a coordinate-descent "perfect trim" solver. 2D views: sail sections, deck plan,
@@ -9,18 +9,25 @@ and concept guides.
 
 ## Layout
 - `src-app.html` — the entire app (HTML/CSS/JS) with a `<script id="lib-slot">` placeholder.
-- `build-tools/` — esbuild bundling of a tree-shaken Babylon.js (WGSL/WebGPU stubbed:
-  the artifact publisher misclassifies pages containing WGSL source, and we're WebGL-only).
-- `build.py` — splices `babylon.slim.js` + base64 water normals into `trim-lab.html`.
+- `babylon.lib.js` — committed canonical WebGL-only Babylon bundle and water normals.
+- `build-tools/bake-materials.py` — reproducible Blender marine material bakes.
+- `assets/materials/` — committed normal/roughness maps and authoring instructions.
+- `build.py` — embeds the library, rope textures and marine maps into both built pages.
 
 ## Build
 ```bash
-./build-tools/fetch-assets.sh   # once, or after Babylon version bumps
-python3 build.py                # splices src-app.html + babylon.lib.js + rope textures
+python3 build.py                # all build inputs are committed; Blender is optional
 ```
-`build.py` writes two identical self-contained pages (~2.5 MB each): `app.html` at the
+`build.py` writes two identical self-contained pages (~3.0 MB each): `app.html` at the
 repo root and `docs/index.html`. Both are committed; rebuild and commit them whenever
 `src-app.html` or the bundled library changes.
+
+Run `node --test tests/physics.test.cjs` for physics regressions. Serve locally
+with `python3 -m http.server 8765 --bind 127.0.0.1` and open
+`http://127.0.0.1:8765/tests/scene.html` for WebGL integration checks.
+See [material authoring](assets/materials/README.md) and the
+[graphics, physics and UI review](docs/graphics-physics-review.md) for details and
+the model's calibration limits.
 
 ## Deploy
 GitHub Pages serves `docs/` from `main` at https://gm2211.github.io/trim-lab/,

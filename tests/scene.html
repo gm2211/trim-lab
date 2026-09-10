@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Trim Lab scene checks</title>
+<style>body{font:14px system-ui;margin:16px;background:#eef2ef;color:#182e36}iframe{width:100%;height:650px;border:1px solid #aabbbd}li{margin:6px 0}.fail{color:#a32825}</style>
+<h1>Trim Lab scene checks</h1>
+<p>Local WebGL integration checks. No external dependencies.</p>
+<ol id="results"></ol>
+<iframe src="../app.html" title="Simulator under test"></iframe>
+<script>
+const frame=document.querySelector('iframe'), results=document.querySelector('#results');
+const check=(name,pass)=>{const li=document.createElement('li');li.textContent=(pass?'PASS: ':'FAIL: ')+name;li.className=pass?'':'fail';results.append(li);};
+frame.onload=async()=>{
+  const w=frame.contentWindow;
+  try{
+    w.eval('showTab("view3d");');
+    // Compile the actual bundled shaders and wait for local embedded textures.
+    for(let i=0;i<200;i++){
+      if(w.eval('B3 && B3.scene.isReady()')) break;
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+    check('WebGL scene and all materials ready',w.eval('B3 && B3.scene.isReady()'));
+    check('No caught render error',!w.document.querySelector('#hud3d').dataset.err);
+    check('Eight Blender maps embedded',w.eval('Object.values(window.__MARINE_MATERIALS).flatMap(Object.values).length===8'));
+    check('Normal and roughness maps use linear data',w.eval('B3.scene.materials.filter(m=>m.bumpTexture&&m.metallicTexture).every(m=>!m.bumpTexture.gammaSpace&&!m.metallicTexture.gammaSpace)'));
+    check('Pulley sheaves exist',w.eval('B3.scene.meshes.filter(m=>m.name.endsWith("Sheave")).length>=4'));
+    if(w.document.querySelector('#pause3d').getAttribute('aria-pressed')!=='true') w.document.querySelector('#pause3d').click();
+    w.eval('state.sheet=1; state.trav=1; update("trav"); tick3D();');
+    check('Windward boom matches solved negative angle',w.eval('lastR.main.boom<0 && Math.abs(B3.boomShow-lastR.main.boom)<1e-8'));
+    check('Blocks follow traveler and jib cars',w.eval('B3.scene.getTransformNodeByName("travelerBlock").parent===B3.travCar && B3.lazyCar.position.z===-B3.jibCar.position.z'));
+    const t=w.eval('B3.t');
+    w.eval('tick3D();');
+    check('Pause freezes simulation clock',w.eval('B3.t')===t);
+    w.eval('state.twaSide=-1; update("pos"); tick3D();');
+    check('Port tack mirrors boom without losing windward sign',w.eval('Math.abs(B3.boomShow+lastR.main.boom)<1e-8'));
+    const rope=w.eval('(()=>{const m=B3.tubes.halyard[0],uv=m.getVerticesData(BABYLON.VertexBuffer.UVKind);let u=0,v=0;for(let i=0;i<uv.length;i+=2){u=Math.max(u,uv[i]);v=Math.max(v,uv[i+1]);}return {u,v};})()');
+    check('Long halyard retains circumferential UV and repeats lengthwise',Math.abs(rope.u-1)<1e-6&&rope.v>30);
+    for(const name of ['rig','deck','sails','rigging']){
+      w.document.querySelector(`[data-view="${name}"]`).click();
+      check(name+' camera stays inside zoom limits',w.eval('B3.cam.radius>=B3.cam.lowerRadiusLimit && B3.cam.radius<=B3.cam.upperRadiusLimit'));
+      const expected={rig:19,deck:8,sails:12,rigging:3.8}[name];
+      check(name+' camera applies the requested distance',Math.abs(w.eval('B3.cam.radius')-expected*Math.max(1,1/w.eval('B3.engine.getAspectRatio(B3.cam)')))<1e-6);
+    }
+    w.document.querySelector('[data-view="rigging"]').click();
+    document.title=results.querySelector('.fail')?'FAIL: Trim Lab scene checks':'PASS: Trim Lab scene checks';
+  }catch(error){check(error.message,false); document.title='FAIL: Trim Lab scene checks';}
+};
+</script>
