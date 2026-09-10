@@ -20,7 +20,7 @@ and concept guides.
 ```bash
 python3 build.py                # all build inputs are committed; Blender is optional
 ```
-`build.py` writes two identical self-contained pages (~4.0 MB each): `app.html` at the
+`build.py` writes two identical self-contained pages (~4.2 MB each): `app.html` at the
 repo root and `docs/index.html`. Both are committed; rebuild and commit them whenever
 `src-app.html` or the bundled library changes.
 

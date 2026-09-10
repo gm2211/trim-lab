@@ -23,11 +23,15 @@ frame.onload=async()=>{
     check('Eight Blender maps embedded',w.eval('Object.values(window.__MARINE_MATERIALS).flatMap(Object.values).length===8'));
     check('Normal and roughness maps use linear data',w.eval('B3.scene.materials.filter(m=>m.bumpTexture&&m.metallicTexture).every(m=>!m.bumpTexture.gammaSpace&&!m.metallicTexture.gammaSpace)'));
     check('Pulley sheaves exist',w.eval('B3.scene.meshes.filter(m=>m.metadata?.blenderAsset==="block"&&m.metadata.blenderParts.some(p=>p.includes("sheave"))).length>=4'));
-    check('Scene imports Blender model geometry',w.eval('BOAT_ASSETS.generator.startsWith("Blender") && B3.scene.meshes.filter(m=>m.metadata?.blenderAsset==="boat").length===10'));
+    check('Scene imports Blender model geometry',w.eval('BOAT_ASSETS.generator.startsWith("Blender") && B3.scene.meshes.filter(m=>m.metadata?.blenderAsset==="boat").length===BOAT_ASSETS.assets.boat.length'));
     check('Model includes manufactured winches and clutches',w.eval('BOAT_ASSETS.assets.boat.flatMap(a=>a.parts).some(p=>p.includes("Self tailer")) && BOAT_ASSETS.assets.boat.flatMap(a=>a.parts).some(p=>p.includes("Clutch lever"))'));
     check('Inspection starts with wind dye disabled',w.eval('!B3.dyeOn'));
-    check('Mainsheet has four load-bearing falls',w.eval('B3.ropePaths.sheet[0].filter((p,i,a)=>i>0&&Math.abs(p.y-a[i-1].y)>.15&&Math.min(p.y,a[i-1].y)>=1.09).length===4'));
-    check('Led-aft tails finish inside storage pockets',w.eval('["halyard","jhal","cunn","vang"].every(k=>B3.ropePaths[k].at(-1).at(-1).y<.741)'));
+    check('Four tackle falls connect rendered block centers',w.eval('B3.mainSheetFalls.length===4 && B3.mainSheetFalls.flat().every(p=>B3.ropePaths.sheet[0].some(v=>BABYLON.Vector3.Distance(v,p)<.09))'));
+    check('Blender and physics share layout anchors',w.eval('JSON.stringify(BOAT_ASSETS.layout)===JSON.stringify(RIG)'));
+    check('Traveler sits aft of tiller and crew',w.eval('B3.travCar.position.x<RIG.rudderX && B3.travCar.position.x<-3'));
+    check('Solid vang and wooden tiller are imported',w.eval('B3.rigidVang.getChildMeshes().length===2 && B3.scene.getTransformNodeByName("woodenTiller").getChildMeshes().some(m=>m.material.name==="wood")'));
+    check('Drawn tackle span matches physics constraint',w.eval('Math.abs(B3.mainSheetFalls.reduce((sum,[a,b])=>sum+BABYLON.Vector3.Distance(a,b),0)/4-mainSheetSpan(B3.boomShow,B3.travCar.position.z))<1e-6'));
+    check('Halyard tails hang beside companionway',w.eval('["halyard","jhal","cunn","vang"].every(k=>{const p=B3.ropePaths[k].at(-1).at(-1);return p.x<.25&&p.x>.10&&p.y>.6&&p.y<1.1})'));
     check('All rope paths remain finite',w.eval('Object.values(B3.ropePaths).flat(2).every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z))'));
     if(w.document.querySelector('#pause3d').getAttribute('aria-pressed')!=='true') w.document.querySelector('#pause3d').click();
     w.eval('state.sheet=1; state.trav=1; update("trav"); tick3D();');
@@ -43,7 +47,7 @@ frame.onload=async()=>{
     for(const name of ['rig','deck','sails','rigging']){
       w.document.querySelector(`[data-view="${name}"]`).click();
       check(name+' camera stays inside zoom limits',w.eval('B3.cam.radius>=B3.cam.lowerRadiusLimit && B3.cam.radius<=B3.cam.upperRadiusLimit'));
-      const expected={rig:19,deck:8,sails:12,rigging:3.8}[name];
+      const expected={rig:19,deck:8,sails:12,rigging:4.7}[name];
       check(name+' camera applies the requested distance',Math.abs(w.eval('B3.cam.radius')-expected*Math.max(1,1/w.eval('B3.engine.getAspectRatio(B3.cam)')))<1e-6);
     }
     w.document.querySelector('[data-view="rigging"]').click();

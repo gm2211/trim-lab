@@ -6,7 +6,7 @@ const src = fs.readFileSync(process.env.TRIM_SOURCE || 'src-app.html', 'utf8');
 const start = src.indexOf('"use strict";');
 const end = src.indexOf('/* ---------------- coach ---------------- */', start);
 const ctx = vm.createContext({});
-vm.runInContext(src.slice(start, end) + '\nglobalThis.model={state,compute,KT,BOAT};', ctx);
+vm.runInContext(src.slice(start, end) + '\nglobalThis.model={state,compute,KT,BOAT,RIG,mainSheetSpan};', ctx);
 const {state,compute,KT}=ctx.model;
 const defaults={...state};
 function run(overrides={}) {
@@ -18,10 +18,10 @@ function finite(value) {
   if(typeof value==='number') assert.ok(Number.isFinite(value), `non-finite ${value}`);
   else if(value && typeof value==='object') Object.values(value).forEach(finite);
 }
-test('default sailing remains in the established envelope',()=>{
+test('photo-referenced rig retains a stable default sailing equilibrium',()=>{
   const r=run();
   assert.ok(r.speed>4.8 && r.speed<5.6);
-  assert.ok(r.heel>8 && r.heel<13);
+  assert.ok(r.heel>6.5 && r.heel<9.5);
 });
 test('lowered sails generate no sustained speed',()=>{
   const r=run({mainhal:0,jhal:0});
@@ -70,4 +70,17 @@ test('wind, heading, hoist and trim extremes remain finite and bounded',()=>{
       finite(r); assert.ok(r.speed>=0 && r.speed<=4.2/KT);
       assert.ok(r.heel>=0 && r.heel<=40);
     }
+});
+
+test('tackle span is symmetric and grows as boom eases',()=>{
+  const {RIG,mainSheetSpan}=ctx.model;
+  assert.ok(RIG.travelerX<RIG.rudderX);
+  for(const angle of [0,10,30,60,80]){
+    assert.equal(mainSheetSpan(angle,.5),mainSheetSpan(-angle,-.5));
+    if(angle) assert.ok(mainSheetSpan(angle,0)>mainSheetSpan(0,0));
+  }
+});
+test('Blender export uses the same rigging geometry as physics',()=>{
+  const asset=JSON.parse(fs.readFileSync('assets/boat/meshes.json','utf8'));
+  assert.deepEqual(asset.layout,JSON.parse(JSON.stringify(ctx.model.RIG)));
 });
