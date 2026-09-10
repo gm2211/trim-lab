@@ -531,7 +531,7 @@
           <button data-view="rig">Full rig</button><button data-view="deck">Deck detail</button><button data-view="sails">Sail detail</button><button data-view="rigging">Rigging</button>
         </div>
         <div class="scene-toggles" role="group" aria-label="Visual aids">
-          <button id="dyeBtn" class="dye-btn on" aria-pressed="true">wind dye: on</button>
+          <button id="dyeBtn" class="dye-btn" aria-pressed="false">wind dye: off</button>
           <button id="ttBtn" class="dye-btn on" aria-pressed="true">telltales: on</button>
           <button id="pause3d" aria-pressed="false">Pause motion</button>
         </div>
@@ -1918,19 +1918,107 @@ function marineMaterial(mat, name, u=1, v=1, strength=1){
   mat.roughness=1;
 }
 
-function makeBlock(name, scene, parent, metal, shell){
-  const block=new BABYLON.TransformNode(name,scene); block.parent=parent;
-  // Two cheeks, an exposed sheave, and a stainless axle. All dimensions metres.
-  for(const side of [-1,1]){
-    const cheek=BABYLON.MeshBuilder.CreateCylinder(name+"Cheek",{diameter:.125,height:.014,tessellation:16},scene);
-    cheek.rotation.x=Math.PI/2; cheek.scaling.x=.78;
-    cheek.position.z=side*.033; cheek.material=shell; cheek.parent=block;
+let BOAT_ASSETS=null, B3loading=false;
+async function loadBoatAssets(){
+  if(BOAT_ASSETS) return BOAT_ASSETS;
+  if(!window.__BOAT_GZIP) throw new Error("Blender geometry missing. Rebuild with build.py.");
+  const bytes=Uint8Array.from(atob(window.__BOAT_GZIP),c=>c.charCodeAt(0));
+  const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  BOAT_ASSETS=await new Response(stream).json();
+  return BOAT_ASSETS;
+}
+function importBoatAsset(asset,name,scene,parent,materials){
+  const root=new BABYLON.TransformNode(name,scene);root.parent=parent;
+  const parts=BOAT_ASSETS.assets[asset];if(!parts) throw new Error("Missing Blender asset: "+asset);
+  parts.forEach((part,i)=>{
+    const mesh=new BABYLON.Mesh(name+"_"+part.material,scene);
+    mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind,part.positions);
+    mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind,part.normals);
+    mesh.setVerticesData(BABYLON.VertexBuffer.UVKind,part.uvs);
+    mesh.setIndices(part.indices);mesh.material=materials[part.material];mesh.parent=root;
+    mesh.metadata={blenderAsset:asset,blenderParts:part.parts};
+  });
+  return root;
+}
+function marineEnvironment(scene){
+  const tex=new BABYLON.DynamicTexture("marineReflection",{width:1024,height:512},scene,true);
+  const ctx=tex.getContext(),g=ctx.createLinearGradient(0,0,0,512);
+  [[0,"#456987"],[.40,"#adc5cf"],[.49,"#e3e4d9"],[.51,"#789598"],[.65,"#456c78"],[1,"#15333f"]].forEach(([v,c])=>g.addColorStop(v,c));
+  ctx.fillStyle=g;ctx.fillRect(0,0,1024,512);
+  const softbox=ctx.createRadialGradient(260,150,5,260,150,140);
+  softbox.addColorStop(0,"rgba(255,252,234,.95)");softbox.addColorStop(1,"rgba(255,252,234,0)");
+  ctx.fillStyle=softbox;ctx.fillRect(100,0,320,320);
+  tex.update();tex.coordinatesMode=BABYLON.Texture.FIXED_EQUIRECTANGULAR_MODE;
+  tex.wrapU=BABYLON.Texture.WRAP_ADDRESSMODE;tex.level=.85;
+  return tex;
+}
+function boatMaterials(scene){
+  const env=marineEnvironment(scene),out={};
+  const specs={gelcoat:[[.88,.91,.88],0,.25],nonskid:[[.66,.70,.66],0,.86],steel:[[.76,.81,.84],.92,.20],anodized:[[.18,.23,.26],.78,.31],rubber:[[.028,.037,.040],0,.65],sheave:[[.22,.25,.22],.08,.40],glass:[[.026,.10,.12],.4,.13],stripe:[[.014,.12,.16],.1,.32],canvas:[[.24,.29,.25],0,.94],interior:[[.47,.54,.50],0,.79]};
+  for(const [name,[color,metal,rough]] of Object.entries(specs)){
+    const m=new BABYLON.PBRMaterial(name,scene);m.albedoColor=new BABYLON.Color3(...color);m.metallic=metal;m.roughness=rough;
+    m.reflectionTexture=env;m.environmentIntensity=.7;out[name]=m;
   }
-  const sheave=BABYLON.MeshBuilder.CreateCylinder(name+"Sheave",{diameter:.098,height:.05,tessellation:16},scene);
-  sheave.rotation.x=Math.PI/2; sheave.material=metal; sheave.parent=block;
-  const axle=BABYLON.MeshBuilder.CreateCylinder(name+"Axle",{diameter:.027,height:.086,tessellation:12},scene);
-  axle.rotation.x=Math.PI/2; axle.material=metal; axle.parent=block;
-  return block;
+  marineMaterial(out.gelcoat,"gelcoat",1,1,.18);
+  out.gelcoat.clearCoat.isEnabled=true;out.gelcoat.clearCoat.intensity=.6;out.gelcoat.clearCoat.roughness=.18;
+  marineMaterial(out.nonskid,"nonskid",8,8,.20);
+  // Deck pigment follows the moulded diamond relief. Never reuse rope/grain maps.
+  const texture=new BABYLON.DynamicTexture("mouldedNonskid",256,scene,true),ctx=texture.getContext();
+  ctx.fillStyle="#ecece3";ctx.fillRect(0,0,256,256);ctx.lineWidth=.6;ctx.strokeStyle="#d5d9d0";
+  for(let i=-256;i<512;i+=16){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i+256,256);ctx.stroke();ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i-256,256);ctx.stroke();}
+  texture.update();texture.uScale=texture.vScale=8;out.nonskid.albedoTexture=texture;
+  return out;
+}
+function makeSailMaterial(kind,scene){
+  const m=new BABYLON.PBRMaterial(kind+"Dacron",scene);
+  const N=1024,tex=new BABYLON.DynamicTexture(kind+"SewnPanels",N,scene,true),ctx=tex.getContext(),im=ctx.createImageData(N,N);
+  let seed=3461;
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+    const weave=(x%3===0?-2:1)+(y%3===0?-2:1),grain=(seed>>>28)-8;
+    const i=(y*N+x)*4;im.data[i]=238+weave+grain*.3;im.data[i+1]=236+weave+grain*.3;im.data[i+2]=224+weave+grain*.3;im.data[i+3]=255;
+  }
+  ctx.putImageData(im,0,0);
+  ctx.strokeStyle="rgba(142,132,104,.42)";ctx.lineWidth=1;
+  const panels=kind==="main"?8:7;
+  for(let row=1;row<panels;row++){
+    const y=row*N/panels;
+    ctx.fillStyle="rgba(171,161,135,.10)";ctx.fillRect(0,y, N,8);
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(N,y);ctx.moveTo(0,y+7);ctx.lineTo(N,y+7);ctx.stroke();
+  }
+  // Radial corner reinforcements, broad tapes and paired rows of stitches.
+  for(const [x,y] of [[0,N],[N,N],[0,0]])for(const radius of [150,118,87,57]){
+    ctx.fillStyle="rgba(226,220,199,.17)";ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);ctx.fill();ctx.stroke();
+  }
+  ctx.strokeStyle="rgba(125,120,101,.65)";ctx.lineWidth=1;ctx.setLineDash([2,4]);
+  for(const e of [8,14])ctx.strokeRect(e,e,N-2*e,N-2*e);ctx.setLineDash([]);
+  if(kind==="main"){
+    // Batten pockets stop short of the luff and get shorter toward the head.
+    for(const [y,start] of [[.25,.55],[.50,.63],[.75,.68]]){
+      ctx.fillStyle="rgba(250,249,232,.65)";ctx.fillRect(N*start,N*y,N*(1-start)-15,9);
+      ctx.strokeStyle="rgba(148,140,114,.35)";ctx.strokeRect(N*start,N*y,N*(1-start)-15,9);
+    }
+    ctx.fillStyle="#596469";ctx.font="500 68px sans-serif";ctx.fillText("26",N*.28,N*.35);
+  }
+  // Transparent vinyl rather than an opaque blue rectangle painted on fabric.
+  const wx=N*.25,wy=N*.79,ww=N*.26,wh=N*.095;
+  ctx.beginPath();ctx.roundRect(wx,wy,ww,wh,12);ctx.save();ctx.clip();ctx.clearRect(wx,wy,ww,wh);ctx.fillStyle="rgba(176,206,208,.22)";ctx.fillRect(wx,wy,ww,wh);ctx.restore();
+  ctx.strokeStyle="rgba(151,150,131,.7)";ctx.lineWidth=7;ctx.stroke();
+  tex.update();tex.hasAlpha=true;m.albedoTexture=tex;m.useAlphaFromAlbedoTexture=true;
+  m.transparencyMode=BABYLON.PBRMaterial.PBRMATERIAL_ALPHATESTANDBLEND;
+  m.alphaCutOff=.08;m.metallic=0;m.roughness=.88;
+  marineMaterial(m,"sailcloth",8,16,.25);
+  m.backFaceCulling=false;m.twoSidedLighting=true;
+  return m;
+}
+function ropeAlbedo(scene){
+  const N=256,t=new BABYLON.DynamicTexture("braidedYachtLine",N,scene,true),ctx=t.getContext(),im=ctx.createImageData(N,N);
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    const a=Math.cos((x+y)*Math.PI/16),b=Math.cos((x-y)*Math.PI/16);
+    const strand=22*Math.max(a,b),tracer=((x+y)%64<5||(x-y+N)%64<5)?-38:0;
+    const v=221+strand+tracer,i=4*(y*N+x);im.data[i]=im.data[i+1]=im.data[i+2]=v;im.data[i+3]=255;
+  }
+  ctx.putImageData(im,0,0);t.update();return t;
 }
 
 function makeNoiseNormal(scene){
@@ -2051,8 +2139,8 @@ function sailPathArray(kind, sh, forceFull){
   return rows;
 }
 
-function ensure3D(){
-  if(B3) return;
+async function ensure3D(){
+  if(B3||B3loading) return;
   const hud=$("hud3d");
   if(typeof BABYLON==="undefined"){
     if(hud) hud.innerHTML=window.__WATER_NORMALS
@@ -2065,10 +2153,11 @@ function ensure3D(){
   canvas.addEventListener("webglcontextcreationerror",e=>{
     if(hud) hud.innerHTML="WebGL context failed: "+(e.statusMessage||"unknown")+".<br>Enable hardware acceleration in the browser settings, then reload.";
   });
-  try{ ensure3Dinner(canvas); }
+  B3loading=true;
+  try{ await loadBoatAssets(); ensure3Dinner(canvas); }
   catch(err){
     if(hud) hud.innerHTML="3D failed to start: "+err.message+".<br>WebGL may be unavailable here — enable hardware acceleration or open the page in Chrome.";
-  }
+  } finally { B3loading=false; }
 }
 function ensure3Dinner(canvas){
   // artifact iframes deny the gamepad feature via Permissions-Policy; Babylon's
@@ -2085,8 +2174,8 @@ function ensure3Dinner(canvas){
   try{ cam.inputs.removeByType("ArcRotateCameraGamepadInput"); }catch(e){}
   cam.attachControl(canvas,true);
 
-  const sun=new BABYLON.DirectionalLight("sun", V3(.35,-.55,-.75), scene); sun.intensity=1.8;
-  new BABYLON.HemisphericLight("hemi", V3(0,1,0), scene).intensity=.8;
+  const sun=new BABYLON.DirectionalLight("sun", V3(.35,-.55,-.75), scene); sun.intensity=1.35;
+  new BABYLON.HemisphericLight("hemi", V3(0,1,0), scene).intensity=.50;
 
   const sky=BABYLON.MeshBuilder.CreateBox("sky",{size:800},scene);
   const skyM=new BABYLON.SkyMaterial("skyM",scene);
@@ -2095,224 +2184,52 @@ function ensure3Dinner(canvas){
   sky.material=skyM;
 
   const water=BABYLON.MeshBuilder.CreateGround("water",{width:800,height:800,subdivisions:192},scene);
-  const wm=new BABYLON.WaterMaterial("wm",scene,new BABYLON.Vector2(256,256));
+  const wm=new BABYLON.WaterMaterial("wm",scene,new BABYLON.Vector2(512,512));
   wm.bumpTexture = window.__WATER_NORMALS
     ? new BABYLON.Texture(window.__WATER_NORMALS, scene)
     : makeNoiseNormal(scene);
   wm.windForce=-1.0; wm.waveHeight=.015; wm.bumpHeight=.10; wm.waveLength=1.6; wm.waveSpeed=.08;
   wm.windDirection=new BABYLON.Vector2(.4,-1);
-  wm.waterColor=new BABYLON.Color3(.02,.14,.14); wm.colorBlendFactor=.16;
+  wm.waterColor=new BABYLON.Color3(.025,.17,.20); wm.colorBlendFactor=.36;
   water.material=wm;
   wm.addToRenderList(sky);
 
   const boat=new BABYLON.TransformNode("boat",scene);
-
-  const hullM=new BABYLON.PBRMaterial("hullM",scene);
-  hullM.albedoColor=new BABYLON.Color3(.93,.94,.95); hullM.metallic=0; hullM.roughness=.62;
-  marineMaterial(hullM,"gelcoat",4,8,.3);
-  hullM.clearCoat.isEnabled=true; hullM.clearCoat.intensity=.45; hullM.clearCoat.roughness=.18;
-  const hull=BABYLON.MeshBuilder.CreateRibbon("hull",{pathArray:hullPaths(),sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-  hull.material=hullM; hull.parent=boat;
-  // transom: the lofted ribbon ends at an open stern section, so cap it with a
-  // fan from the last station to the centreline — otherwise the hull shows a
-  // hole when seen from astern
-  const sternRow=hullPaths()[hullPaths().length-1];
-  const transom=BABYLON.MeshBuilder.CreateRibbon("transom",{pathArray:[sternRow,sternRow.map(p=>V3(p.x,p.y,0))],sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-  transom.material=hullM; transom.parent=boat;
-  const deckRows=hullPaths();
-  const deck=BABYLON.MeshBuilder.CreateRibbon("deck",{pathArray:deckRows.slice(0,13).map(r=>[r[0],r[r.length-1]]),sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-  const deckM=new BABYLON.PBRMaterial("deckM",scene);
-  deckM.albedoTexture=makeDeckTexture(); deckM.albedoTexture.uScale=6; deckM.albedoTexture.vScale=2;
-  deckM.metallic=0; deckM.roughness=.85;
-  marineMaterial(deckM,"nonskid",6,2,.45);
-  deck.material=deckM; deck.parent=boat;
-  // Leave the cockpit open: a full-width deck used to bury the sole and seats.
-  const aftDeck=BABYLON.MeshBuilder.CreateRibbon("aftDeck",{pathArray:deckRows.slice(22).map(r=>[r[0],r[r.length-1]]),sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-  aftDeck.material=deckM; aftDeck.parent=boat;
-  for(const side of [-1,1]){
-    const rows=deckRows.slice(12,23).map(r=>{
-      const rail=r[side<0?0:r.length-1];
-      return [rail,V3(rail.x,rail.y,side*.56),V3(rail.x,.42,side*.56)];
-    });
-    const sideDeck=BABYLON.MeshBuilder.CreateRibbon("sideDeck",{pathArray:rows,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-    sideDeck.material=deckM; sideDeck.parent=boat;
-  }
-
-  const sparM=new BABYLON.PBRMaterial("sparM",scene);
-  sparM.albedoColor=new BABYLON.Color3(.75,.77,.80); sparM.metallic=.6; sparM.roughness=.4;
-  const mast=BABYLON.MeshBuilder.CreateCylinder("mast",{height:10.6,diameterBottom:.14,diameterTop:.09},scene);
-  mast.position=V3(.72,.7+5.3,0); mast.material=sparM; mast.parent=boat;
-  const boom=BABYLON.MeshBuilder.CreateCylinder("boom",{height:3.4,diameter:.11},scene);
-  boom.rotation.z=Math.PI/2; boom.material=sparM; boom.parent=boat;
-  const keel=BABYLON.MeshBuilder.CreateBox("keel",{width:1.5,height:1.05,depth:.14},scene);
-  keel.position=V3(-.2,-.95,0); keel.material=hullM; keel.parent=boat;
-  const rudder=BABYLON.MeshBuilder.CreateBox("rudder",{width:.45,height:.95,depth:.06},scene);
-  rudder.position=V3(-3.35,-.5,0); rudder.material=hullM; rudder.parent=boat;
-
-  // standing rigging as thin lines
+  const materials=boatMaterials(scene);
+  const model=importBoatAsset("boat","blenderBoat",scene,boat,materials);
+  const mast=importBoatAsset("mast","mast",scene,boat,materials); mast.position=V3(.72,6,0);
+  const boom=importBoatAsset("boom","boom",scene,boat,materials);
+  const rudder=importBoatAsset("rudder","rudder",scene,boat,materials);rudder.position=V3(-3.42,.15,0);
+  const travCar=importBoatAsset("car","travCar",scene,boat,materials);
+  const jibCar=importBoatAsset("car","jibCar",scene,boat,materials);jibCar.scaling=V3(.7,.6,.65);
+  const lazyCar=importBoatAsset("car","lazyCar",scene,boat,materials);lazyCar.scaling.copyFrom(jibCar.scaling);
+  const lowerBlock=importBoatAsset("block","travelerBlock",scene,travCar,materials);lowerBlock.position.y=.10;
+  const boomBlock=importBoatAsset("block","boomBlock",scene,boat,materials);
+  const jibBlock=importBoatAsset("block","jibBlock",scene,jibCar,materials);jibBlock.scaling=V3(.65,.65,.65);jibBlock.position.y=.06;
+  const lazyBlock=importBoatAsset("block","lazyBlock",scene,lazyCar,materials);lazyBlock.scaling.copyFrom(jibBlock.scaling);lazyBlock.position.y=.06;
+  const vangBlock=importBoatAsset("block","vangBlock",scene,boat,materials);vangBlock.scaling=V3(.65,.65,.65);
+  const vangBase=importBoatAsset("block","vangBase",scene,boat,materials);vangBase.scaling=V3(.65,.65,.65);vangBase.position=V3(.60,1.10,0);
   const rigPts=[
-    [V3(3.72,1.05,0),V3(.80,10.05,0)],                          // forestay
-    [V3(.72,9.2,0),V3(.72,6.4,.9),V3(.6,.8,1.15)],              // shrouds over spreader tips
-    [V3(.72,9.2,0),V3(.72,6.4,-.9),V3(.6,.8,-1.15)],
+    [V3(3.72,1.05,0),V3(.80,10.05,0)],
+    [V3(.72,9.2,0),V3(.72,6.4,.9),V3(.6,.74,1.15)],
+    [V3(.72,9.2,0),V3(.72,6.4,-.9),V3(.6,.74,-1.15)],
+    [V3(.72,10.9,0),V3(-3.7,.80,0)],
   ];
-  // toerails along the sheer
-  const hp=hullPaths();
-  rigPts.push(hp.map(r0=>r0[0].add(new BABYLON.Vector3(0,.03,0))));
-  rigPts.push(hp.map(r0=>r0[r0.length-1].add(new BABYLON.Vector3(0,.03,0))));
-  const rig=BABYLON.MeshBuilder.CreateLineSystem("rig",{lines:rigPts},scene);
-  rig.color=new BABYLON.Color3(.25,.27,.3); rig.parent=boat;
-  const stripeM=new BABYLON.PBRMaterial("sheerStripe",scene);
-  stripeM.albedoColor=new BABYLON.Color3(.045,.14,.18); stripeM.metallic=0; stripeM.roughness=.4;
-  for(const side of [0,hp[0].length-1]){
-    const stripe=BABYLON.MeshBuilder.CreateTube("sheerStripe",{path:hp.map(row=>BABYLON.Vector3.Lerp(row[side],row[side===0?1:side-1],.7)),radius:.018,tessellation:6},scene);
-    stripe.material=stripeM; stripe.parent=boat;
+  for(const path of rigPts){const rig=BABYLON.MeshBuilder.CreateTube("standingWire",{path,radius:.003,tessellation:6},scene);rig.material=materials.steel;rig.parent=boat;}
+  for(const side of [-1,1]){
+    const path=[V3(.72,6.4,0),V3(.72,6.4,side*.9)];
+    const spreader=BABYLON.MeshBuilder.CreateTube("spreader",{path,radius:.023,tessellation:12},scene);spreader.material=materials.anodized;spreader.parent=boat;
+    const lifeline=BABYLON.MeshBuilder.CreateTube("lifeline",{path:[V3(-.15,1.14,side*1.13),V3(2.2,1.16,side*.98),V3(3.08,1.15,side*.39)],radius:.003,tessellation:6},scene);lifeline.material=materials.steel;lifeline.parent=boat;
   }
-
-  function makeSailAlbedo(){
-    const N=512, dt=new BABYLON.DynamicTexture("sailTex",N,scene,true);
-    const ctx=dt.getContext();
-    ctx.fillStyle="#f5f3ec"; ctx.fillRect(0,0,N,N);
-    ctx.strokeStyle="rgba(110,105,88,.30)"; ctx.lineWidth=1;
-    for(let k=1;k<8;k++){ const y=k*N/8; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(N,y); ctx.stroke(); }
-    // Reinforced corners and double-stitched edges, readable without painted shadows.
-    for(const [x,y] of [[0,0],[N,0],[0,N]]){
-      for(let radius=95;radius>=35;radius-=20){
-        ctx.fillStyle="rgba(219,215,198,.10)";
-        ctx.beginPath(); ctx.arc(x,y,radius,0,Math.PI*2); ctx.fill(); ctx.stroke();
-      }
-    }
-    ctx.setLineDash([3,3]);
-    for(const edge of [5,9]) ctx.strokeRect(edge,edge,N-2*edge,N-2*edge);
-    ctx.setLineDash([]);
-    // clear vinyl window like the real sail
-    ctx.fillStyle="rgba(150,175,190,.85)"; ctx.strokeStyle="rgba(90,90,80,.8)";
-    ctx.beginPath();
-    if(ctx.roundRect) ctx.roundRect(N*.18,N*.62,N*.34,N*.16,8); else ctx.rect(N*.18,N*.62,N*.34,N*.16);
-    ctx.fill(); ctx.stroke();
-    dt.update(); return dt;
-  }
-  function makeDeckTexture(){
-    const N=256, dt=new BABYLON.DynamicTexture("deckTex",N,scene,true);
-    const ctx=dt.getContext();
-    ctx.fillStyle="#d9d6cc"; ctx.fillRect(0,0,N,N);
-    for(let i=0;i<26000;i++){ ctx.fillStyle=`rgba(80,78,70,${Math.random()*.16})`;
-      ctx.fillRect(Math.random()*N,Math.random()*N,1.4,1.4); }
-    dt.update(); dt.wrapU=dt.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE; return dt;
-  }
-  const sailM=new BABYLON.PBRMaterial("sailM",scene);
-  sailM.albedoTexture=makeSailAlbedo();
-  sailM.metallic=0; sailM.roughness=.8;
-  marineMaterial(sailM,"sailcloth",12,24,.28);
-
-  sailM.backFaceCulling=false; sailM.twoSidedLighting=true;
-
-  // cabin trunk + deck hardware (photo-matched: low trunk forward, long open cockpit)
-  // the trunk is lofted from TRUNK/trunkSection rather than being a box: it
-  // tapers forward, the roof is cambered, and the base sits below the sheer so
-  // it reads as moulded into the deck instead of parked on top of it
-  const trunkRows=[];
-  const TRUNK_ST=12;
-  for(let i=0;i<=TRUNK_ST;i++)
-    trunkRows.push(trunkSection(TRUNK.xFwd+(TRUNK.xAft-TRUNK.xFwd)*(i/TRUNK_ST)));
-  const cabin=BABYLON.MeshBuilder.CreateRibbon("cabin",{pathArray:trunkRows,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-  cabin.material=hullM; cabin.parent=boat;
-  // cap the open fore and aft ends, the same fan trick the transom uses
-  for(const row of [trunkRows[0],trunkRows[trunkRows.length-1]]){
-    const cz=row.map(pt=>V3(pt.x,pt.y,0));
-    const cap=BABYLON.MeshBuilder.CreateRibbon("cabinCap",{pathArray:[row,cz],sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-    cap.material=hullM; cap.parent=boat;
-  }
-  // nonskid panel on the roof: inset from the moulded edge, lifted a few mm
-  const nonskidRows=trunkRows.slice(1,-1).map(r=>{
-    // take the inset section's plan outline but read the height off the real
-    // roof surface, so the panel floats just proud of it and never sinks in
-    const inset=trunkSection(r[0].x,.07);
-    return inset.slice(1,-1).map(pt=>V3(pt.x,trunkTopY(pt.x,pt.z)+.006,pt.z));
-  });
-  // nonskid is a shade darker and flatter than the gloss moulding, which is
-  // what stops the roof reading as one white slab
-  const nonskidM=new BABYLON.PBRMaterial("nonskidM",scene);
-  nonskidM.albedoTexture=makeDeckTexture();
-  nonskidM.albedoTexture.uScale=3; nonskidM.albedoTexture.vScale=3;
-  nonskidM.albedoColor=new BABYLON.Color3(.72,.71,.67);
-  nonskidM.metallic=0; nonskidM.roughness=.95;
-  marineMaterial(nonskidM,"nonskid",3,3,.45);
-  const cabinTop=BABYLON.MeshBuilder.CreateRibbon("cabinTop",{pathArray:nonskidRows,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-  cabinTop.material=nonskidM; cabinTop.parent=boat;
-  // forehatch, sitting flush in the crown
-  const hatch=BABYLON.MeshBuilder.CreateBox("forehatch",{width:.44,height:.05,depth:.44},scene);
-  hatch.position=V3(1.85,trunkTopY(1.85,0)+.01,0); hatch.material=sparM; hatch.parent=boat;
-  const sole=BABYLON.MeshBuilder.CreateBox("sole",{width:3.1,height:.05,depth:1.1},scene);
-  sole.position=V3(-1.5,.42,0); sole.material=deckM; sole.parent=boat;
-  const benchP=BABYLON.MeshBuilder.CreateBox("benchP",{width:3.0,height:.09,depth:.42},scene);
-  benchP.position=V3(-1.5,.62,.72); benchP.material=hullM; benchP.parent=boat;
-  const benchS=benchP.clone("benchS"); benchS.position=V3(-1.5,.62,-.72); benchS.parent=boat;
-  // stainless: bow pulpit, stanchions, lifelines, stern rails
-  const steel=new BABYLON.PBRMaterial("steelTube",scene);
-  steel.albedoColor=new BABYLON.Color3(.8,.82,.85); steel.metallic=.85; steel.roughness=.3;
-  const pulpit=BABYLON.MeshBuilder.CreateTube("pulpit",{path:[
-    V3(3.15,.72,.34),V3(3.15,1.12,.30),V3(3.75,1.12,.12),V3(3.95,1.12,0),
-    V3(3.75,1.12,-.12),V3(3.15,1.12,-.30),V3(3.15,.72,-.34)],radius:.022},scene);
-  pulpit.material=steel; pulpit.parent=boat;
-  const lifelinesPts=[];
-  for(const side of [1,-1]){
-    const rail=[];
-    [[2.2,1.05],[0.8,1.15],[-0.8,1.22],[-2.4,1.24]].forEach(([x,hb])=>{
-      const st=BABYLON.MeshBuilder.CreateCylinder("st",{height:.46,diameter:.03},scene);
-      st.position=V3(x,.94,side*hb); st.material=steel; st.parent=boat;
-      rail.push(V3(x,1.17,side*hb));
-    });
-    lifelinesPts.push([V3(3.15,1.12,side*.30),...rail,V3(-3.5,1.12,side*.9)]);
-    const stern=BABYLON.MeshBuilder.CreateCylinder("sr",{height:.5,diameter:.03},scene);
-    stern.position=V3(-3.5,.9,side*.9); stern.material=steel; stern.parent=boat;
-  }
-  const lifelines=BABYLON.MeshBuilder.CreateLineSystem("lifelines",{lines:lifelinesPts},scene);
-  lifelines.color=new BABYLON.Color3(.75,.78,.8); lifelines.parent=boat;
-  // spreaders + shrouds routed over the tips
-  for(const side of [1,-1]){
-    const sp=BABYLON.MeshBuilder.CreateCylinder("sp",{height:.9,diameter:.05},scene);
-    sp.rotation.x=Math.PI/2; sp.position=V3(.72,6.4,side*.45); sp.material=steel; sp.parent=boat;
-  }
-  const travTrack=BABYLON.MeshBuilder.CreateBox("travTrack",{width:.07,height:.05,depth:1.7},scene);
-  travTrack.position=V3(-.95,.96,0); travTrack.material=sparM; travTrack.parent=boat;
-  const travCar=BABYLON.MeshBuilder.CreateBox("travCar",{width:.12,height:.09,depth:.14},scene);
-  travCar.material=sparM; travCar.parent=boat;
-  // jib tracks on the side decks aft of the mast: a 100% jib sheets aft, not forward
-  const jibTrackP=BABYLON.MeshBuilder.CreateBox("jibTrackP",{width:.9,height:.04,depth:.06},scene);
-  jibTrackP.position=V3(.2,.71,.62); jibTrackP.material=sparM; jibTrackP.parent=boat;
-  const jibTrackS=jibTrackP.clone("jibTrackS"); jibTrackS.position=V3(.2,.71,-.62); jibTrackS.parent=boat;
-  const jibCar=BABYLON.MeshBuilder.CreateBox("jibCar",{width:.14,height:.08,depth:.1},scene);
-  jibCar.material=sparM; jibCar.parent=boat;
-
-  // led-aft hardware: turning blocks at mast base -> organizers -> clutches
-  for(const side of [1,-1]){
-    const org=BABYLON.MeshBuilder.CreateCylinder("org",{height:.03,diameter:.12},scene);
-    org.position=V3(.45,.75,side*.22); org.material=sparM; org.parent=boat;
-    const clutch=BABYLON.MeshBuilder.CreateBox("clutch",{width:.3,height:.07,depth:.14},scene);
-    clutch.position=V3(-.25,.78,side*.34); clutch.material=sparM; clutch.parent=boat;
-  }
-  const winch=BABYLON.MeshBuilder.CreateCylinder("winch",{height:.14,diameterBottom:.16,diameterTop:.12},scene);
-  winch.position=V3(-.65,.82,.5); winch.material=sparM; winch.parent=boat;
-  const winchP=winch.clone("winchP"); winchP.position=V3(-.65,.82,-.5); winchP.parent=boat;
-  const shellM=new BABYLON.PBRMaterial("blockShell",scene);
-  shellM.albedoColor=new BABYLON.Color3(.075,.085,.09); shellM.metallic=0; shellM.roughness=.38;
-  const lowerBlock=makeBlock("travelerBlock",scene,travCar,steel,shellM);
-  lowerBlock.position.y=.09;
-  const boomBlock=makeBlock("boomBlock",scene,boat,steel,shellM);
-  const jibBlock=makeBlock("jibBlock",scene,jibCar,steel,shellM);
-  const lazyCar=jibCar.clone("lazyCar"); lazyCar.parent=boat;
-  const vangBlock=makeBlock("vangBlock",scene,boat,steel,shellM);
-
+  const sailM=makeSailMaterial("main",scene),sailJ=makeSailMaterial("jib",scene);
   const sh0={boom:5,clew:9,twist:13,depth:.12,draft:.44};
   const mainSail=BABYLON.MeshBuilder.CreateRibbon("mainSail",{pathArray:sailPathArray("main",sh0),sideOrientation:BABYLON.Mesh.DOUBLESIDE,updatable:true},scene);
-  const jibSail =BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:sailPathArray("jib",{...sh0,clew:9}),sideOrientation:BABYLON.Mesh.DOUBLESIDE,updatable:true},scene);
-  mainSail.material=sailM; jibSail.material=sailM;
-  mainSail.parent=boat; jibSail.parent=boat;
+  const jibSail=BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:sailPathArray("jib",sh0),sideOrientation:BABYLON.Mesh.DOUBLESIDE,updatable:true},scene);
+  mainSail.material=sailM;jibSail.material=sailJ;mainSail.parent=boat;jibSail.parent=boat;
+  [...model.getChildMeshes(),...mast.getChildMeshes(),...boom.getChildMeshes(),mainSail,jibSail].forEach(m=>wm.addToRenderList(m));
 
-  [hull,transom,deck,mast,boom,mainSail,jibSail].forEach(m=>wm.addToRenderList(m));
-
-  B3={engine,scene,cam,boat,wm,mainSail,jibSail,boomMesh:boom,travCar,jibCar,lazyCar,boomBlock,vangBlock,
-      runLines:null,puffs:null,dyeR:null,dyeOn:true,t:0,heelCur:0};
+  B3={engine,scene,cam,boat,wm,mainSail,jibSail,boomMesh:boom,travCar,jibCar,lazyCar,boomBlock,vangBlock,vangBase,lowerBlock,rudder,materials,
+      runLines:null,puffs:null,dyeR:null,dyeOn:false,t:0,heelCur:0};
   B3dirty=true;
   initTelltales();
   B3.paused=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -2716,7 +2633,7 @@ function tick3D(){
     B3.lazyCar.position=V3(jcarX,.75,-S*.62);
     // running rigging: mainsheet (mid-boom -> traveler car) + working jib sheet (clew -> car)
     const boomMid=V3(.72,1.42,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(1.7));
-    B3.boomBlock.position=boomMid.add(V3(0,-.05,0)); B3.boomBlock.rotation.y=d;
+    B3.boomBlock.position=boomMid.add(V3(0,-.10,0)); B3.boomBlock.rotation.y=0;
     B3.vangBlock.position=V3(.72,1.42,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(1.15)).add(V3(0,-.05,0));
     // the sheet starts exactly where the cloth's clew particle is pinned
     const clew=pinJ[0][pinJ[0].length-1].clone();
@@ -2758,53 +2675,66 @@ function tick3D(){
     const car=B3.travCar.position;
     const boomMid2=V3(.72,1.42,0).add(boomDir.scale(1.95));
     const mastBase=V3(.66,1.0,0);
-    const ropes={
-      // mainsheet: 3-part tackle — three falls between the boom block and the
-      // car block, then the tail aft to the helm. Slack only when the wind
-      // has swung the boom short of the sheet's limit.
-      sheet:(()=>{
-        const bb=boomMid.add(V3(0,-.05,0)), cb=car.add(V3(0,.09,0)), off=boomDir.scale(.035);
-        const s3=r.sheetSlack/3;
-        return [sagLine(bb.subtract(off), cb.subtract(off), s3),
-                sagLine(cb, bb, s3),
-                sagLine(bb.add(off), cb.add(off), s3).concat(sagLine(cb.add(off), V3(-2.2,.75,.3), .02).slice(1))];
-      })(),
-      // working sheet: clew -> leeward car -> leeward winch drum -> tail into the cockpit
-      jsheet:[sagLine(clew, B3.jibCar.position.clone(), r.jib.wow?.45:Math.min(.5, r.jib.sheetSlack*.6), overTrunk(.74)).concat(
-               [V3(-.62,.87,S*.59), V3(-.95,.72,S*.42)])],
-      // lazy sheet: clew -> across the coachroof to the windward car -> windward
-      // winch. There is no block between the clew and the car, so the run is a
-      // single span; its only bend comes from lying on the roof on the way down.
-      jsheetw:[sagLine(clew, V3(jcarX,.75,-S*.62), (1-state.jsheetw)*.45, overTrunk(.74), 18).concat(
-               sagLine(V3(jcarX,.75,-S*.62), V3(-.62,.87,-S*.59), (1-state.jsheetw)*.15, .74).slice(1),
-               [V3(-.95,.72,-S*.42)])],
-      jcar:[[V3(jcarX,.80,.62), V3(jcarX,.70,.62)]],
-      // vang: 2-part cascade boom bale <-> mast step, tail aft
-      vang:[[boomVangPt.add(V3(0,-.02,.04)), mastBase.add(V3(0,.04,.06)), boomVangPt.add(V3(-.06,-.06,.02)), mastBase.add(V3(0,0,.10)), V3(-.2,.78,.20)]],
-      // outhaul: clew -> boom end sheave -> forward under the boom -> gooseneck cleat
-      outhaul:[[mClew, boomEnd.add(V3(0,.02,0)), boomEnd.add(V3(0,-.07,0)), V3(.72,1.35,0).add(boomDir.scale(.35))]],
-      // cunningham: hook on the luff cringle -> mast-base block -> aft to the clutch
-      cunn:[[cunTop, cunMid, cunBot, V3(.45,.77,.22), V3(-.12,.80,.30)]],
-      // halyards: masthead sheave -> down the mast -> turning block -> organizer -> clutch
-      halyard:[[mastHead.add(V3(-.11,0,0)), V3(.58,1.05,-.06), V3(.45,.77,-.22), V3(-.12,.80,-.30)]],
-      jhal:[[hounds.add(V3(.10,-.02,0)), V3(.60,1.05,.06), V3(.45,.77,.22), V3(-.12,.80,.38)]],
-      toplift:[[mastHead, boomEnd.add(V3(0,.05,0))]],
-      trav:[[car.add(V3(0,.02,0)), V3(-.95,1.0,.85)],[car.add(V3(0,.02,0)), V3(-.95,1.0,-.85)]],
-      backstay:[[V3(.72,10.9,0),V3(-3.7,.85,0)]],
+    // All running rigging follows hardware centers. Four mainsheet falls,
+    // two vang falls, deck lanes, winch turns and stowed tails stay separate.
+    const arc=(center,r,a0,a1,axis="z",n=14)=>Array.from({length:n+1},(_,i)=>{
+      const a=lerp(a0,a1,i/n);
+      return axis==="y"?center.add(V3(r*Math.cos(a),0,r*Math.sin(a))):center.add(V3(r*Math.cos(a),r*Math.sin(a),0));
+    });
+    const coil=(center,side=1)=>Array.from({length:97},(_,i)=>{
+      const a=i/96*Math.PI*8,r=.075+.016*i/96;
+      return center.add(V3(Math.cos(a)*r*1.7,.0004*i,side*Math.sin(a)*r));
+    });
+    const winchPath=(side,slack)=>{
+      const lead=V3(jcarX,.81,side*.62),wc=V3(-.72,.835,side*.84);
+      // Three turns rise up the drum; the tail then leads off to the cockpit seat.
+      const turns=Array.from({length:85},(_,i)=>{
+        const a=side*(Math.PI*.10+i/84*Math.PI*6);
+        return wc.add(V3(.090*Math.cos(a),i/84*.07,.090*Math.sin(a)));
+      });
+      const tail=coil(V3(-1.30,.704,side*.85),side);
+      return sagLine(lead,turns[0],slack,.75,10).concat(turns.slice(1),sagLine(turns.at(-1),tail[0],.03,.70,12).slice(1),tail.slice(1));
     };
+    const lane=(z,top)=>[top,V3(.63,.80,z),V3(.44,.775,z),V3(.06,.79,z),V3(-.15,.79,z),V3(-.19,.752,z),V3(-.19,.70,z)];
+    const bb=B3.boomBlock.position,cb=car.add(V3(0,.10,0)),R=.060;
+    const fall=(a,b)=>r.sheetSlack>.005?sagLine(a,b,Math.min(.35,r.sheetSlack/4),.75,12):[a,b];
+    const mainSheet=[...fall(cb.add(V3(-R,0,-.0275)),bb.add(V3(-R,0,-.0275))),
+      ...arc(bb.add(V3(0,0,-.0275)),R,Math.PI,0).slice(1),...fall(bb.add(V3(R,0,-.0275)),cb.add(V3(R,0,-.0275))).slice(1),
+      ...arc(cb.add(V3(0,0,-.0275)),R,0,-Math.PI).slice(1),...fall(cb.add(V3(-R,0,-.0275)),bb.add(V3(-R,0,.0275))).slice(1),
+      ...arc(bb.add(V3(0,0,.0275)),R,Math.PI,0).slice(1),...fall(bb.add(V3(R,0,.0275)),cb.add(V3(R,0,.0275))).slice(1)];
+    const mainTail=coil(V3(-1.70,.704,.84));
+    const vangTop=B3.vangBlock.position,vangLow=V3(.60,1.10,0);
+    const ropes={
+      sheet:[mainSheet.concat(sagLine(mainSheet.at(-1),mainTail[0],.05,.70,14).slice(1),mainTail.slice(1))],
+      jsheet:[sagLine(clew,V3(jcarX,.81,S*.62),r.jib.wow?.16:Math.min(.16,r.jib.sheetSlack),overTrunk(.75),20).concat(winchPath(S,0).slice(1))],
+      jsheetw:[sagLine(clew,V3(jcarX,.81,-S*.62),(1-state.jsheetw)*.20,overTrunk(.75),24).concat(winchPath(-S,.03).slice(1))],
+      jcar:[],
+      vang:[[vangLow.add(V3(-.035,0,-.017)),vangTop.add(V3(-.035,0,-.017)),
+        ...arc(vangTop.add(V3(0,0,-.017)),.037,Math.PI,0).slice(1),vangLow.add(V3(.035,0,-.017)),
+        ...lane(-.14,V3(.62,1.02,-.14))]],
+      // Outhaul and halyards run inside the extrusions. Only exposed ends show.
+      outhaul:[[mClew,boomEnd.add(V3(0,.025,0))],lane(-.21,V3(.65,1.36,-.07))],
+      cunn:[[V3(.68,1.78,.07),V3(.60,1.02,.14),...lane(.14,V3(.60,1.02,.14)).slice(1)]],
+      halyard:[lane(-.28,V3(.63,1.04,-.07))],
+      jhal:[lane(.21,V3(.62,1.04,.07))],
+      toplift:[], // Support is unloaded while sailing; omit a fake taut second stay.
+      trav:[sagLine(car.add(V3(0,.018,.10)),V3(-.95,1.01,.80),.005),sagLine(car.add(V3(0,.018,-.10)),V3(-.95,1.01,-.80),.005)],
+      backstay:[], // Standing wire is part of the permanent rig.
+    };
+    B3.ropePaths=ropes;
     const steelKeys={backstay:1,toplift:1};
     // color-coded like the rigging guides
     const ROPE_COLORS={sheet:[.75,.1,.1], jsheet:[.82,.72,.5], jsheetw:[.6,.55,.4], jcar:[.9,.5,.15], vang:[.15,.55,.25],
       outhaul:[.85,.55,.15], cunn:[.8,.15,.35], halyard:[.9,.9,.88], jhal:[.2,.35,.75], trav:[.4,.4,.75]};
     if(!B3.ropeMats){ B3.ropeMats={};
-      const ropeTex=window.__ROPE_COLOR?new BABYLON.Texture(window.__ROPE_COLOR,B3.scene):null;
-      const ropeBump=window.__ROPE_NORMAL?new BABYLON.Texture(window.__ROPE_NORMAL,B3.scene):null;
+      const ropeTex=ropeAlbedo(B3.scene);
+      const ropeBump=null;
       // braid pitch on a real line is a few cm — repeat the weave ~40x along a
       // rope run so the tubes read as rope, not smooth cylinders
       if(ropeTex){ ropeTex.uScale=1; ropeTex.vScale=1; }
       if(ropeBump){ ropeBump.uScale=1; ropeBump.vScale=1; ropeBump.level=.5; ropeBump.gammaSpace=false; }
       for(const k in ROPE_COLORS){ const m=new BABYLON.PBRMaterial("rm_"+k,B3.scene);
-        m.albedoColor=new BABYLON.Color3(...ROPE_COLORS[k]); m.metallic=0; m.roughness=.9;
+        m.albedoColor=new BABYLON.Color3(...ROPE_COLORS[k]); m.metallic=0; m.roughness=.85;
         if(ropeTex) m.albedoTexture=ropeTex;
         if(ropeBump) m.bumpTexture=ropeBump;
         marineMaterial(m,"braid",1,1,.45);
@@ -2814,8 +2744,8 @@ function tick3D(){
       B3.ropeMat.albedoColor=new BABYLON.Color3(.45,.18,.10); B3.ropeMat.metallic=0; B3.ropeMat.roughness=.9;
       B3.ropeHi=new BABYLON.PBRMaterial("ropeHi",B3.scene);
       B3.ropeHi.albedoColor=new BABYLON.Color3(1,.35,.1); B3.ropeHi.metallic=0; B3.ropeHi.roughness=.5;
-      B3.ropeHi.emissiveColor=new BABYLON.Color3(.9,.3,.05);
-      if(window.__ROPE_COLOR) B3.ropeHi.albedoTexture=new BABYLON.Texture(window.__ROPE_COLOR,B3.scene);
+      B3.ropeHi.emissiveColor=new BABYLON.Color3(.20,.055,.015);
+      B3.ropeHi.albedoTexture=ropeAlbedo(B3.scene);
       marineMaterial(B3.ropeHi,"braid",1,1,.45);
     }
     if(!B3.steelMat){
@@ -2826,7 +2756,7 @@ function tick3D(){
       B3.tubes[key]=ropes[key].map((path,i)=>{
         const hot=key===B3.hiKey;
         // 10 mm braid, 6 mm wire; the highlighted line is drawn a touch heavier and glows
-        const t2=BABYLON.MeshBuilder.CreateTube("rope_"+key+i,{path,radius:hot?.0075:(steelKeys[key]?.003:.005),tessellation:10},B3.scene);
+        const t2=BABYLON.MeshBuilder.CreateTube("rope_"+key+i,{path,radius:hot?.008:(steelKeys[key]?.003:.006),tessellation:10},B3.scene);
         // Tube U runs around each ring, V along the path. Physical repeat length
         // keeps a short tackle fall and a long halyard at the same braid scale.
         const uv=t2.getVerticesData(BABYLON.VertexBuffer.UVKind);
@@ -2881,7 +2811,7 @@ function tick3D(){
   const target=-S*rad(r.heel);                       // heel to leeward, whichever side that is
   B3.heelCur += (target-B3.heelCur)*(B3.paused?1:1-Math.exp(-dt*3));
   B3.boat.rotation.x=B3.heelCur;
-  const rud=B3.scene.getMeshByName("rudder");
+  const rud=B3.rudder;
   if(rud) rud.rotation.y += ((S*rad(clamp(r.helm,-6,15))) - rud.rotation.y)*(B3.paused?1:1-Math.exp(-dt*4));
   B3.boat.rotation.z=Math.sin(B3.t*.8)*.012 + clamp(r.speed,0,7)*.004; // gentle pitch + bow-up with speed
   // heeled hull rotates about the keel line here, so add the buoyant rise a

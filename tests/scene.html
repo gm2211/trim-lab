@@ -22,7 +22,13 @@ frame.onload=async()=>{
     check('No caught render error',!w.document.querySelector('#hud3d').dataset.err);
     check('Eight Blender maps embedded',w.eval('Object.values(window.__MARINE_MATERIALS).flatMap(Object.values).length===8'));
     check('Normal and roughness maps use linear data',w.eval('B3.scene.materials.filter(m=>m.bumpTexture&&m.metallicTexture).every(m=>!m.bumpTexture.gammaSpace&&!m.metallicTexture.gammaSpace)'));
-    check('Pulley sheaves exist',w.eval('B3.scene.meshes.filter(m=>m.name.endsWith("Sheave")).length>=4'));
+    check('Pulley sheaves exist',w.eval('B3.scene.meshes.filter(m=>m.metadata?.blenderAsset==="block"&&m.metadata.blenderParts.some(p=>p.includes("sheave"))).length>=4'));
+    check('Scene imports Blender model geometry',w.eval('BOAT_ASSETS.generator.startsWith("Blender") && B3.scene.meshes.filter(m=>m.metadata?.blenderAsset==="boat").length===10'));
+    check('Model includes manufactured winches and clutches',w.eval('BOAT_ASSETS.assets.boat.flatMap(a=>a.parts).some(p=>p.includes("Self tailer")) && BOAT_ASSETS.assets.boat.flatMap(a=>a.parts).some(p=>p.includes("Clutch lever"))'));
+    check('Inspection starts with wind dye disabled',w.eval('!B3.dyeOn'));
+    check('Mainsheet has four load-bearing falls',w.eval('B3.ropePaths.sheet[0].filter((p,i,a)=>i>0&&Math.abs(p.y-a[i-1].y)>.15&&Math.min(p.y,a[i-1].y)>=1.09).length===4'));
+    check('Led-aft tails finish inside storage pockets',w.eval('["halyard","jhal","cunn","vang"].every(k=>B3.ropePaths[k].at(-1).at(-1).y<.741)'));
+    check('All rope paths remain finite',w.eval('Object.values(B3.ropePaths).flat(2).every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z))'));
     if(w.document.querySelector('#pause3d').getAttribute('aria-pressed')!=='true') w.document.querySelector('#pause3d').click();
     w.eval('state.sheet=1; state.trav=1; update("trav"); tick3D();');
     check('Windward boom matches solved negative angle',w.eval('lastR.main.boom<0 && Math.abs(B3.boomShow-lastR.main.boom)<1e-8'));
@@ -32,8 +38,8 @@ frame.onload=async()=>{
     check('Pause freezes simulation clock',w.eval('B3.t')===t);
     w.eval('state.twaSide=-1; update("pos"); tick3D();');
     check('Port tack mirrors boom without losing windward sign',w.eval('Math.abs(B3.boomShow+lastR.main.boom)<1e-8'));
-    const rope=w.eval('(()=>{const m=B3.tubes.halyard[0],uv=m.getVerticesData(BABYLON.VertexBuffer.UVKind);let u=0,v=0;for(let i=0;i<uv.length;i+=2){u=Math.max(u,uv[i]);v=Math.max(v,uv[i+1]);}return {u,v};})()');
-    check('Long halyard retains circumferential UV and repeats lengthwise',Math.abs(rope.u-1)<1e-6&&rope.v>30);
+    const rope=w.eval('(()=>{const m=B3.tubes.jsheet[0],uv=m.getVerticesData(BABYLON.VertexBuffer.UVKind);let u=0,v=0;for(let i=0;i<uv.length;i+=2){u=Math.max(u,uv[i]);v=Math.max(v,uv[i+1]);}return {u,v};})()');
+    check('Wrapped jib sheet retains circumferential UV and repeats lengthwise',Math.abs(rope.u-1)<1e-6&&rope.v>15);
     for(const name of ['rig','deck','sails','rigging']){
       w.document.querySelector(`[data-view="${name}"]`).click();
       check(name+' camera stays inside zoom limits',w.eval('B3.cam.radius>=B3.cam.lowerRadiusLimit && B3.cam.radius<=B3.cam.upperRadiusLimit'));

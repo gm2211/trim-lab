@@ -1,67 +1,68 @@
 # Graphics, physics and UI review
 
-## Changes
+## Delivered graphics
 
-Blender now authors repeatable normal and roughness maps for gelcoat, sailcloth,
-nonskid and braided rope. This improves the existing Babylon materials while
-retaining live sail geometry, telltales, and color-coded lines. The runtime stays
-self-contained. A full baked boat GLB would freeze the trim-dependent parts and
-require additional loading and mesh-binding infrastructure; it is unnecessary
-for this material pass. The source generator can also save an editable .blend.
+The visible boat now imports geometry authored and evaluated in Blender. The
+committed `assets/boat/trim-boat.blend` has an assembled preview, named parts,
+linked hardware instances, and editable bevel/subdivision modifiers. Its mesh
+export supplies the hull, cockpit, coachroof, foils, rails, spars, tracks,
+winches, clutches, cars and double blocks. Separate asset roots retain working
+trim and rudder movement. The custom export groups surfaces by material and is
+compressed into both standalone pages; the canonical Babylon bundle is unchanged.
 
-The hull has a clear coat and sheer stripe. Opening the cockpit removes the old
-full-width deck over the seats and sole. Sail albedo adds corner reinforcement
-and stitching without painted lighting. Blocks now have separate cheeks, sheaves
-and axles; traveler and both jib cars carry their hardware. Rope UV repeat length
-is based on metres, so short tackle falls no longer get the same 40 repeats as
-long halyards. Sun intensity is reduced to retain material detail.
+The hull has faired surfaces, rounded moldings, a rubber hull/deck joint and a
+cove stripe. Nonskid inserts have their own diamond texture. Winches have grip
+rings, self-tailers and sockets; blocks have grooved sheaves, cheeks and shackles.
+Metal uses a generated sky/sea reflection texture. Gelcoat, rubber, metal, deck
+inserts and cloth now have different finishes.
 
-The physics review found and fixed:
+Sails still deform through the existing cloth solver. They have fine weave,
+paired seams, corner reinforcements, batten pockets and transparent window areas.
+The Blender normal/roughness bakes remain, with runtime albedo detail appropriate
+to each sail. They are not frozen Blender sail meshes.
 
-- Lowered sails retained a hard 0.05 m/s speed floor.
-- Zero-degree wind headings fell back to the close-hauled preset; apparent wind
-  also had a false lower-angle clamp.
-- Returned apparent wind and sheet loads came from the previous solver iteration.
-- Main-halyard tension above full hoist did not change draft despite the UI guide.
-- Downwind jib trim score used the mainsail's angle and twist.
-- 3D forced the boom to the leeward side even when traveler trim crossed centerline.
-- The last frame of a tack could skip the final rigging/cloth target update.
-- Long render gaps reached dye/telltales and angular motion without a time cap.
+Running rigging uses four mainsheet falls, arcs around the sheaves, two vang
+falls, three turns around each winch, separate deck lead lanes, storage pockets,
+and separate sheet coils on the seats. Halyards and outhaul runs inside the
+extrusions are not drawn as loose external diagonals. Rope color has braid and
+tracer detail, with metre-based UV repeats. Wind dye starts off for inspection.
 
-The existing cloth solver already used fixed 60 Hz substeps. That architecture
-is retained. Visual motion now caps elapsed time, uses exponential angular
-smoothing, and skips hidden 3D views. Pause motion supports inspection and starts
-paused for reduced-motion users; changing trim while paused updates the boat.
+## Physics and UI
 
-The UI now provides full-rig, deck, sail and rigging camera presets. Toolbars and
-telemetry use separate rows. The narrow layout puts the boat before the trim
-panel. The wind dial has keyboard navigation and current ARIA values; selection
-buttons expose their states. Flat heel no longer implies no power, theoretical
-hull speed is marked approximate, and the heuristic trim score is not labelled
-as a measured percentage of optimal speed.
+The earlier pass corrected the bare-poles speed floor, zero-heading fallback,
+stale final apparent-wind output, main-halyard draft response, and downwind jib
+scoring that used the mainsail geometry. It also corrected the windward boom's
+3D sign and the final tack target update. Those corrections remain.
+
+The fixed 60 Hz cloth steps remain. Visual elapsed time is capped, angular
+smoothing is exponential, and hidden 3D views stop rendering. Motion pause
+supports inspection and reduced-motion users while still allowing trim changes.
+The UI provides four camera presets, separate control/telemetry rows, mobile
+stacking, keyboard wind control and accessible selection states.
 
 ## Verification
 
-- `node --test tests/physics.test.cjs`: 9 passing tests, including a 120-case
-  sweep over wind, heading, hoist and trim extremes.
-- The same suite against the original source: 5 failures reproduced.
-- `tests/scene.html`: 18 real WebGL checks for loaded material maps, color-space
-  settings, pulley geometry, tack sign, paused motion, line UVs and cameras.
-- Browser review of desktop and narrow layouts, camera presets, visual-aid
-  toggles, keyboard wind changes and trim while paused.
-- Both standalone HTML outputs rebuilt and compared byte-for-byte.
+- Nine physics tests pass, including 120 extreme-state cases. Five earlier
+  regressions reproduce against the original source.
+- 24 browser WebGL checks cover imported Blender geometry, material readiness,
+  map color spaces, manufactured hardware, four mainsheet falls, stored tails,
+  finite rope paths, tack mirroring, pause, physical rope UVs and camera distances.
+- Exported position/normal/UV counts and triangle indices are valid.
+- Actual deck/rigging close-ups and full-boat views reviewed in the browser.
+- Editable Blender scene rendered separately to verify its geometry.
+- Both standalone pages rebuilt identically; JavaScript syntax and whitespace
+  checks pass. Final pages are approximately 4.0 MB each.
 
 ## Limits
 
-This remains an approximate steady-state training model, not a validated Colgate
-26 velocity prediction program. The lift/stall curves, hull resistance, crew
-righting moment and halyard response need measured polar/load data for calibration.
-There is no transient boat inertia, dynamic buoyancy, sheet elasticity, or full
-cloth collision model. Wave and sail breathing are visual approximations. The
-current normal maps add surface detail, not fiber-scale geometry or fabric
-transmission; the sail window remains painted. More realistic foil/hull shapes,
-true sail windows and an environment-lighting pass are possible follow-ups.
+This is an illustrative Colgate-style trainer, not a dimension-verified CAD
+replica. Existing simulation attachment locations, including the mid-boom
+mainsheet/traveler anchors, remain. The manufacturer's equipment list guided
+nonskid and 4:1 tackle; it does not validate every layout dimension.
 
-Bakes add about 0.45 MB to each standalone page (roughly 2.53 MB to 2.98 MB).
-Blender is only needed to regenerate assets, never to run or build from committed
-assets. The canonical Babylon bundle is unchanged.
+The force model remains approximate and steady-state, without measured polar
+calibration, transient boat inertia, dynamic buoyancy or sheet elasticity.
+Cloth and rope collision handling is approximate; extreme sail/rig intersections
+are not a fully solved contact system. Water motion and sail breathing are visual
+approximations. Lighting has environment reflections but no new real-time shadow
+pipeline. Browser geometry decompression requires DecompressionStream.

@@ -1,6 +1,7 @@
 import io
 import base64
 import json
+import gzip
 from pathlib import Path
 src = io.open('src-app.html', encoding='utf8').read()
 lib = io.open('babylon.lib.js', encoding='utf8').read()
@@ -15,6 +16,8 @@ for name in ('gelcoat', 'sailcloth', 'nonskid', 'braid'):
         data = Path('assets/materials', name+'-'+channel+'.png').read_bytes()
         materials[name][channel] = 'data:image/png;base64,'+base64.b64encode(data).decode('ascii')
 lib += '\nwindow.__MARINE_MATERIALS='+json.dumps(materials, separators=(',', ':'))+';'
+boat = gzip.compress(Path('assets/boat/meshes.json').read_bytes(), mtime=0)
+lib += '\nwindow.__BOAT_GZIP="'+base64.b64encode(boat).decode('ascii')+'";'
 out = src.replace('<script id="lib-slot"></script>', '<script>'+lib+'</script>')
 io.open('app.html','w',encoding='utf8').write(out)
 io.open('docs/index.html','w',encoding='utf8').write(out)

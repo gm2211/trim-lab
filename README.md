@@ -10,6 +10,8 @@ and concept guides.
 ## Layout
 - `src-app.html` — the entire app (HTML/CSS/JS) with a `<script id="lib-slot">` placeholder.
 - `babylon.lib.js` — committed canonical WebGL-only Babylon bundle and water normals.
+- `assets/boat/trim-boat.blend` — editable Blender boat and hardware geometry.
+- `build-tools/model-boat.py` — evaluated mesh export with original modifier stacks.
 - `build-tools/bake-materials.py` — reproducible Blender marine material bakes.
 - `assets/materials/` — committed normal/roughness maps and authoring instructions.
 - `build.py` — embeds the library, rope textures and marine maps into both built pages.
@@ -18,14 +20,14 @@ and concept guides.
 ```bash
 python3 build.py                # all build inputs are committed; Blender is optional
 ```
-`build.py` writes two identical self-contained pages (~3.0 MB each): `app.html` at the
+`build.py` writes two identical self-contained pages (~4.0 MB each): `app.html` at the
 repo root and `docs/index.html`. Both are committed; rebuild and commit them whenever
 `src-app.html` or the bundled library changes.
 
 Run `node --test tests/physics.test.cjs` for physics regressions. Serve locally
 with `python3 -m http.server 8765 --bind 127.0.0.1` and open
 `http://127.0.0.1:8765/tests/scene.html` for WebGL integration checks.
-See [material authoring](assets/materials/README.md) and the
+See [Blender model authoring](assets/boat/README.md), [material authoring](assets/materials/README.md) and the
 [graphics, physics and UI review](docs/graphics-physics-review.md) for details and
 the model's calibration limits.
 
