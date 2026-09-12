@@ -129,9 +129,10 @@ for name,x,z0,chord,span in [('Keel',-.20,-.38,1.16,.9916),('Rudder',R['rudderX'
 # Bronze rudder head and varnished laminated tiller, articulated with rudder.
 cylinder('Rudder post',(0,.28,0),.031,.55,'steel','tiller')
 box('Tiller head',(0,.57,0),(.20,.085,.105),'anodized',.015,'tiller')
-tube('Laminated wooden tiller',[(0,.58,0),(.25,.58,0),(1.30,.64,0),(1.65,.72,0)],.028,'wood','tiller')
-for z in [-.022,0,.022]:tube('Tiller laminate',[(.03,.588,z),(.25,.59,z),(1.30,.65,z),(1.65,.73,z)],.004,'gelcoat','tiller')
-tube('Tiller extension',[(1.40,.67,0),(1.04,.73,.55)],.012,'rubber','tiller')
+# End aft of the cockpit ratchet, leaving room for its sheet lead and tail.
+tube('Laminated wooden tiller',[(0,.58,0),(.20,.58,0),(.78,.64,0),(1.0,.72,0)],.028,'wood','tiller')
+for z in [-.022,0,.022]:tube('Tiller laminate',[(.03,.588,z),(.20,.59,z),(.78,.65,z),(1.0,.73,z)],.004,'gelcoat','tiller')
+tube('Tiller extension',[(.85,.67,0),(.49,.73,.55)],.012,'rubber','tiller')
 # Long straight stainless cockpit rails; no rail across the low transom.
 for side in [-1,1]:
  tube('Rigid cockpit safety rail '+str(side),[(-3.0,.66,side*1.00),(-2.90,1.22,side*1.08),(-1.5,1.24,side*1.23),(.30,1.22,side*1.15)],.015,'steel')
