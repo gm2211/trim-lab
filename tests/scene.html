@@ -5,7 +5,7 @@
 <h1>Trim Lab scene checks</h1>
 <p>Local WebGL integration checks. No external dependencies.</p>
 <ol id="results"></ol>
-<p><button onclick="inspectJib(1)">Inspect port jib gear</button> <button onclick="inspectJib(-1)">Inspect starboard jib gear</button> <button onclick="inspectLuff()">Inspect luffing boom</button></p>
+<p><button onclick="inspectJib(1)">Inspect port jib gear</button> <button onclick="inspectJib(-1)">Inspect starboard jib gear</button> <button onclick="inspectLuff()">Inspect luffing boom</button> <button onclick="inspectTiller()">Inspect tiller clearance</button></p>
 <iframe src="../app.html" title="Simulator under test"></iframe>
 <script>
 const frame=document.querySelector('iframe'), results=document.querySelector('#results');
@@ -16,6 +16,11 @@ function inspectJib(side){
 function inspectLuff(){
   frame.contentWindow.eval('state.twaSide=1;state.twaC=0;state.sheet=.45;state.trav=0;state.vang=.15;state.mainhal=.9;update("sheet");if(B3.paused)document.querySelector("#pause3d").click();');
   frame.contentWindow.document.querySelector('[data-view="sails"]').click();
+}
+function inspectTiller(){
+  frame.style.height='1000px';
+  frame.contentWindow.eval('state.twaSide=1;state.twaC=45;state.sheet=.85;state.trav=0;update("sheet");B3.paused=true;tick3D();B3.cam.setTarget(V3(-2.2,.6,0));B3.cam.lowerRadiusLimit=.4;B3.cam.radius=2.8;B3.cam.alpha=-2.0;B3.cam.beta=.65;B3.scene.render();');
+  frame.scrollIntoView();
 }
 frame.onload=async()=>{
   const w=frame.contentWindow;
@@ -76,6 +81,11 @@ frame.onload=async()=>{
     check('Blender and physics share layout anchors',w.eval('JSON.stringify(BOAT_ASSETS.layout)===JSON.stringify(RIG)'));
     check('Traveler sits aft of tiller and crew',w.eval('B3.travCar.position.x<RIG.rudderX && B3.travCar.position.x<-3'));
     check('Solid vang and wooden tiller are imported',w.eval('B3.rigidVang.getChildMeshes().length===2 && B3.scene.getTransformNodeByName("woodenTiller").getChildMeshes().some(m=>m.material.name==="wood")'));
+    check('Tiller and extension sweep stays aft of mainsheet pedestal with 15 cm clearance',w.eval(`(()=>{
+      // Radial envelope covers every steering angle, including both tack limits.
+      const forwardLimit=RIG.pedestalX-.19/2-.15;
+      return BOAT_ASSETS.assets.tiller.every(mesh=>mesh.positions.every((x,i,p)=>i%3!==0 || RIG.rudderX+Math.hypot(x,p[i+2])<forwardLimit));
+    })()`));
     check('Drawn tackle span matches physics constraint',w.eval('Math.abs(B3.mainSheetFalls.reduce((sum,[a,b])=>sum+BABYLON.Vector3.Distance(a,b),0)/4-mainSheetSpan(B3.boomShow,B3.travCar.position.z))<1e-6'));
     check('Halyard tails hang beside companionway',w.eval('["halyard","jhal","cunn","vang"].every(k=>{const p=B3.ropePaths[k].at(-1).at(-1);return p.x<.25&&p.x>.10&&p.y>.6&&p.y<1.1})'));
     check('All rope paths remain finite',w.eval('Object.values(B3.ropePaths).flat(2).every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z))'));
