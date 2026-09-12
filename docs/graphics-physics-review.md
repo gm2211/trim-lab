@@ -83,6 +83,24 @@ stacking, keyboard wind control and accessible selection states.
 
 ## Limits
 
+### Backstay and mast bend
+
+Backstay take-up produces an estimated 0.6–4.0 kN wire load. Additional load
+increases mast bow through linear compliance and moves the masthead aft;
+the gooseneck stays fixed. Forestay tension increases with that load, while
+wind pressure produces lateral sag using `w L² / (8 T)`, capped at 30 cm.
+Mainsail depth follows mast bend; jib depth follows forestay sag. Aerodynamic
+panel origins, sail luff pins, mast, spreaders and standing wires share this
+geometry. The Blender mast and sail track are subdivided along their length
+before deformation so the spar curves between its ends.
+
+The animated rig approaches its solved shape with a 0.22 s damping time;
+easing reverses the response and paused/reduced-motion edits snap to equilibrium.
+This is a teaching approximation, not a measured Colgate 26 rig calibration:
+wire pretension, mast compliance, load sharing and damping are estimated.
+It does not solve nonlinear spar buckling, wire stretch or rig failure.
+The qualitative coupling follows [North Sails' tuning guidance](https://www.northsails.com/en-us/blogs/north-sails-blog/soling-tuning-guide).
+
 ### Jib sheet dynamics
 
 The jib clew now responds to wind moments, inertia and damping rather than

@@ -10,6 +10,7 @@
 <p><button onclick="inspectGrazing(1)">Inspect grazing jib</button> <button onclick="inspectGrazing(-1)">Inspect opposite grazing jib</button></p>
 <p><button onclick="inspectStreamingJib()">Inspect solved-trim streaming</button> <button onclick="inspectTelltales(1)">Inspect red port yarn</button> <button onclick="inspectTelltales(-1)">Inspect green starboard yarn</button></p>
 <p><button onclick="inspectVang()">Inspect boom vang</button></p>
+<p><button onclick="inspectBackstay(0)">Inspect eased backstay</button> <button onclick="inspectBackstay(1)">Inspect tensioned backstay</button></p>
 <iframe title="Simulator under test"></iframe>
 <script>
 const frame=document.querySelector('iframe'), results=document.querySelector('#results');
@@ -83,6 +84,11 @@ function inspectTiller(){
 function inspectSails(side){
   Object.assign(frame.contentWindow.document.querySelector('#helm-3d').style,{position:'fixed',inset:'0',width:'100vw',height:'100vh',maxHeight:'none',zIndex:'9999',display:'block'});
   frame.contentWindow.eval(`Object.assign(state,{twaSide:${side},twaC:45,sheet:.45,trav:0,jsheet:1,jsheetw:0,jcar:.5,mainhal:.9,jhal:.55});B3.paused=true;update("sheet");tick3D();B3.cam.setTarget(V3(1.3,3.0,0));B3.cam.lowerRadiusLimit=.4;B3.cam.radius=4.8;B3.cam.alpha=${side>0?1.25:-1.25};B3.cam.beta=.55;B3.scene.render();`);
+  frame.scrollIntoView();
+}
+function inspectBackstay(setting=1,side=1){
+  frame.style.height='1050px';
+  frame.contentWindow.eval(`Object.assign(state,{twaSide:${side},twaC:45,sheet:.85,trav:0,jsheet:.75,jsheetw:0,mainhal:.9,jhal:.9,backstay:${setting}});B3.paused=true;update('backstay');tick3D();B3.cam.setTarget(V3(1.4,6.1,0));B3.cam.radius=13;B3.cam.alpha=${side>0?Math.PI/2:-Math.PI/2};B3.cam.beta=Math.PI/2;B3.engine.resize();B3.scene.render();`);
   frame.scrollIntoView();
 }
 frame.onload=async()=>{
@@ -227,10 +233,39 @@ frame.onload=async()=>{
     check('Port tack mirrors boom without losing windward sign',w.eval('Math.abs(B3.boomShow+lastR.main.boom)<1e-8'));
     const rope=w.eval('(()=>{const m=B3.tubes.jsheet[0],uv=m.getVerticesData(BABYLON.VertexBuffer.UVKind);let u=0,v=0;for(let i=0;i<uv.length;i+=2){u=Math.max(u,uv[i]);v=Math.max(v,uv[i+1]);}return {u,v};})()');
     check('Wrapped jib sheet retains circumferential UV and repeats lengthwise',Math.abs(rope.u-1)<1e-6&&rope.v>15);
-    for(const name of ['rig','deck','sails','rigging','cunningham']){
+    const rigDynamics=w.eval(`(()=>{
+      const saved={...state},paused=B3.paused,cam=B3.cam;
+      const camera={target:cam.target.clone(),alpha:cam.alpha,beta:cam.beta,radius:cam.radius,lower:cam.lowerRadiusLimit,upper:cam.upperRadiusLimit};
+      const ok={api:true,bends:false,luff:true,forestay:true,backstay:true,mirror:true,finite:true,noLeaks:true,animated:true,pause:true};
+      const snapshot=()=>({rig:{...B3.rigShow},mast:B3.mastParts.map(p=>new Float32Array(p.positions)),forestay:B3.standingPaths.forestay.map(p=>p.clone()),shroud:B3.standingPaths['shroud'+tackSign()].map(p=>p.clone()),backstay:B3.backstayPaths.map(path=>path.map(p=>p.clone())),luff:CLOTH.main.p.filter((p,i)=>i%CLOTH.main.NC===0).map(p=>p.clone()),meshes:B3.scene.meshes.length,parts:B3.mastParts.length});
+      const set=(side,backstay)=>{Object.assign(state,saved,{twaSide:side,twaC:45,mainhal:.9,jhal:.9,backstay});update('backstay');tick3D();return snapshot();};
+      try{
+        B3.paused=true;
+        const soft=set(1,0),hard=set(1,1);
+        ok.api=typeof stepRigDisplay==='function'&&typeof updateStandingRig==='function'&&B3.backstayPaths.length===3;
+        let maxDelta=0;for(let p=0;p<soft.mast.length;p++)for(let i=0;i<soft.mast[p].length;i+=3)if(soft.mast[p][i+1]+6>5&&soft.mast[p][i+1]+6<7)maxDelta=Math.max(maxDelta,Math.abs(hard.mast[p][i]-soft.mast[p][i]));
+        ok.bends=maxDelta>.01&&hard.rig.mastBend>soft.rig.mastBend&&hard.rig.mastHeadAft>soft.rig.mastHeadAft;
+        ok.luff=hard.luff.every((p,row)=>{const y=p.y;return Math.abs(p.x-(RIG.mastX+mastOffsetAt(y,hard.rig)))<1e-7;});
+        const fh=hard.forestay.at(-1),expected=RIG.mastX+.03+mastOffsetAt(10.05,hard.rig);ok.forestay=Math.abs(fh.x-expected)<1e-7&&Math.abs(fh.y-10.05)<1e-7;
+        const bh=hard.backstay[0][0];ok.backstay=Math.abs(bh.x-(RIG.mastX+mastOffsetAt(10.9,hard.rig)))<1e-7&&B3.tubes.backstay?.length===3;
+        tick3D();tick3D();const frozen=snapshot();ok.pause=hard.mast.every((p,j)=>p.every((v,i)=>v===frozen.mast[j][i]));
+        const port=set(-1,1);ok.mirror=Math.abs(port.rig.mastHeadAft-hard.rig.mastHeadAft)<1e-12&&hard.forestay.every((p,i)=>Math.abs(p.x-port.forestay[i].x)<1e-7&&Math.abs(p.y-port.forestay[i].y)<1e-7&&Math.abs(p.z+port.forestay[i].z)<1e-7)&&hard.shroud.every((p,i)=>Math.abs(p.x-port.shroud[i].x)<1e-7&&Math.abs(p.y-port.shroud[i].y)<1e-7&&Math.abs(p.z+port.shroud[i].z)<1e-7);
+        ok.finite=hard.mast.every(q=>Array.from(q).every(Number.isFinite))&&hard.backstay.flat().every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z));
+        const meshCount=hard.meshes,partCount=hard.parts;for(const side of [1,-1])for(const backstay of [0,1,0,1,0])set(side,backstay);ok.noLeaks=B3.scene.meshes.length===meshCount&&B3.mastParts.length===partCount&&Object.values(B3.standingRig).length===5;
+        set(1,0);B3.paused=false;state.backstay=1;update('backstay');tick3D(1/60);
+        const first=B3.rigShow.mastBend;
+        ok.animated=first>soft.rig.mastBend&&first<hard.rig.mastBend;
+        for(let i=0;i<120;i++)tick3D(1/60);
+        ok.animated&&=Math.abs(B3.rigShow.mastBend-hard.rig.mastBend)<.0001&&CLOTH.main.p.filter((p,i)=>i%CLOTH.main.NC===0).every(p=>Math.abs(p.x-RIG.mastX-mastOffsetAt(p.y,B3.rigShow))<1e-7);
+        state.backstay=0;update('backstay');tick3D(1/60);ok.animated&&=B3.rigShow.mastBend>soft.rig.mastBend&&B3.rigShow.mastBend<hard.rig.mastBend;
+        return ok;
+      }finally{Object.assign(state,saved);B3.paused=true;update('backstay');tick3D();cam.lowerRadiusLimit=camera.lower;cam.upperRadiusLimit=camera.upper;cam.setTarget(camera.target);cam.alpha=camera.alpha;cam.beta=camera.beta;cam.radius=camera.radius;B3.scene.render();B3.paused=paused;}
+    })()`);
+    for(const [key,label] of Object.entries({api:'Backstay rig display API is present',bends:'Paused soft→hard backstay visibly bends the mast',luff:'Main luff pins follow the bent mast at every row',forestay:'Forestay endpoint follows the bent masthead',backstay:'Split backstay paths and tubes follow the masthead',mirror:'Both tacks mirror standing rig geometry',finite:'Mast and standing rig vertices remain finite',noLeaks:'Repeated paused backstay changes do not leak meshes',animated:'Tension and easing animate gradually with attached sail luffs',pause:'Paused mast vertices stay frozen after trim update'}))check(label,rigDynamics[key]);
+    for(const name of ['rig','bend','deck','sails','rigging','cunningham']){
       w.document.querySelector(`[data-view="${name}"]`).click();
       check(name+' camera stays inside zoom limits',w.eval('B3.cam.radius>=B3.cam.lowerRadiusLimit && B3.cam.radius<=B3.cam.upperRadiusLimit'));
-      const expected={rig:19,deck:8,sails:12,rigging:4.7,cunningham:2.5}[name];
+      const expected={rig:19,bend:13,deck:8,sails:12,rigging:4.7,cunningham:2.5}[name];
       check(name+' camera applies the requested distance',Math.abs(w.eval('B3.cam.radius')-expected*Math.max(1,1/w.eval('B3.engine.getAspectRatio(B3.cam)')))<1e-6);
     }
     const tackSheets=w.eval(`(()=>{

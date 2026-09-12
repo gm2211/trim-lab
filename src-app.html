@@ -487,7 +487,7 @@
         <div class="threed-hud" id="hud3d"></div>
         <div class="scene-toolbar" aria-label="3D view controls">
           <div id="cameraViews" class="camera-views" role="group" aria-label="Camera presets">
-            <button data-view="rig">Full rig</button><button data-view="deck">Deck detail</button><button data-view="sails">Sail detail</button><button data-view="rigging">Rigging</button><button data-view="cunningham">Cunningham</button>
+            <button data-view="rig">Full rig</button><button data-view="bend">Mast bend</button><button data-view="deck">Deck detail</button><button data-view="sails">Sail detail</button><button data-view="rigging">Rigging</button><button data-view="cunningham">Cunningham</button>
           </div>
           <div class="scene-toggles" role="group" aria-label="Visual aids">
             <button id="ttBtn" class="dye-btn on" aria-pressed="true">telltales: on</button>
@@ -687,8 +687,9 @@ function updatePanelFactors(shM, shJ, awa){
   const hf=.5, chM=RIG.mainFoot*mainReef().foot*(1-.9*hf), chJ=2.9*(1-.9*hf);
   const angM=shM.boom+shM.twist*Math.pow(hf,1.15);
   const angJ=shJ.boom+shJ.twist*Math.pow(hf,1.15);
-  const elM=panelElement(RIG.mastX, chM, angM, shM.depth, shM.draft, 20);
-  const elJ=panelElement((3.72+RIG.mastX+.03)/2, chJ, angJ, shJ.depth, shJ.draft, 20);
+  const elM=panelElement(RIG.mastX+mastOffsetAt(RIG.boomY+.045+9*mainReef().height*hf,shM.rig), chM, angM, shM.depth, shM.draft, 20);
+  const luffJ=forestayPointAt(hf,shJ.rig);
+  const elJ=panelElement(luffJ.x, chJ, angJ, shJ.depth, shJ.draft, 20).map(p=>[p[0],p[1]+luffJ.z]);
   const both=panelSolve([elM,elJ],awa), mOnly=panelSolve([elM],awa), jOnly=panelSolve([elJ],awa);
   if(!both||!mOnly||!jOnly){ PANEL.ok=false; return false; }
   PANEL.fM=clamp(Math.abs(both.sums[0])/Math.max(Math.abs(mOnly.sums[0]),1e-6), .75, 1.25);
@@ -709,8 +710,9 @@ function updatePanel(shM, shJ, awa){
     const wow=!!shJ.wow,aM=shM.boom+shM.twist*Math.pow(hfM,1.15);
     const aJ=shJ.boom+(wow?-1:1)*shJ.twist*Math.pow(hfJ,1.15);
     const camM=shM.depth*(1-.25*hfM),camJ=shJ.depth*(1-.25*hfJ);
-    const eM=panelElement(RIG.mastX,cM,aM,camM,shM.draft,16);
-    const eJ=panelElement(3.72+(RIG.mastX+.03-3.72)*hfJ,cJ,aJ,wow?-camJ:camJ,shJ.draft,16);
+    const eM=panelElement(RIG.mastX+mastOffsetAt(y,shM.rig),cM,aM,camM,shM.draft,16);
+    const luffJ=forestayPointAt(hfJ,shJ.rig);
+    const eJ=panelElement(luffJ.x,cJ,aJ,wow?-camJ:camJ,shJ.draft,16).map(p=>[p[0],p[1]+luffJ.z]);
     const hasMain=y<=topM;
     const entries=hasMain?
       [{poly:eM,chord:cM,cam:camM,aoa:awa-aM,hoist:state.mainhal,span:[RIG.boomY+.045,topM],jib:false},
@@ -770,6 +772,40 @@ const BOAT={
 };
 // Shared photo-referenced anchors; Blender reads this same JSON object.
 const RIG={"mastX":1.5,"boomY":1.8,"boomLength":3.85,"mainFoot":3.72,"sheetRadius":3.73,"travelerX":-3.18,"travelerY":0.55,"travelerHalfWidth":0.78,"blockDrop":0.12,"blockRise":0.12,"sheetLeadRadius":2.8,"pedestalX":-1.60,"pedestalY":0.58,"jibTrackForward":1.25,"jibTrackTravel":0.9,"jibTrackZ":0.86,"carY":0.82,"winchX":0.40,"winchY":1.13,"winchZ":0.61,"rudderX":-2.90};
+// Reduced elastic rig, not a measured Colgate 26 load calibration. Backstay
+// take-up increases axial wire load; its aft component loads the forestay and
+// bows the mast forward between the fixed gooseneck and aft-moving masthead.
+// North Sails describes the coupled trim direction (more bend = flatter main,
+// less headstay sag = flatter jib):
+// https://www.northsails.com/en-us/blogs/north-sails-blog/soling-tuning-guide
+// Forces are N; geometry is m. Compliance and effective wind-loaded width are
+// teaching-model estimates, not rig tune or safe working-load recommendations.
+function backstayRig(backstay,awsKt=0){
+  const setting=clamp(Number.isFinite(backstay)?backstay:0,0,1);
+  const wind=clamp(Number.isFinite(awsKt)?awsKt:0,0,80)*KT;
+  const backstayTension=600+3400*Math.pow(setting,1.25);
+  const addedLoad=backstayTension-600;
+  // Forestay/backstay lead-angle ratio is reduced by shroud load sharing.
+  const forestayTension=1800+1.65*addedLoad;
+  const mastBend=.025+addedLoad*.000050;
+  const mastHeadAft=.012+addedLoad*.000044;
+  const length=Math.hypot(3.72-RIG.mastX-.03,9);
+  const lineLoad=.5*RHO_A*wind*wind*.60;
+  // Small-deflection cable relation: maximum sag = w L^2 / (8 T).
+  const forestaySag=clamp(lineLoad*length*length/(8*forestayTension),0,.30);
+  return {backstayTension,forestayTension,mastBend,mastHeadAft,forestaySag};
+}
+function mastOffsetAt(y,rig){
+  if(!rig) return 0;
+  const u=clamp((y-RIG.boomY-.045)/(10.9-RIG.boomY-.045),0,1);
+  // Positive x points forward. Bend is measured from the heel-head chord.
+  return -rig.mastHeadAft*u+4*rig.mastBend*u*(1-u);
+}
+function forestayPointAt(hf,rig,side=1){
+  const u=clamp(hf,0,1),headX=RIG.mastX+.03+mastOffsetAt(10.05,rig);
+  return {x:lerp(3.72,headX,u),y:1.05+9*u,
+    z:(side<0?-1:1)*(rig?.forestaySag||0)*4*u*(1-u)};
+}
 function mainSheetSpan(angle,carZ){
   const a=rad(angle),x=RIG.mastX-Math.cos(a)*RIG.sheetRadius,z=Math.sin(a)*RIG.sheetRadius;
   const aft=Math.hypot(x-RIG.travelerX,RIG.boomY-RIG.blockDrop-RIG.travelerY-RIG.blockRise,z-carZ);
@@ -1108,13 +1144,18 @@ function compute(){
   updatePanel(out.main, {...out.jib, boom:out.jib.clew}, out.awa);
   return out;
 
-  function shapes(awa){
+  function shapes(awa,awsKt){
+    const rig=backstayRig(s.backstay,awsKt);
+    const referenceRig=backstayRig(.35,16);
     const upwind = clamp(1-(awa-35)/80, 0, 1);
     const leechM = clamp(s.sheet*upwind*0.95 + s.vang*0.6*(1-0.4*upwind), 0, 1.15);
     const twistM = clamp(36 - 27*leechM, 4, 38);
-    const depthM = .08 + .08*(1 - .55*s.outhaul - .45*s.backstay);
+    // Preserve the former medium-backstay baseline, but derive sail changes
+    // from mast curvature and wind-loaded forestay sag rather than slider %.
+    const bendChange=rig.mastBend-referenceRig.mastBend;
+    const depthM = clamp(.1474-.044*s.outhaul-.212*bendChange,.065,.18);
     const mainTension = clamp((s.mainhal-.35)/.65, 0, 1);
-    const draftM = clamp(.42 + .010*(twsKt-8) + .04*s.backstay - .13*s.cunn
+    const draftM = clamp(.434 + .010*(twsKt-8) + .235*bendChange - .13*s.cunn
       - .10*(mainTension-(.90-.35)/.65), .32, .60);
     const boomWind = clamp(awa-5, -5, 88);                 // weathervane limit
     const boomM = clamp(boomWind, mainLimits.min, mainLimits.max);
@@ -1124,7 +1165,7 @@ function compute(){
     const activeJibTrim=Math.max(s.jsheet,s.jsheetw);
     const leechJ = clamp(activeJibTrim*(1-.5*s.jcar)*1.05 + .05*(1-s.jcar), 0, 1.1);
     const twistJ = clamp(34 - 30*leechJ, 5, 40);
-    const depthJ = .08 + .075*(1 - .45*s.backstay - .40*s.jcar);
+    const depthJ = clamp(.1431875-.030*s.jcar+.25*(rig.forestaySag-referenceRig.forestaySag),.065,.18);
     const jTension = clamp((s.jhal-.35)/.65, 0, 1);
     const draftJ = clamp(.41 + .011*(twsKt-8) - .12*jTension, .32, .60);
     // The slider measures sheet paid out beyond block-to-block (the shortest
@@ -1151,9 +1192,9 @@ function compute(){
     const backed=!wow&&awa<135&&windwardLimit<0&&s.jsheetw>0;
     const bounds=jibClewLimits({clew:clewJ,wow,backed,sheetLen:Ljib,windSheetLen:Lwind},s,1);
     clewJ=clamp(clewJ,bounds.min,bounds.max);
-    return {upwind, wowF,
-      m:{leech:leechM,twist:twistM,depth:depthM,draft:draftM,boom:boomM,slack:sheetSlack},
-      j:{leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ,wow,backed,sheetLen:Ljib,windSheetLen:Lwind,clewSheet,eased}};
+    return {upwind, wowF,rig,
+      m:{rig,leech:leechM,twist:twistM,depth:depthM,draft:draftM,boom:boomM,slack:sheetSlack},
+      j:{rig,leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ,wow,backed,sheetLen:Ljib,windSheetLen:Lwind,clewSheet,eased}};
   }
 
   function step(V, heel, lee){
@@ -1163,7 +1204,7 @@ function compute(){
     const awy = tws*Math.sin(rad(twa))*Math.cos(heelR);
     const aws = Math.hypot(awx,awy);
     const awa = clamp(deg(Math.atan2(awy,awx)), 0, 180);
-    const sh = shapes(awa);
+    const sh = shapes(awa,aws/KT);
     const shadowJ = awa>140 ? clamp(1-(awa-140)/40*.65, .35, 1) : 1;  // jib in main's shadow on a run
     const blanketJ = shadowJ*(1-sh.wowF) + 1*sh.wowF;                  // wing-on-wing flies in clear air
     const hoistM = clamp(s.mainhal/.35, 0, 1), hoistJ = clamp(s.jhal/.35, 0, 1);
@@ -1231,7 +1272,7 @@ function compute(){
     const Fn = Math.hypot(FJ.drive, FJ.side);
     const sheetT = taut ? Fn/(8*Math.max(sh.j.depth,.06))*(1+.6*(1-sn)) : 0;   // newtons
     const sheetSlackJ = Math.max(0,jb.length-actualSpan);  // active sheet, metres
-    return {tws:twsKt, twa, aws:aws/KT, awa, upwind:sh.upwind, wowF:sh.wowF, off,
+    return {rig:sh.rig,tws:twsKt, twa, aws:aws/KT, awa, upwind:sh.upwind, wowF:sh.wowF, off,
       main:{...sh.m, reef:reef.level, area:reefedMain.area, span:reefedMain.span,
         aoa:aoaM, eff:M.eff, luff:M.luff, stall:M.stall},
       jib:{...sh.j, clew:sh.j.boom, aoa:aoaJ, eff:J.eff, luff:J.luff, stall:J.stall,
@@ -1572,7 +1613,8 @@ function renderVals(){
   $("v-vang").textContent = word(state.vang);
   $("v-outhaul").textContent = state.outhaul<.33?"eased · belly":state.outhaul<.7?"medium":"tight · flat";
   $("v-cunn").textContent = state.cunn<.2?"slack":state.cunn<.6?"snug":"hard";
-  $("v-backstay").textContent = state.backstay<.25?"soft · sag":state.backstay<.65?"medium":"hard · bent mast";
+  { const rig=backstayRig(state.backstay,lastR?.aws||0);
+    $("v-backstay").textContent = fmt1(rig.backstayTension/1000)+" kN · "+Math.round(rig.mastBend*100)+" cm bend"; }
   $("v-"+jibSheetSideId("jsheet")).textContent = jsheetLabel(lastR);
   $("v-"+jibSheetSideId("jsheetw")).textContent = (lastR&&lastR.jib&&lastR.jib.wow) ? "trimmed — wing-on-wing" : state.jsheetw<.08?"slack (lazy)":state.jsheetw<.5?"taking up — backing!":"hauled — jib backed";
   $("v-mainhal").textContent = state.mainhal<.35?"DROPPED "+Math.round(state.mainhal/.35*100)+"%":state.mainhal<.7?"hoisted · soft":"hoisted · tight";
@@ -2465,6 +2507,8 @@ function trunkSection(x,inset){
 function sailPathArray(kind, sh, forceFull){
   // kind 'main'|'jib'; sh: {boom|clew, twist, depth, draft}
   const rows=[], NR=11, NC=13;
+  const rig=sh.rig||backstayRig(state.backstay,state.tws);
+  const side=(!!sh.flip!==!!(kind==="jib"&&sh.wow))?-1:1;
   const dp=clamp(sh.draft,.32,.6), k=Math.log(.5)/Math.log(dp);
   const reef=mainReef();
   for(let iy=0; iy<NR; iy++){
@@ -2472,9 +2516,10 @@ function sailPathArray(kind, sh, forceFull){
     let luff, chord;
     const hoistM3=forceFull?1:clamp(state.mainhal/.35,0,1), hoistJ3=forceFull?1:clamp(state.jhal/.35,0,1);
     if(kind==="main"){ luff=V3(RIG.mastX, RIG.boomY+.045+9.0*reef.height*hf*Math.max(hoistM3,.12), 0);
+      luff.x+=mastOffsetAt(luff.y,rig);
       chord=RIG.mainFoot*(1-.90*Math.pow(reef.fraction+reef.height*hf,1.05))*(1-(1-state.outhaul)*.09*(1-hf)); }
-    else { const bow=V3(3.72,1.05,0), hd=V3(RIG.mastX+.03,10.05,0);
-           luff=BABYLON.Vector3.Lerp(bow,hd,hf*Math.max(hoistJ3,.12)); chord=2.90*(1-.94*Math.pow(hf,1.05)); }
+    else { const p=forestayPointAt(hf*Math.max(hoistJ3,.12),rig,side);
+           luff=V3(p.x,p.y,p.z); chord=2.90*(1-.94*Math.pow(hf,1.05)); }
     const delta=rad((kind==="main"?sh.boom:sh.clew) + (sh.flip?-1:1)*sh.twist*Math.pow(hf,1.15));
     const cdir=V3(-Math.cos(delta),0,Math.sin(delta));      // aft, swung to port
     const ndir=V3(Math.sin(delta),0,Math.cos(delta));       // leeward normal
@@ -2487,8 +2532,12 @@ function sailPathArray(kind, sh, forceFull){
       const pt=luff.add(cdir.scale(chord*cf)).add(ndir.scale(off));
       // Cunningham loads the lower luff while tack, clew and head stay fixed.
       // Local travel is illustrative, like the trainer's draft-position model.
-      if(kind==="main") pt.y-=.20*(sh.cunn??state.cunn)*hoistM3*
-        (hf/.1)*Math.exp(1-hf/.1)*(1-hf)*Math.pow(1-cf,5);
+      if(kind==="main"){
+        pt.y-=.20*(sh.cunn??state.cunn)*hoistM3*
+          (hf/.1)*Math.exp(1-hf/.1)*(1-hf)*Math.pow(1-cf,5);
+        // Luff slides down the curved track as Cunningham tension increases.
+        pt.x+=mastOffsetAt(pt.y,rig)-mastOffsetAt(luff.y,rig);
+      }
       if(kind==="jib") pt.y+=.19*chord*cf;   // foot rises from the tack to a clew ~0.55 m above deck
       row.push(pt);
     }
@@ -2508,6 +2557,93 @@ function sceneFrameDelta(clock, now, active){
   // Skip missed presentation slots instead of trying to render a catch-up burst.
   clock.next+=Math.max(1,Math.floor((now-clock.next)/interval)+1)*interval;
   return elapsed;
+}
+// A damped elastic response: approach the solved load without oscillation or
+// frame-rate-dependent steps. Paused/reduced-motion edits show the final rig.
+function stepRigDisplay(current,target,dt,snap=false){
+  if(!current||snap) return {...target};
+  if(dt<=0) return {...current};
+  const blend=1-Math.exp(-Math.max(0,dt)/.22), next={};
+  for(const key of Object.keys(target)){
+    const delta=target[key]-current[key];
+    next[key]=Math.abs(delta)<1e-7?target[key]:current[key]+delta*blend;
+  }
+  return next;
+}
+function prepareMastMesh(mesh){
+  const P=BABYLON.VertexBuffer.PositionKind,N=BABYLON.VertexBuffer.NormalKind,U=BABYLON.VertexBuffer.UVKind;
+  const pos=mesh.getVerticesData(P),norm=mesh.getVerticesData(N),uv=mesh.getVerticesData(U),indices=mesh.getIndices();
+  const positions=[],normals=[],uvs=[],faces=[],shared=new Map();
+  const vertex=i=>[...pos.slice(i*3,i*3+3),...norm.slice(i*3,i*3+3),...uv.slice(i*2,i*2+2)];
+  const clip=(poly,y,above)=>{
+    const out=[];
+    for(let i=0;i<poly.length;i++){
+      const a=poly[i],b=poly[(i+1)%poly.length],ai=above?a[1]>=y:a[1]<=y,bi=above?b[1]>=y:b[1]<=y;
+      if(ai) out.push(a);
+      if(ai!==bi){const t=(y-a[1])/(b[1]-a[1]);out.push(a.map((v,k)=>v+(b[k]-v)*t));}
+    }
+    return out;
+  };
+  for(let i=0;i<indices.length;i+=3){
+    const tri=[vertex(indices[i]),vertex(indices[i+1]),vertex(indices[i+2])];
+    const low=Math.min(...tri.map(v=>v[1])),high=Math.max(...tri.map(v=>v[1]));
+    // Preserve bevel detail; split only long faces at 30 cm intervals.
+    const pieces=[];
+    if(high-low<.3) pieces.push(tri);
+    else for(let y=Math.floor(low/.3)*.3;y<high;y+=.3) pieces.push(clip(clip(tri,y,true),y+.3,false));
+    for(const poly of pieces) for(let j=1;j<poly.length-1;j++){
+      const a=poly[0],b=poly[j],c=poly[j+1];
+      const ab=V3(b[0]-a[0],b[1]-a[1],b[2]-a[2]),ac=V3(c[0]-a[0],c[1]-a[1],c[2]-a[2]);
+      if(BABYLON.Vector3.Cross(ab,ac).lengthSquared()<1e-18) continue;
+      for(const v of [a,b,c]){
+        // Share ring vertices while preserving material, normal and UV seams.
+        const key=v.map(n=>Math.round(n*1e9)).join(',');
+        if(!shared.has(key)){
+          shared.set(key,positions.length/3);
+          positions.push(...v.slice(0,3));normals.push(...v.slice(3,6));uvs.push(...v.slice(6,8));
+        }
+        faces.push(shared.get(key));
+      }
+    }
+  }
+  mesh.setVerticesData(P,positions,true);mesh.setVerticesData(N,normals,true);mesh.setVerticesData(U,uvs);mesh.setIndices(faces);
+  return {mesh,rest:positions,restNormals:normals,positions:new Float32Array(positions),normals:new Float32Array(normals)};
+}
+function updateStandingRig(rig,side){
+  const signature=[rig.mastBend,rig.mastHeadAft,rig.forestaySag,side].join(',');
+  if(B3.rigSignature===signature) return;
+  B3.rigSignature=signature;
+  for(const part of B3.mastParts){
+    for(let i=0;i<part.rest.length;i+=3){
+      const y=part.rest[i+1]+B3.mast.position.y;
+      part.positions[i]=part.rest[i]+mastOffsetAt(y,rig);
+      const slope=(mastOffsetAt(y+.001,rig)-mastOffsetAt(y-.001,rig))/.002;
+      const nx=part.restNormals[i],ny=part.restNormals[i+1]-slope*nx,nz=part.restNormals[i+2],len=Math.hypot(nx,ny,nz)||1;
+      part.normals[i]=nx/len;part.normals[i+1]=ny/len;part.normals[i+2]=nz/len;
+    }
+    part.mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind,part.positions,true);
+    part.mesh.updateVerticesData(BABYLON.VertexBuffer.NormalKind,part.normals);
+  }
+  const at=(y,x=0,z=0)=>V3(RIG.mastX+mastOffsetAt(y,rig)+x,y,z);
+  const paths={forestay:Array.from({length:33},(_,i)=>{const p=forestayPointAt(i/32,rig,side);return V3(p.x,p.y,p.z);})};
+  for(const s of [-1,1]){
+    const tip=at(6.4,-.28,s*.9);
+    paths['shroud'+s]=[at(9.2),tip,V3(RIG.mastX-.48,.78,s*1.12)];
+    paths['spreader'+s]=[at(6.4),tip];
+  }
+  // Split backstay attaches to both transom quarters. The central adjuster
+  // travels down as tension rises; the masthead end follows elastic deflection.
+  const minLoad=backstayRig(0).backstayTension,maxLoad=backstayRig(1).backstayTension;
+  const load=clamp((rig.backstayTension-minLoad)/(maxLoad-minLoad),0,1);
+  const apex=V3(-3.4,1.28-.22*load,0);
+  B3.backstayPaths=[[at(10.9),apex],[apex,V3(-3.4,.48,.85)],[apex,V3(-3.4,.48,-.85)]];
+  for(const [key,path] of Object.entries(paths)){
+    const spreader=key.startsWith('spreader'),old=B3.standingRig[key];
+    const mesh=BABYLON.MeshBuilder.CreateTube(key,{path,radius:spreader?.023:.003,tessellation:spreader?12:6,updatable:true,...(old?{instance:old}:{})},B3.scene);
+    mesh.material=spreader?B3.materials.anodized:B3.materials.steel;mesh.parent=B3.boat;
+    B3.standingRig[key]=mesh;
+  }
+  B3.standingPaths=paths;
 }
 async function ensure3D(){
   if(B3||B3loading) return;
@@ -2583,16 +2719,9 @@ function ensure3Dinner(canvas){
   const rigidVang=importBoatAsset("vang","solidVang",scene,boat,materials);
   const vangBlock=importBoatAsset("block","vangBlock",scene,boat,materials);vangBlock.scaling=V3(.65,.65,.65);
   const vangBase=importBoatAsset("block","vangBase",scene,boat,materials);vangBase.scaling=V3(.65,.65,.65);vangBase.position=V3(RIG.mastX-.08,1.12,0);
-  const rigPts=[
-    [V3(3.72,1.05,0),V3(RIG.mastX+.03,10.05,0)],
-    [V3(RIG.mastX,9.2,0),V3(RIG.mastX-.28,6.4,.9),V3(RIG.mastX-.48,.78,1.12)],
-    [V3(RIG.mastX,9.2,0),V3(RIG.mastX-.28,6.4,-.9),V3(RIG.mastX-.48,.78,-1.12)],
-    [V3(RIG.mastX,10.9,0),V3(-3.4,.48,0)],
-  ];
-  for(const path of rigPts){const rig=BABYLON.MeshBuilder.CreateTube("standingWire",{path,radius:.003,tessellation:6},scene);rig.material=materials.steel;rig.parent=boat;}
+  // Long Blender faces need longitudinal rings before they can bow smoothly.
+  const mastParts=mast.getChildMeshes().map(prepareMastMesh);
   for(const side of [-1,1]){
-    const path=[V3(RIG.mastX,6.4,0),V3(RIG.mastX-.28,6.4,side*.9)];
-    const spreader=BABYLON.MeshBuilder.CreateTube("spreader",{path,radius:.023,tessellation:12},scene);spreader.material=materials.anodized;spreader.parent=boat;
     const lifeline=BABYLON.MeshBuilder.CreateTube("lifeline",{path:[V3(.30,1.22,side*1.15),V3(2.2,1.22,side*.77),V3(3.08,1.22,side*.39)],radius:.003,tessellation:6},scene);lifeline.material=materials.steel;lifeline.parent=boat;
   }
   const sailM=makeSailMaterials("main",scene),sailJ=makeSailMaterials("jib",scene);
@@ -2609,7 +2738,7 @@ function ensure3Dinner(canvas){
   mainWindow.isPickable=jibWindow.isPickable=false;
   [...model.getChildMeshes(),...mast.getChildMeshes(),...boom.getChildMeshes(),mainSail,jibSail,mainWindow,jibWindow].forEach(m=>wm.addToRenderList(m));
 
-  B3={engine,scene,cam,boat,wm,mainSail,jibSail,mainWindow,jibWindow,boomMesh:boom,travCar,jibCar,lazyCar,boomBlock,jibBlock,lazyBlock,vangBlock,vangBase,lowerBlock,sheetLead,ratchet,rigidVang,rudder,materials,
+  B3={engine,scene,cam,boat,wm,mast,mastParts,standingRig:{},mainSail,jibSail,mainWindow,jibWindow,boomMesh:boom,travCar,jibCar,lazyCar,boomBlock,jibBlock,lazyBlock,vangBlock,vangBase,lowerBlock,sheetLead,ratchet,rigidVang,rudder,materials,
       runLines:null,puffs:null,dyeR:null,dyeOn:true,t:0,heelCur:0};
   B3dirty=true;
   initTelltales();
@@ -2621,7 +2750,7 @@ function ensure3Dinner(canvas){
   };
   syncPause();
   pauseBtn.addEventListener("click",()=>{ B3.paused=!B3.paused; syncPause(); });
-  const views={rig:[2.55,1.20,19,.3,5.1,0],deck:[2.3,.72,8,-.2,.8,0],sails:[2.2,1.15,12,.5,6,0],rigging:[3.0,1.02,4.7,-1.0,.90,0],cunningham:[-1.8,1.25,2.5,1.25,1.9,0]};
+  const views={rig:[2.55,1.20,19,.3,5.1,0],bend:[Math.PI/2,Math.PI/2,13,1.4,6.1,0],deck:[2.3,.72,8,-.2,.8,0],sails:[2.2,1.15,12,.5,6,0],rigging:[3.0,1.02,4.7,-1.0,.90,0],cunningham:[-1.8,1.25,2.5,1.25,1.9,0]};
   $("cameraViews").addEventListener("click",e=>{
     const button=e.target.closest("button"); if(!button) return;
     const [alpha,beta,radius,x,y,z]=views[button.dataset.view];
@@ -3185,6 +3314,9 @@ function tick3D(elapsed){
   if(!B3||!lastR) return;
   const r=lastR, dt=B3.paused?0:clamp(elapsed??B3.engine.getDeltaTime()/1000,0,.05);
   const stillUpdate=B3.paused&&B3dirty;
+  const rigTarget={...r.rig,mainDepth:r.main.depth,jibDepth:r.jib.depth};
+  B3.rigShow=stepRigDisplay(B3.rigShow,rigTarget,dt,stillUpdate);
+  updateStandingRig(B3.rigShow,tackSign());
   B3.t+=dt;
   if(B3.vangShow===undefined||stillUpdate) B3.vangShow=state.vang;
   else B3.vangShow+=(state.vang-B3.vangShow)*(1-Math.exp(-dt*8));
@@ -3217,8 +3349,8 @@ function tick3D(elapsed){
   // meshes where topology is unchanged instead of allocating them each time.
   const rebuildRopes=B3dirty||swinging||sheetMotion||settled||!B3.tubes;
   if(B3dirty||swinging||sheetMotion||settled){
-    const shM={boom:B3.boomShow,twist:r.main.twist,depth:r.main.depth,draft:r.main.draft,cunn:B3.cunnShow,flip:S<0};
-    const shJ={clew:B3.clewShow,twist:r.jib.twist,depth:r.jib.depth,draft:r.jib.draft,wow:r.jib.wow,flip:(S<0)!==!!r.jib.wow};
+    const shM={boom:B3.boomShow,twist:r.main.twist,depth:B3.rigShow.mainDepth,draft:r.main.draft,cunn:B3.cunnShow,flip:S<0,rig:B3.rigShow};
+    const shJ={clew:B3.clewShow,twist:r.jib.twist,depth:B3.rigShow.jibDepth,draft:r.jib.draft,wow:r.jib.wow,flip:(S<0)!==!!r.jib.wow,rig:B3.rigShow};
     const tgtM=sailPathArray("main",shM,true), tgtJ=sailPathArray("jib",shJ,true);
     const pinM=sailPathArray("main",shM,false), pinJ=sailPathArray("jib",shJ,false);
     const reef=mainReef();
@@ -3434,7 +3566,7 @@ function tick3D(elapsed){
       jhal:[lane(.21,V3(RIG.mastX-.08,1.17,.07))],
       toplift:[], // Support is unloaded while sailing; omit a fake taut second stay.
       trav:[sagLine(car.add(V3(0,.018,.10)),V3(RIG.travelerX,RIG.travelerY+.01,.82),.005),sagLine(car.add(V3(0,.018,-.10)),V3(RIG.travelerX,RIG.travelerY+.01,-.82),.005)],
-      backstay:[], // Standing wire is part of the permanent rig.
+      backstay:B3.backstayPaths, // Masthead, split legs and adjuster follow the loaded rig.
     };
     B3.ropePaths=ropes;
     const steelKeys={backstay:1,toplift:1};

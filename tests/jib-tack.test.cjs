@@ -16,14 +16,14 @@ const defaults={...state};
 function reset(o={}){Object.keys(state).forEach(k=>delete state[k]);Object.assign(state,defaults,o);}
 const physical=()=>state.twaSide>0?{port:state.jsheet,starboard:state.jsheetw}:{port:state.jsheetw,starboard:state.jsheet};
 
-test('tack preserves the cleated physical sheet, length, shape and backs the jib',()=>{
+test('tack preserves the cleated physical sheet, length, leech tension and backs the jib',()=>{
   reset({twaSide:1,twaC:45,jsheet:.75,jsheetw:0,jcar:.5});
   const sheets=physical(),length=jibSheetLength(.75,.5),before=compute();setWindBearing(-45);
   const r=compute(),q=jibClewLimits(r.jib,state,-1),lead=jibLead(.5);
   assert.deepEqual(physical(),sheets);assert.equal(state.jsheet,0);assert.equal(state.jsheetw,.75);
   assert.equal(r.jib.backed,true);assert.equal(r.jib.wow,false);assert.ok(r.jib.clew<0);
   assert.ok(Math.abs(q.windLength-length)<1e-10);assert.ok(lead.dist(-r.jib.clew)<=q.windLength+1e-8);
-  assert.equal(r.jib.leech,before.jib.leech);assert.equal(r.jib.twist,before.jib.twist);assert.equal(r.jib.depth,before.jib.depth);
+  assert.equal(r.jib.leech,before.jib.leech);assert.equal(r.jib.twist,before.jib.twist);// Depth may change with apparent-wind-dependent forestay sag.
 });
 
 test('reverse crossing restores roles without moving either physical sheet',()=>{
@@ -32,14 +32,14 @@ test('reverse crossing restores roles without moving either physical sheet',()=>
   assert.equal(state.jsheet,.75);assert.equal(state.jsheetw,.1);
 });
 
-test('both directions of stern crossing preserve physical sheets and shape',()=>{
+test('both directions of stern crossing preserve physical sheets and leech tension',()=>{
   reset({twaSide:1,twaC:165,jsheet:.05,jsheetw:.6,jcar:.5});let before=physical();setWindBearing(-165);
   let r=compute();assert.deepEqual(physical(),before);assert.equal(r.jib.wow,false);assert.equal(r.jib.backed,false);
   reset({twaSide:1,twaC:165,jsheet:.75,jsheetw:0,jcar:.5});before=physical();const shape=compute(),length=jibSheetLength(.75,.5);
   setWindBearing(-178);r=compute();const q=jibClewLimits(r.jib,state,-1);
   assert.deepEqual(physical(),before);assert.equal(r.jib.wow,true);assert.equal(r.jib.backed,false);
   assert.equal(q.loadedSide,1);assert.ok(Math.abs(q.length-length)<1e-10);
-  assert.equal(r.jib.leech,shape.jib.leech);assert.equal(r.jib.twist,shape.jib.twist);assert.equal(r.jib.depth,shape.jib.depth);
+  assert.equal(r.jib.leech,shape.jib.leech);assert.equal(r.jib.twist,shape.jib.twist);// New airflow may change forestay sag and depth.
 });
 
 test('backed pressure pushes aft and leeward and reduces equilibrium speed',()=>{
