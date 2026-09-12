@@ -368,12 +368,45 @@
     #pane-drills .drill{flex:0 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;max-width:820px}
     #pane-drills .opts{flex:none}
   }
+
+  /* Scene controls occupy their own rows; telemetry never covers buttons. */
+  button:focus-visible,#windDial:focus-visible,#bab:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
+  .threed-wrap{display:grid;grid-template-rows:auto minmax(280px,1fr) auto auto;background:#162831}
+  #bab{grid-row:2;min-height:0}
+  .scene-toolbar{grid-row:1;display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:10px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .camera-views,.scene-toggles{display:flex;gap:4px;flex-wrap:wrap}
+  .scene-toolbar button{position:static;min-height:36px;padding:7px 10px;border:1px solid var(--line);border-radius:3px;font:600 12px var(--body);letter-spacing:0;text-transform:none;background:var(--panel2);color:var(--ink);cursor:pointer}
+  .scene-toolbar button:hover{border-color:var(--ink2)}
+  .scene-toolbar button.on{background:var(--teal);border-color:var(--teal);color:#f5faf8}
+  .threed-hud{position:static;grid-row:3;max-width:none;padding:9px 12px;border-radius:0;background:var(--panel);color:var(--ink);font-size:11.5px;backdrop-filter:none;border-top:1px solid var(--line)}
+  .threed-tip{position:static;grid-row:4;padding:0 12px 8px;background:var(--panel);color:var(--ink2);text-shadow:none;font-size:11px}
+  .ctl .sub,.twa-hint,.endcaps{color:var(--ink2)}
+  .coach{border-left:1px solid var(--line)}
+  .coach.groove{border-left-color:var(--line)}
+  @media(max-width:759px){
+    header.masthead{position:static;gap:10px;padding:12px}
+    nav.tabs{width:100%;margin-left:0;gap:4px}
+    nav.tabs button{padding:9px 10px;min-height:40px;font-size:11px;letter-spacing:.04em}
+    main{padding:10px 12px 32px}
+    #pane-view3d .sim-grid{display:flex;flex-direction:column;gap:12px}
+    #pane-view3d .threed-wrap{order:-1;width:100%;height:70svh;min-height:490px}
+    #dock3d{width:100%}
+    .rail-tabs button,.gustbtn{min-height:44px}
+    input[type=range]{height:28px}
+    .tiles{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+    .tile{min-width:0;padding:7px}
+    .tile .num{font-size:19px}
+    .tile .lbl{font-size:9px;letter-spacing:.04em}
+    .cardgrid{grid-template-columns:minmax(0,1fr)}
+    .threed-hud{font-size:10.5px}
+  }
+  @media(prefers-reduced-motion:reduce){.ai-flash{animation:none}.was-tick{transition:none}}
 </style>
 
 <header class="masthead">
   <div class="brand"><span class="flag">▲</span> Trim Lab<small>Colgate 26 · sail-trim trainer</small></div>
   <nav class="tabs" id="tabs">
-    <button data-tab="sim" class="active">Helm</button>
+    <button data-tab="sim" class="active" aria-current="page">Helm</button>
     <button data-tab="lines">The Lines</button>
     <button data-tab="concepts">Concepts</button>
     <button data-tab="drills">Drills</button>
@@ -388,7 +421,7 @@
   <div class="sim-grid">
     <aside class="controls" id="controls" data-rt="wind">
       <div class="rail-tabs" id="railTabs">
-        <button data-rt="wind" class="on">Wind</button><button data-rt="main">Mainsail</button><button data-rt="jib">Jib</button>
+        <button data-rt="wind" class="on" aria-pressed="true">Wind</button><button data-rt="main" aria-pressed="false">Mainsail</button><button data-rt="jib" aria-pressed="false">Jib</button>
       </div>
       <div class="rail-body">
       <div class="ctl-group" data-g="wind">
@@ -491,11 +524,19 @@
   <div class="sim-grid">
     <div id="dock3d"></div>
     <div class="threed-wrap">
-      <canvas id="bab"></canvas>
+      <canvas id="bab" tabindex="0" aria-label="Interactive sailboat: drag to orbit, scroll to zoom. Use camera buttons for preset views."></canvas>
       <div class="threed-hud" id="hud3d"></div>
-      <button id="dyeBtn" class="dye-btn on">wind dye: on</button>
-      <button id="ttBtn" class="dye-btn on" style="right:132px">telltales: on</button>
-      <div class="threed-tip">drag to orbit &middot; scroll to zoom &middot; lines live on the left</div>
+      <div class="scene-toolbar" aria-label="3D view controls">
+        <div id="cameraViews" class="camera-views" role="group" aria-label="Camera presets">
+          <button data-view="rig">Full rig</button><button data-view="deck">Deck detail</button><button data-view="sails">Sail detail</button><button data-view="rigging">Rigging</button>
+        </div>
+        <div class="scene-toggles" role="group" aria-label="Visual aids">
+          <button id="dyeBtn" class="dye-btn" aria-pressed="false">wind dye: off</button>
+          <button id="ttBtn" class="dye-btn on" aria-pressed="true">telltales: on</button>
+          <button id="pause3d" aria-pressed="false">Pause motion</button>
+        </div>
+      </div>
+      <div class="threed-tip">Drag to orbit · scroll to zoom · adjust lines in the trim panel</div>
     </div>
   </div>
 </section>
@@ -628,11 +669,11 @@ function panelSolve(els, awa){
   return {vor,g,sums};
 }
 function updatePanelFactors(shM, shJ, awa){
-  const hf=.5, chM=3.3*(1-.9*hf), chJ=2.9*(1-.9*hf);
+  const hf=.5, chM=RIG.mainFoot*(1-.9*hf), chJ=2.9*(1-.9*hf);
   const angM=shM.boom+shM.twist*Math.pow(hf,1.15);
   const angJ=shJ.boom+shJ.twist*Math.pow(hf,1.15);
-  const elM=panelElement(.72, chM, angM, shM.depth, shM.draft, 20);
-  const elJ=panelElement(2.26, chJ, angJ, shJ.depth, shJ.draft, 20);
+  const elM=panelElement(RIG.mastX, chM, angM, shM.depth, shM.draft, 20);
+  const elJ=panelElement((3.72+RIG.mastX+.03)/2, chJ, angJ, shJ.depth, shJ.draft, 20);
   const both=panelSolve([elM,elJ],awa), mOnly=panelSolve([elM],awa), jOnly=panelSolve([elJ],awa);
   if(!both||!mOnly||!jOnly){ PANEL.ok=false; return false; }
   PANEL.fM=clamp(Math.abs(both.sums[0])/Math.max(Math.abs(mOnly.sums[0]),1e-6), .75, 1.25);
@@ -645,11 +686,11 @@ function updatePanel(shM, shJ, awa){
   // per-height solutions for the dye field (geometry matches the drawn sail)
   PANEL.H=[];
   for(const y of [2.2,5,7.8]){
-    const hfM=clamp((y-1.45)/9.35,0,.98), hfJ=clamp((y-1.05)/9,0,.98);
-    const cM=3.3*(1-.90*Math.pow(hfM,1.05)), cJ=2.9*(1-.94*Math.pow(hfJ,1.05));
+    const hfM=clamp((y-RIG.boomY-.045)/9.0,0,.98), hfJ=clamp((y-1.05)/9,0,.98);
+    const cM=RIG.mainFoot*(1-.90*Math.pow(hfM,1.05)), cJ=2.9*(1-.94*Math.pow(hfJ,1.05));
     const aM=shM.boom+shM.twist*Math.pow(hfM,1.15), aJ=shJ.boom+shJ.twist*Math.pow(hfJ,1.15);
-    const eM=panelElement(.72, cM, aM, shM.depth*(1-.25*hfM), shM.draft, 16);
-    const eJ=panelElement(3.72+(0.80-3.72)*hfJ, cJ, aJ, shJ.depth*(1-.25*hfJ), shJ.draft, 16);
+    const eM=panelElement(RIG.mastX, cM, aM, shM.depth*(1-.25*hfM), shM.draft, 16);
+    const eJ=panelElement(3.72+(RIG.mastX+.03-3.72)*hfJ, cJ, aJ, shJ.depth*(1-.25*hfJ), shJ.draft, 16);
     const sol=panelSolve([eM,eJ],awa);
     if(sol) PANEL.H.push({y, vor:sol.vor, g:[...sol.g], polys:[eM,eJ]});
   }
@@ -667,6 +708,14 @@ const BOAT={
   jib :{area:13.9, span:8.2,  z0:1.0, ar:4.6},
   keel:{area:1.55, slope:3.6, effDepth:1.15},
 };
+// Shared photo-referenced anchors; Blender reads this same JSON object.
+const RIG={"mastX":1.5,"boomY":1.8,"boomLength":3.85,"mainFoot":3.72,"sheetRadius":3.73,"travelerX":-3.18,"travelerY":0.55,"travelerHalfWidth":0.78,"blockDrop":0.12,"blockRise":0.12,"sheetLeadRadius":2.8,"pedestalX":-1.60,"pedestalY":0.58,"jibTrackForward":1.25,"jibTrackTravel":0.9,"jibTrackZ":0.86,"carY":0.82,"winchX":0.40,"winchY":1.13,"winchZ":0.61,"rudderX":-2.90};
+function mainSheetSpan(angle,carZ){
+  const a=rad(angle),x=RIG.mastX-Math.cos(a)*RIG.sheetRadius,z=Math.sin(a)*RIG.sheetRadius;
+  const aft=Math.hypot(x-RIG.travelerX,RIG.boomY-RIG.blockDrop-RIG.travelerY-RIG.blockRise,z-carZ);
+  const lead=Math.hypot(RIG.mastX-Math.cos(a)*RIG.sheetLeadRadius-RIG.pedestalX,RIG.boomY-RIG.blockDrop-RIG.pedestalY,Math.sin(a)*RIG.sheetLeadRadius);
+  return (3*aft+lead)/4; // Three aft falls and the forward return to the cockpit ratchet.
+}
 function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror){
   // sh: {twist,depth,draft,boom}  geom: BOAT.main/jib  → {drive, side, hm}
   let drive=0, side=0, hm=0;
@@ -680,7 +729,7 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror)
     const awx = Vt*Math.cos(rad(twa)) + V;
     const awy = Vt*Math.sin(rad(twa))*Math.cos(heelR);
     const aws = Math.hypot(awx,awy);
-    const awa = clamp(deg(Math.atan2(awy,awx)), 2, 178);
+    const awa = clamp(deg(Math.atan2(awy,awx)), 0, 180);
     const delta = (mirror?Math.abs(sh.boom):sh.boom) + sh.twist*Math.pow(hf,1.15);   // local chord angle
     // a sail set to windward (wing-on-wing) is filled from astern on its inner
     // face: incidence is how far the flow has swung past the sail's plane
@@ -708,21 +757,23 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror)
 }
 function compute(){
   const s = state;
-  const JIB_F=2.90, JIB_H=.85, JIB_ZCAR=.62;   // jib foot, clew height above the car, track offset from centreline
+  const JIB_F=2.90, JIB_H=1.05+.19*2.90-RIG.carY-.06, JIB_ZCAR=RIG.jibTrackZ;   // jib foot, clew height above the car, track offset from centreline
   const twsKt = s.tws + (s.gust?6:0);
   const tws = twsKt*KT;
-  const twa = s.twaOv || s.twaC || POS[s.posIdx].twa;
+  const twa = s.twaOv ?? s.twaC ?? POS[s.posIdx].twa;
 
   let V=2.0, heel=8, lee=3, r=null;
   PANEL.ok=false;                              // it 0 uses factor 1; deterministic per-compute
   for(let it=0; it<16; it++){
     r = step(V, heel, lee);
     if(it===1) updatePanelFactors(r.sh.m, r.sh.j, r.awa);
-    V    = clamp(V*.55 + r.Vnew*.45, .05, 4.2);
+    V    = clamp(V*.55 + r.Vnew*.45, 0, 4.2);
     heel = heel*.55 + r.heelNew*.45;
     lee  = lee*.55 + r.leeNew*.45;
   }
-  const out=finish(r, V, heel, lee);
+  heel=clamp(heel,0,40);
+  // Report wind, sail shape, and loads at the returned equilibrium estimate.
+  const out=finish(step(V, heel, lee), V, heel, lee);
   updatePanel(out.main, {...out.jib, boom:out.jib.clew}, out.awa);
   return out;
 
@@ -731,9 +782,7 @@ function compute(){
   // out only as far as the sheet allows; a short sheet with the car to windward
   // drags the boom past centerline, exactly like the real tackle.
   function sheetGeom(Ls, zc){
-    const dist=d=>{const dr=rad(d);
-      const bx=.72-Math.cos(dr)*1.7, bz=Math.sin(dr)*1.7;
-      return Math.hypot(bx+.95, .46, bz-zc)};
+    const dist=d=>mainSheetSpan(d,zc);
     let best=null, bd=1e9, argmin=0;
     for(let d=-30; d<=88; d+=.5){
       const dd=dist(d);
@@ -746,13 +795,13 @@ function compute(){
   // The jib sheet is an inextensible line from the clew to the fairlead car.
   // The clew swings on the foot's arc (2.90 m from the tack at x 3.72, 0.55 m
   // above the tack, matching sailPathArray); the car sits on the track at
-  // (xCar, .75, ZCAR). Distance clew->car as a function of clew angle d:
+  // (xCar, RIG.carY + .06, ZCAR). Distance clew->car at angle d:
   //   dist^2 = R^2 + h^2 + F^2 - 2 F R cos(d - d0)
-  // with R = hypot(3.72-xCar, ZCAR), h = .85 (clew height above the car),
+  // with R = hypot(3.72-xCar, ZCAR), h = JIB_H (clew above the block),
   // F = 2.90, d0 = atan2(ZCAR, 3.72-xCar) the angle where the sheet leads
   // straight along the foot (shortest possible sheet: two-blocked).
   function jibLead(jcar){
-    const xCar=.6-.8*jcar;                       // same track as the 3D view
+    const xCar=RIG.jibTrackForward-RIG.jibTrackTravel*jcar;                       // same track as the 3D view
     const a=3.72-xCar, R=Math.hypot(a,JIB_ZCAR), d0=deg(Math.atan2(JIB_ZCAR,a));
     const K=R*R+JIB_H*JIB_H+JIB_F*JIB_F;
     const dist=d=>Math.sqrt(Math.max(0,K-2*JIB_F*R*Math.cos(rad(d-d0))));
@@ -764,9 +813,11 @@ function compute(){
     const leechM = clamp(s.sheet*upwind*0.95 + s.vang*0.6*(1-0.4*upwind), 0, 1.15);
     const twistM = clamp(36 - 27*leechM, 4, 38);
     const depthM = .08 + .08*(1 - .55*s.outhaul - .45*s.backstay);
-    const draftM = clamp(.42 + .010*(twsKt-8) + .04*s.backstay - .13*s.cunn, .32, .60);
-    const Lsheet = .46 + Math.pow(1-s.sheet,2)*2.0;
-    const sg = sheetGeom(Lsheet, -s.trav*.75);
+    const mainTension = clamp((s.mainhal-.35)/.65, 0, 1);
+    const draftM = clamp(.42 + .010*(twsKt-8) + .04*s.backstay - .13*s.cunn
+      - .10*(mainTension-(.90-.35)/.65), .32, .60);
+    const Lsheet = mainSheetSpan(0,0) + Math.pow(1-s.sheet,2)*4.4;
+    const sg = sheetGeom(Lsheet, -s.trav*RIG.travelerHalfWidth);
     const boomWind = clamp(awa-5, -5, 88);                 // weathervane limit
     const boomM = clamp(Math.min(boomWind, sg.ang), -28, 88);
     const sheetSlack = Math.max(0, Lsheet - sg.dist(boomM));
@@ -807,7 +858,7 @@ function compute(){
     const awx = tws*Math.cos(rad(twa)) + V;
     const awy = tws*Math.sin(rad(twa))*Math.cos(heelR);
     const aws = Math.hypot(awx,awy);
-    const awa = clamp(deg(Math.atan2(awy,awx)), 8, 178);
+    const awa = clamp(deg(Math.atan2(awy,awx)), 0, 180);
     const sh = shapes(awa);
     const shadowJ = awa>140 ? clamp(1-(awa-140)/40*.65, .35, 1) : 1;  // jib in main's shadow on a run
     const blanketJ = shadowJ*(1-sh.wowF) + 1*sh.wowF;                  // wing-on-wing flies in clear air
@@ -823,7 +874,7 @@ function compute(){
     const heelNew = deg(Math.asin(gz))*(1-.18*Math.pow(deg(Math.asin(gz))/45,2));
     // leeway: keel must generate `side` at speed V
     const qw = .5*RHO_W*Math.max(V,.4)**2*BOAT.keel.area;
-    const leeNew = clamp(deg(Math.max(0,side)/(qw*BOAT.keel.slope)), .3, 14);
+    const leeNew = clamp(deg(Math.max(0,side)/(qw*BOAT.keel.slope)), 0, 14);
     const Di = Math.max(0,side)*Math.tan(rad(leeNew))*.9;               // keel induced drag
     // hull resistance
     const Rf = .5*RHO_W*V*V*BOAT.wetted*.0033;
@@ -831,7 +882,7 @@ function compute(){
     const Rr = BOAT.disp*G*.045*Math.pow(Fn/.40, 8);
     const Rheel = (Rf+Rr)*.3*Math.pow(Math.sin(heelR),1.5);
     const Rtot = Rf+Rr+Rheel+Di+2;
-    const Vnew = clamp(V*Math.pow(Math.max(drive,0.1)/Rtot, .28), .05, 4.2);
+    const Vnew = clamp(V*Math.pow(Math.max(drive,0)/Rtot, .28), 0, 4.2);
     return {aws,awa,sh,heelNew,leeNew,Vnew,drive,side,FJ};
   }
 
@@ -843,7 +894,7 @@ function compute(){
     const idl = ideals(twsKt, awa);
     function sailEff(sp, aoa, aoaIdl, dpIdl){
       if(off){
-        const proj = clamp(Math.sin(rad(clamp(sh.m.boom+sh.m.twist*.4,0,95)+8))*1.05,0,1);
+        const proj = clamp(Math.sin(rad(clamp(Math.abs(sp.boom)+sp.twist*.4,0,95)+8))*1.05,0,1);
         return {eff: clamp(proj*score(sp.twist, 24, 14),0,1), luff:false, stall:false};
       }
       const luff = aoa < 8, stall = aoa > aoaIdl+13;
@@ -867,8 +918,8 @@ function compute(){
     const jl = jibLead(s.jcar);
     const dJ = Math.abs(sh.j.boom);
     const taut = sh.j.wow || dJ >= sh.j.clewSheet - .05;
-    const cJ = {x:3.72-JIB_F*Math.cos(rad(dJ)), y:1.60, z:JIB_F*Math.sin(rad(dJ))};
-    const sv = {x:jl.xCar-cJ.x, y:.75-cJ.y, z:JIB_ZCAR-cJ.z};
+    const cJ = {x:3.72-JIB_F*Math.cos(rad(dJ)), y:1.05+.19*JIB_F, z:JIB_F*Math.sin(rad(dJ))};
+    const sv = {x:jl.xCar-cJ.x, y:RIG.carY+.06-cJ.y, z:JIB_ZCAR-cJ.z};
     const sl = Math.hypot(sv.x,sv.y,sv.z)||1;
     const sn = clamp(-(sv.x/sl*Math.sin(rad(dJ)) + sv.z/sl*Math.cos(rad(dJ))), 0, 1);
     const Fn = Math.hypot(FJ.drive, FJ.side);
@@ -957,10 +1008,10 @@ function renderTiles(r){
   const tw=state.twaC||POS[state.posIdx].twa;
   $("tiles").innerHTML = `
     <div class="tile"><div class="lbl">True wind</div><div class="num">${state.tws+(state.gust?6:0)}<small> kt</small></div>${pill(POS[state.posIdx].name.toLowerCase()+" "+Math.round(tw)+"°","mut")}</div>
-    <div class="tile"><div class="lbl">Boat speed</div><div class="num">${fmt1(r.speed)}<small> kt</small></div>${pill("hull max 6.2 kt","mut")}</div>
-    <div class="tile"><div class="lbl">Heel</div><div class="num">${fmt1(r.heel)}<small> °</small></div>${pill(r.heel<10?"flat — no power":heelTxt,r.heel<10?"warn":heelCls)}</div>
+    <div class="tile"><div class="lbl">Boat speed</div><div class="num">${fmt1(r.speed)}<small> kt</small></div>${pill("hull speed ≈ 6.0 kt","mut")}</div>
+    <div class="tile"><div class="lbl">Heel</div><div class="num">${fmt1(r.heel)}<small> °</small></div>${pill(heelTxt,heelCls)}</div>
     <div class="tile"><div class="lbl">Weather helm</div><div class="num">${fmt1(r.helm)}<small> ° rud</small></div>${pill(helmTxt,helmCls)}</div>
-    <div class="tile"><div class="lbl">% of best speed</div><div class="num ${effV>.92?"goodc":"warnc"}">${Math.round(effV*100)}<small>%</small></div>${pill(effV>.92?"in the groove":"trim is off",effCls)}</div>`;
+    <div class="tile"><div class="lbl">${OPT_R?"% of solved speed":"Trim score"}</div><div class="num ${effV>.92?"goodc":"warnc"}">${Math.round(effV*100)}<small>%</small></div>${pill(effV>.92?"in the groove":"trim is off",effCls)}</div>`;
 }
 
 function renderCoach(r){
@@ -1102,16 +1153,16 @@ function renderSections(r){
 
 /* ---------------- render: deck view ---------------- */
 function renderDeck(r){
-  const cx=150, bowY=38, sternY=300, mastY=180, tackY=64, S=tackSign();
+  const cx=150, bowY=38, sternY=300, mastY=135, tackY=64, S=tackSign();
   const boomD=S*r.main.boom, clewD=S*r.jib.clew;   // display angles: + swings to port
   const hull = `M ${cx} ${bowY} C ${cx+34} ${bowY+50} ${cx+42} ${sternY-70} ${cx+34} ${sternY}
                 L ${cx-34} ${sternY} C ${cx-42} ${sternY-70} ${cx-34} ${bowY+50} ${cx} ${bowY} Z`;
   let out = `<path d="${hull}" fill="var(--panel2)" stroke="var(--ink2)" stroke-width="1.5"/>
     <line x1="${cx}" y1="${bowY}" x2="${cx}" y2="${sternY}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 4"/>`;
   // traveler track + car position
-  out += `<line x1="${cx-30}" y1="${mastY+76}" x2="${cx+30}" y2="${mastY+76}" stroke="var(--ink2)" stroke-width="2.5"/>
-          <circle cx="${cx + S*state.trav*24}" cy="${mastY+76}" r="4.5" fill="var(--accent)"/>
-          <text x="${cx}" y="${mastY+94}" font-size="12" fill="var(--ink3)" text-anchor="middle">traveler</text>`;
+  out += `<line x1="${cx-30}" y1="${sternY-18}" x2="${cx+30}" y2="${sternY-18}" stroke="var(--ink2)" stroke-width="2.5"/>
+          <circle cx="${cx + S*state.trav*24}" cy="${sternY-18}" r="4.5" fill="var(--accent)"/>
+          <text x="${cx}" y="${sternY-3}" font-size="12" fill="var(--ink3)" text-anchor="middle">traveler</text>`;
   // sail feet: aft is down, boom/clew swing to port (left), belly to leeward
   out += `<path class="sailpath" d="${sectionPath(cx,mastY,boomD,118,r.main.depth,r.main.draft,S<0)}" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round"/>`;
   out += `<path class="sailpath" d="${sectionPath(cx,tackY,clewD,92,r.jib.depth,r.jib.draft,(S<0)!==!!r.jib.wow)}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
@@ -1128,7 +1179,7 @@ function renderDeck(r){
   { const a=rad(clewD), clewX=cx-Math.sin(a)*92, clewY=tackY+Math.cos(a)*92;
     out += `<line x1="${clewX}" y1="${clewY}" x2="${r.jib.wow?cx+TRK*S:cx-TRK*S}" y2="${carY}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
   { const a=rad(boomD), endX=cx-Math.sin(a)*118, endY=mastY+Math.cos(a)*118;
-    out += `<line x1="${endX}" y1="${endY}" x2="${cx + S*state.trav*24}" y2="${mastY+76}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
+    out += `<line x1="${endX}" y1="${endY}" x2="${cx + S*state.trav*24}" y2="${sternY-18}" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="1 3"/>`; }
   // wind arrows on the windward side; direction from bow = twa/awa, signed by tack
   out += arrow(cx+108*S, 84, S*r.twa, 60, "var(--ink2)", "true "+fmt1(r.tws)+" kt", true);
   out += arrow(cx+108*S, 168, S*r.awa, 60, "var(--teal)", "apparent "+fmt1(r.aws)+" kt", false);
@@ -1379,6 +1430,8 @@ function renderDial(){
   // needle follows the dragged side all the way around; trim physics is
   // tack-symmetric, so the model itself always holds starboard
   const twaS=twa*(state.twaSide||1);
+  el.setAttribute("aria-valuenow",String(Math.round(twaS)));
+  el.setAttribute("aria-valuetext",`${Math.round(twa)} degrees, wind on ${twaS<0?"port":"starboard"}`);
   const ax=c+Math.sin(rad(twaS))*R, ay=c-Math.cos(rad(twaS))*R;
   const bx=c+Math.sin(rad(twaS))*(R-16), by=c-Math.cos(rad(twaS))*(R-16);
   // points-of-sail rose: mirrored sector wedges on both tacks, labels once
@@ -1412,7 +1465,7 @@ function renderDial(){
   const hint=$("twaHint");
   if(hint) hint.textContent=(state.twaSide||1)<0
     ? "wind on the port side — sails set to starboard"
-    : "drag the dial to change heading";
+    : "drag or use arrow keys to change heading";
   el.innerHTML=`
     <circle cx="${c}" cy="${c}" r="${R}" fill="var(--panel2)" stroke="var(--line)"/>
     ${zones}${seps}
@@ -1424,23 +1477,36 @@ function renderDial(){
 }
 {
   const el=$("windDial");
+  el.setAttribute("tabindex","0");
+  el.setAttribute("aria-valuemin","-178"); el.setAttribute("aria-valuemax","178");
+  const setBearing=a=>{
+    state.twaSide=a<0?-1:1;
+    state.twaC=clamp(Math.abs(a),2,178);
+    let best=0,bd=1e9;
+    POS.forEach((p,i)=>{const d=Math.abs(p.twa-state.twaC); if(d<bd){bd=d;best=i;}});
+    state.posIdx=best; update("pos");
+  };
   const setFromEvent=e=>{
     const rct=el.getBoundingClientRect();
     const x=(e.clientX-rct.left)/rct.width*130-65, y=(e.clientY-rct.top)/rct.height*130-65;
     let a=deg(Math.atan2(x,-y));            // bearing off the bow
-    state.twaSide=a<0?-1:1;                 // remember which tack was dragged
-    a=Math.abs(a);                          // physics model holds starboard tack
-    state.twaC=clamp(a,2,178);
-    // snap posIdx to the nearest preset so coach/optimizer labels stay honest
-    let best=0,bd=1e9;
-    POS.forEach((p,i)=>{const d=Math.abs(p.twa-state.twaC); if(d<bd){bd=d;best=i;}});
-    state.posIdx=best;
-    update("pos");
+    setBearing(a);
   };
   let drag=false;
   el.addEventListener("pointerdown",e=>{drag=true; el.setPointerCapture(e.pointerId); setFromEvent(e);});
   el.addEventListener("pointermove",e=>{ if(drag) setFromEvent(e); });
   el.addEventListener("pointerup",()=>{drag=false;});
+  el.addEventListener("pointercancel",()=>{drag=false;});
+  el.addEventListener("lostpointercapture",()=>{drag=false;});
+  el.addEventListener("keydown",e=>{
+    const keys={ArrowRight:1,ArrowUp:1,ArrowLeft:-1,ArrowDown:-1};
+    if(!(e.key in keys)&&e.key!=="Home"&&e.key!=="End") return;
+    e.preventDefault();
+    const current=(state.twaC??POS[state.posIdx].twa)*tackSign();
+    let next=e.key==="Home"?-178:e.key==="End"?178:current+keys[e.key]*(e.shiftKey?10:2);
+    if(Math.abs(next)<2) next=(keys[e.key]||1)*2;
+    setBearing(clamp(next,-178,178));
+  });
 }
 
 /* ---------------- wire controls ---------------- */
@@ -1453,6 +1519,7 @@ function renderDial(){
 });
 $("gust").addEventListener("click",()=>{
   state.gust=!state.gust;
+  $("gust").setAttribute("aria-pressed",String(state.gust));
   $("gust").classList.toggle("on",state.gust);
   $("gust").textContent = state.gust ? "Gust on · ease or dump!" : "Gust hits · +6 kt";
   update("gust");
@@ -1499,9 +1566,8 @@ function scheduleOptims(){
 /* ---------------- perfect trim: coordinate descent on the real solver ---------------- */
 function computeWith(params){
   const saved={}; for(const k in params){ saved[k]=state[k]; state[k]=params[k]; }
-  const r=compute();
-  for(const k in saved) state[k]=saved[k];
-  return r;
+  try { return compute(); }
+  finally { for(const k in saved) state[k]=saved[k]; }
 }
 const TRIM_KEYS=["sheet","trav","vang","outhaul","cunn","backstay","mainhal","jsheet","jsheetw","jcar","jhal"];
 function solvePerfectTrim(quick){
@@ -1561,6 +1627,7 @@ $("perfect").addEventListener("click",()=>{
 /* ---------------- tabs ---------------- */
 function showTab(name){
   [...$("tabs").children].forEach(c=>c.classList.toggle("active",c.dataset.tab===name));
+  document.querySelectorAll("#tabs [data-tab]").forEach(c=>c.setAttribute("aria-current",c.dataset.tab===name?"page":"false"));
   document.querySelectorAll(".tabpane").forEach(p=>p.classList.toggle("active",p.id==="pane-"+name));
   document.querySelector("main").classList.add("lock");
   // the one controls rail moves between Helm and 3D so state stays in sync
@@ -1837,6 +1904,130 @@ renderDrill();
 let B3=null, B3dirty=true;
 const V3=(x,y,z)=>new BABYLON.Vector3(x,y,z);
 
+// Cycles bakes stay embedded in the standalone page. Normal/roughness are data,
+// never sRGB color; roughness is read from G with metalness fixed at zero.
+function marineMaterial(mat, name, u=1, v=1, strength=1){
+  const maps=window.__MARINE_MATERIALS?.[name]; if(!maps) return;
+  const texture=channel=>{
+    const tex=new BABYLON.Texture(maps[channel],mat.getScene());
+    tex.gammaSpace=false; tex.uScale=u; tex.vScale=v;
+    tex.wrapU=tex.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;
+    tex.anisotropicFilteringLevel=4;
+    return tex;
+  };
+  mat.bumpTexture=texture("normal"); mat.bumpTexture.level=strength;
+  mat.invertNormalMapY=true; // Blender OpenGL +Y -> Babylon's default convention.
+  mat.metallicTexture=texture("roughness");
+  mat.useRoughnessFromMetallicTextureAlpha=false;
+  mat.useRoughnessFromMetallicTextureGreen=true;
+  mat.useMetallnessFromMetallicTextureBlue=false;
+  mat.roughness=1;
+}
+
+let BOAT_ASSETS=null, B3loading=false;
+async function loadBoatAssets(){
+  if(BOAT_ASSETS) return BOAT_ASSETS;
+  if(!window.__BOAT_GZIP) throw new Error("Blender geometry missing. Rebuild with build.py.");
+  const bytes=Uint8Array.from(atob(window.__BOAT_GZIP),c=>c.charCodeAt(0));
+  const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  BOAT_ASSETS=await new Response(stream).json();
+  return BOAT_ASSETS;
+}
+function importBoatAsset(asset,name,scene,parent,materials){
+  const root=new BABYLON.TransformNode(name,scene);root.parent=parent;
+  const parts=BOAT_ASSETS.assets[asset];if(!parts) throw new Error("Missing Blender asset: "+asset);
+  parts.forEach((part,i)=>{
+    const mesh=new BABYLON.Mesh(name+"_"+part.material,scene);
+    mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind,part.positions);
+    mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind,part.normals);
+    mesh.setVerticesData(BABYLON.VertexBuffer.UVKind,part.uvs);
+    mesh.setIndices(part.indices);mesh.material=materials[part.material];mesh.parent=root;
+    mesh.metadata={blenderAsset:asset,blenderParts:part.parts};
+  });
+  return root;
+}
+function marineEnvironment(scene){
+  const tex=new BABYLON.DynamicTexture("marineReflection",{width:1024,height:512},scene,true);
+  const ctx=tex.getContext(),g=ctx.createLinearGradient(0,0,0,512);
+  [[0,"#456987"],[.40,"#adc5cf"],[.49,"#e3e4d9"],[.51,"#789598"],[.65,"#456c78"],[1,"#15333f"]].forEach(([v,c])=>g.addColorStop(v,c));
+  ctx.fillStyle=g;ctx.fillRect(0,0,1024,512);
+  const softbox=ctx.createRadialGradient(260,150,5,260,150,140);
+  softbox.addColorStop(0,"rgba(255,252,234,.95)");softbox.addColorStop(1,"rgba(255,252,234,0)");
+  ctx.fillStyle=softbox;ctx.fillRect(100,0,320,320);
+  tex.update();tex.coordinatesMode=BABYLON.Texture.FIXED_EQUIRECTANGULAR_MODE;
+  tex.wrapU=BABYLON.Texture.WRAP_ADDRESSMODE;tex.level=.85;
+  return tex;
+}
+function boatMaterials(scene){
+  const env=marineEnvironment(scene),out={};
+  const specs={gelcoat:[[.88,.91,.88],0,.25],nonskid:[[.79,.80,.77],0,.86],steel:[[.76,.81,.84],.92,.20],anodized:[[.18,.23,.26],.78,.31],rubber:[[.028,.037,.040],0,.65],sheave:[[.22,.25,.22],.08,.40],glass:[[.026,.10,.12],.4,.13],stripe:[[.014,.12,.16],.1,.32],canvas:[[.24,.29,.25],0,.94],interior:[[.85,.87,.82],0,.79],wood:[[.50,.25,.075],0,.28]};
+  for(const [name,[color,metal,rough]] of Object.entries(specs)){
+    const m=new BABYLON.PBRMaterial(name,scene);m.albedoColor=new BABYLON.Color3(...color);m.metallic=metal;m.roughness=rough;
+    m.reflectionTexture=env;m.environmentIntensity=.7;out[name]=m;
+  }
+  marineMaterial(out.gelcoat,"gelcoat",1,1,.18);
+  out.gelcoat.clearCoat.isEnabled=true;out.gelcoat.clearCoat.intensity=.6;out.gelcoat.clearCoat.roughness=.18;
+  marineMaterial(out.nonskid,"nonskid",8,8,.20);
+  // Reference photographs show fine stippled moulded nonskid, not wood grain.
+  const texture=new BABYLON.DynamicTexture("mouldedNonskid",256,scene,true),ctx=texture.getContext();
+  ctx.fillStyle="#e7e7e2";ctx.fillRect(0,0,256,256);let seed=517;
+  for(let i=0;i<24000;i++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;const x=seed%256;seed=(Math.imul(seed,1664525)+1013904223)>>>0;const y=seed%256;ctx.fillStyle=i%2?"#d2d3ce":"#f4f4ef";ctx.fillRect(x,y,.65,.65);}
+  texture.update();texture.uScale=texture.vScale=5;out.nonskid.albedoTexture=texture;
+  return out;
+}
+function makeSailMaterial(kind,scene){
+  const m=new BABYLON.PBRMaterial(kind+"Dacron",scene);
+  const N=1024,tex=new BABYLON.DynamicTexture(kind+"SewnPanels",N,scene,true),ctx=tex.getContext(),im=ctx.createImageData(N,N);
+  let seed=3461;
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+    const weave=(x%3===0?-2:1)+(y%3===0?-2:1),grain=(seed>>>28)-8;
+    const i=(y*N+x)*4;im.data[i]=238+weave+grain*.3;im.data[i+1]=236+weave+grain*.3;im.data[i+2]=224+weave+grain*.3;im.data[i+3]=255;
+  }
+  ctx.putImageData(im,0,0);
+  ctx.strokeStyle="rgba(142,132,104,.42)";ctx.lineWidth=1;
+  const panels=kind==="main"?6:7;
+  for(let row=1;row<panels;row++){
+    const y=row*N/panels;
+    ctx.fillStyle="rgba(171,161,135,.10)";ctx.fillRect(0,y, N,8);
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(N,y);ctx.moveTo(0,y+7);ctx.lineTo(N,y+7);ctx.stroke();
+  }
+  // Radial corner reinforcements, broad tapes and paired rows of stitches.
+  for(const [x,y] of [[0,N],[N,N],[0,0]])for(const radius of [150,118,87,57]){
+    ctx.fillStyle="rgba(226,220,199,.17)";ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);ctx.fill();ctx.stroke();
+  }
+  ctx.strokeStyle="rgba(125,120,101,.65)";ctx.lineWidth=1;ctx.setLineDash([2,4]);
+  for(const e of [8,14])ctx.strokeRect(e,e,N-2*e,N-2*e);ctx.setLineDash([]);
+  if(kind==="main"){
+    // Batten pockets stop short of the luff and get shorter toward the head.
+    for(const [y,start] of [[.25,.55],[.50,.63],[.75,.68]]){
+      ctx.fillStyle="rgba(250,249,232,.65)";ctx.fillRect(N*start,N*y,N*(1-start)-15,9);
+      ctx.strokeStyle="rgba(148,140,114,.35)";ctx.strokeRect(N*start,N*y,N*(1-start)-15,9);
+    }
+    ctx.fillStyle="#596469";ctx.font="500 68px sans-serif";ctx.fillText("26",N*.28,N*.35);
+    ctx.strokeStyle="#9f3d39";ctx.lineWidth=5;ctx.beginPath();ctx.ellipse(N*.43,N*.20,90,30,-.15,0,Math.PI*2);ctx.stroke();ctx.font="bold 45px sans-serif";ctx.fillText("C26",N*.34,N*.215);
+  }
+  // Transparent vinyl rather than an opaque blue rectangle painted on fabric.
+  const wx=N*.24,wy=N*(kind==="main"?.89:.79),ww=N*(kind==="main"?.52:.26),wh=N*(kind==="main"?.035:.07);
+  ctx.beginPath();ctx.roundRect(wx,wy,ww,wh,12);ctx.save();ctx.clip();ctx.clearRect(wx,wy,ww,wh);ctx.fillStyle="rgba(176,206,208,.22)";ctx.fillRect(wx,wy,ww,wh);ctx.restore();
+  ctx.strokeStyle="rgba(151,150,131,.7)";ctx.lineWidth=7;ctx.stroke();
+  tex.update();tex.hasAlpha=true;m.albedoTexture=tex;m.useAlphaFromAlbedoTexture=true;
+  m.transparencyMode=BABYLON.PBRMaterial.PBRMATERIAL_ALPHATESTANDBLEND;
+  m.alphaCutOff=.08;m.metallic=0;m.roughness=.88;
+  marineMaterial(m,"sailcloth",8,16,.25);
+  m.backFaceCulling=false;m.twoSidedLighting=true;
+  return m;
+}
+function ropeAlbedo(scene){
+  const N=256,t=new BABYLON.DynamicTexture("braidedYachtLine",N,scene,true),ctx=t.getContext(),im=ctx.createImageData(N,N);
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    const a=Math.cos((x+y)*Math.PI/16),b=Math.cos((x-y)*Math.PI/16);
+    const strand=22*Math.max(a,b),tracer=((x+y)%64<5||(x-y+N)%64<5)?-38:0;
+    const v=221+strand+tracer,i=4*(y*N+x);im.data[i]=im.data[i+1]=im.data[i+2]=v;im.data[i+3]=255;
+  }
+  ctx.putImageData(im,0,0);t.update();return t;
+}
+
 function makeNoiseNormal(scene){
   const N=256, dt=new BABYLON.DynamicTexture("bump",N,scene,false);
   const ctx=dt.getContext(), img=ctx.createImageData(N,N);
@@ -1891,7 +2082,7 @@ function hullPaths(){
 // Coachroof (cabin trunk). One description of the surface serves two jobs: it
 // lofts the mesh, and it tells the rope router how high the roof is under a
 // given point, so sheets drape over the trunk instead of through it.
-const TRUNK={xAft:.80, xFwd:2.35, hzAft:.74, hzFwd:.46, yAft:1.00, yFwd:.94,
+const TRUNK={xAft:.25, xFwd:2.65, hzAft:.78, hzFwd:.32, yAft:1.11, yFwd:.89,
              yBase:.66, camber:.055, tumble:.94};
 function trunkT(x){ return clamp((x-TRUNK.xAft)/(TRUNK.xFwd-TRUNK.xAft),0,1); }
 function trunkHalfZ(x){
@@ -1933,9 +2124,9 @@ function sailPathArray(kind, sh, forceFull){
     const hf=iy/(NR-1);
     let luff, chord;
     const hoistM3=forceFull?1:clamp(state.mainhal/.35,0,1), hoistJ3=forceFull?1:clamp(state.jhal/.35,0,1);
-    if(kind==="main"){ luff=V3(.72, 1.45+9.35*hf*Math.max(hoistM3,.12), 0);
-      chord=3.30*(1-.90*Math.pow(hf,1.05))*(1-(1-state.outhaul)*.09*(1-hf)); }
-    else { const bow=V3(3.72,1.05,0), hd=V3(.80,10.05,0);
+    if(kind==="main"){ luff=V3(RIG.mastX, RIG.boomY+.045+9.0*hf*Math.max(hoistM3,.12), 0);
+      chord=RIG.mainFoot*(1-.90*Math.pow(hf,1.05))*(1-(1-state.outhaul)*.09*(1-hf)); }
+    else { const bow=V3(3.72,1.05,0), hd=V3(RIG.mastX+.03,10.05,0);
            luff=BABYLON.Vector3.Lerp(bow,hd,hf*Math.max(hoistJ3,.12)); chord=2.90*(1-.94*Math.pow(hf,1.05)); }
     const delta=rad((kind==="main"?sh.boom:sh.clew) + sh.twist*Math.pow(hf,1.15));
     const cdir=V3(-Math.cos(delta),0,Math.sin(delta));      // aft, swung to port
@@ -1955,8 +2146,8 @@ function sailPathArray(kind, sh, forceFull){
   return rows;
 }
 
-function ensure3D(){
-  if(B3) return;
+async function ensure3D(){
+  if(B3||B3loading) return;
   const hud=$("hud3d");
   if(typeof BABYLON==="undefined"){
     if(hud) hud.innerHTML=window.__WATER_NORMALS
@@ -1969,10 +2160,11 @@ function ensure3D(){
   canvas.addEventListener("webglcontextcreationerror",e=>{
     if(hud) hud.innerHTML="WebGL context failed: "+(e.statusMessage||"unknown")+".<br>Enable hardware acceleration in the browser settings, then reload.";
   });
-  try{ ensure3Dinner(canvas); }
+  B3loading=true;
+  try{ await loadBoatAssets(); ensure3Dinner(canvas); }
   catch(err){
     if(hud) hud.innerHTML="3D failed to start: "+err.message+".<br>WebGL may be unavailable here — enable hardware acceleration or open the page in Chrome.";
-  }
+  } finally { B3loading=false; }
 }
 function ensure3Dinner(canvas){
   // artifact iframes deny the gamepad feature via Permissions-Policy; Babylon's
@@ -1983,14 +2175,14 @@ function ensure3Dinner(canvas){
   const scene=new BABYLON.Scene(engine);
   scene.clearColor=new BABYLON.Color4(.55,.7,.85,1);
 
-  const cam=new BABYLON.ArcRotateCamera("cam", 2.55, 1.32, 15, V3(.4,3.2,0), scene);
-  cam.lowerRadiusLimit=7; cam.upperRadiusLimit=70; cam.upperBetaLimit=1.55;
-  cam.wheelDeltaPercentage=.01; cam.minZ=.3;
+  const cam=new BABYLON.ArcRotateCamera("cam", 2.55, 1.20, 19, V3(.3,5.1,0), scene);
+  cam.lowerRadiusLimit=2.5; cam.upperRadiusLimit=45; cam.upperBetaLimit=1.55;
+  cam.wheelDeltaPercentage=.01; cam.minZ=.08;
   try{ cam.inputs.removeByType("ArcRotateCameraGamepadInput"); }catch(e){}
   cam.attachControl(canvas,true);
 
-  const sun=new BABYLON.DirectionalLight("sun", V3(.35,-.55,-.75), scene); sun.intensity=2.6;
-  new BABYLON.HemisphericLight("hemi", V3(0,1,0), scene).intensity=.95;
+  const sun=new BABYLON.DirectionalLight("sun", V3(.35,-.55,-.75), scene); sun.intensity=1.35;
+  new BABYLON.HemisphericLight("hemi", V3(0,1,0), scene).intensity=.50;
 
   const sky=BABYLON.MeshBuilder.CreateBox("sky",{size:800},scene);
   const skyM=new BABYLON.SkyMaterial("skyM",scene);
@@ -1999,191 +2191,83 @@ function ensure3Dinner(canvas){
   sky.material=skyM;
 
   const water=BABYLON.MeshBuilder.CreateGround("water",{width:800,height:800,subdivisions:192},scene);
-  const wm=new BABYLON.WaterMaterial("wm",scene,new BABYLON.Vector2(256,256));
+  const wm=new BABYLON.WaterMaterial("wm",scene,new BABYLON.Vector2(512,512));
   wm.bumpTexture = window.__WATER_NORMALS
     ? new BABYLON.Texture(window.__WATER_NORMALS, scene)
     : makeNoiseNormal(scene);
   wm.windForce=-1.0; wm.waveHeight=.015; wm.bumpHeight=.10; wm.waveLength=1.6; wm.waveSpeed=.08;
   wm.windDirection=new BABYLON.Vector2(.4,-1);
-  wm.waterColor=new BABYLON.Color3(.02,.14,.14); wm.colorBlendFactor=.16;
+  wm.waterColor=new BABYLON.Color3(.025,.17,.20); wm.colorBlendFactor=.36;
   water.material=wm;
   wm.addToRenderList(sky);
 
   const boat=new BABYLON.TransformNode("boat",scene);
-
-  const hullM=new BABYLON.PBRMaterial("hullM",scene);
-  hullM.albedoColor=new BABYLON.Color3(.93,.94,.95); hullM.metallic=0; hullM.roughness=.62;
-  const hull=BABYLON.MeshBuilder.CreateRibbon("hull",{pathArray:hullPaths(),sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-  hull.material=hullM; hull.parent=boat;
-  // transom: the lofted ribbon ends at an open stern section, so cap it with a
-  // fan from the last station to the centreline — otherwise the hull shows a
-  // hole when seen from astern
-  const sternRow=hullPaths()[hullPaths().length-1];
-  const transom=BABYLON.MeshBuilder.CreateRibbon("transom",{pathArray:[sternRow,sternRow.map(p=>V3(p.x,p.y,0))],sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-  transom.material=hullM; transom.parent=boat;
-  const deck=BABYLON.MeshBuilder.CreateRibbon("deck",{pathArray:(()=>{const hp=hullPaths();return hp.map(r=>[r[0],r[r.length-1]]);})(),sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-  const deckM=new BABYLON.PBRMaterial("deckM",scene);
-  deckM.albedoTexture=makeDeckTexture(); deckM.albedoTexture.uScale=6; deckM.albedoTexture.vScale=2;
-  deckM.metallic=0; deckM.roughness=.85;
-  deck.material=deckM; deck.parent=boat;
-
-  const sparM=new BABYLON.PBRMaterial("sparM",scene);
-  sparM.albedoColor=new BABYLON.Color3(.75,.77,.80); sparM.metallic=.6; sparM.roughness=.4;
-  const mast=BABYLON.MeshBuilder.CreateCylinder("mast",{height:10.6,diameterBottom:.14,diameterTop:.09},scene);
-  mast.position=V3(.72,.7+5.3,0); mast.material=sparM; mast.parent=boat;
-  const boom=BABYLON.MeshBuilder.CreateCylinder("boom",{height:3.4,diameter:.11},scene);
-  boom.rotation.z=Math.PI/2; boom.material=sparM; boom.parent=boat;
-  const keel=BABYLON.MeshBuilder.CreateBox("keel",{width:1.5,height:1.05,depth:.14},scene);
-  keel.position=V3(-.2,-.95,0); keel.material=hullM; keel.parent=boat;
-  const rudder=BABYLON.MeshBuilder.CreateBox("rudder",{width:.45,height:.95,depth:.06},scene);
-  rudder.position=V3(-3.35,-.5,0); rudder.material=hullM; rudder.parent=boat;
-
-  // standing rigging as thin lines
+  const materials=boatMaterials(scene);
+  const model=importBoatAsset("boat","blenderBoat",scene,boat,materials);
+  const mast=importBoatAsset("mast","mast",scene,boat,materials); mast.position=V3(RIG.mastX,6,0);
+  const boom=importBoatAsset("boom","boom",scene,boat,materials);
+  const rudder=importBoatAsset("rudder","rudder",scene,boat,materials);rudder.position=V3(RIG.rudderX,.10,0);
+  const travCar=importBoatAsset("car","travCar",scene,boat,materials);
+  const jibCar=importBoatAsset("car","jibCar",scene,boat,materials);jibCar.scaling=V3(.7,.6,.65);
+  const lazyCar=importBoatAsset("car","lazyCar",scene,boat,materials);lazyCar.scaling.copyFrom(jibCar.scaling);
+  const sheetLead=importBoatAsset("block","sheetLead",scene,boat,materials);sheetLead.scaling=V3(.7,.7,.7);
+  const ratchet=importBoatAsset("block","cockpitRatchet",scene,boat,materials);
+  const tiller=importBoatAsset("tiller","woodenTiller",scene,rudder,materials);
+  const lowerBlock=importBoatAsset("block","travelerBlock",scene,travCar,materials);lowerBlock.position.y=RIG.blockRise;
+  const boomBlock=importBoatAsset("block","boomBlock",scene,boat,materials);
+  const jibBlock=importBoatAsset("fairlead","jibBlock",scene,boat,materials);
+  const lazyBlock=importBoatAsset("fairlead","lazyBlock",scene,boat,materials);
+  const rigidVang=importBoatAsset("vang","solidVang",scene,boat,materials);
+  const vangBlock=importBoatAsset("block","vangBlock",scene,boat,materials);vangBlock.scaling=V3(.65,.65,.65);
+  const vangBase=importBoatAsset("block","vangBase",scene,boat,materials);vangBase.scaling=V3(.65,.65,.65);vangBase.position=V3(RIG.mastX-.08,1.12,0);
   const rigPts=[
-    [V3(3.72,1.05,0),V3(.80,10.05,0)],                          // forestay
-    [V3(.72,9.2,0),V3(.72,6.4,.9),V3(.6,.8,1.15)],              // shrouds over spreader tips
-    [V3(.72,9.2,0),V3(.72,6.4,-.9),V3(.6,.8,-1.15)],
+    [V3(3.72,1.05,0),V3(RIG.mastX+.03,10.05,0)],
+    [V3(RIG.mastX,9.2,0),V3(RIG.mastX-.28,6.4,.9),V3(RIG.mastX-.48,.78,1.12)],
+    [V3(RIG.mastX,9.2,0),V3(RIG.mastX-.28,6.4,-.9),V3(RIG.mastX-.48,.78,-1.12)],
+    [V3(RIG.mastX,10.9,0),V3(-3.4,.48,0)],
   ];
-  // toerails along the sheer
-  const hp=hullPaths();
-  rigPts.push(hp.map(r0=>r0[0].add(new BABYLON.Vector3(0,.03,0))));
-  rigPts.push(hp.map(r0=>r0[r0.length-1].add(new BABYLON.Vector3(0,.03,0))));
-  const rig=BABYLON.MeshBuilder.CreateLineSystem("rig",{lines:rigPts},scene);
-  rig.color=new BABYLON.Color3(.25,.27,.3); rig.parent=boat;
-
-  function makeSailAlbedo(){
-    const N=512, dt=new BABYLON.DynamicTexture("sailTex",N,scene,true);
-    const ctx=dt.getContext();
-    ctx.fillStyle="#f5f3ec"; ctx.fillRect(0,0,N,N);
-    for(let i=0;i<12000;i++){ ctx.fillStyle=`rgba(60,55,40,${Math.random()*.05})`;
-      ctx.fillRect(Math.random()*N,Math.random()*N,1,1); }
-    ctx.strokeStyle="rgba(110,105,88,.55)"; ctx.lineWidth=2;
-    for(let k=1;k<8;k++){ const y=k*N/8; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(N,y); ctx.stroke(); }
-    // clear vinyl window like the real sail
-    ctx.fillStyle="rgba(150,175,190,.85)"; ctx.strokeStyle="rgba(90,90,80,.8)";
-    ctx.beginPath();
-    if(ctx.roundRect) ctx.roundRect(N*.18,N*.62,N*.34,N*.16,8); else ctx.rect(N*.18,N*.62,N*.34,N*.16);
-    ctx.fill(); ctx.stroke();
-    dt.update(); return dt;
+  for(const path of rigPts){const rig=BABYLON.MeshBuilder.CreateTube("standingWire",{path,radius:.003,tessellation:6},scene);rig.material=materials.steel;rig.parent=boat;}
+  for(const side of [-1,1]){
+    const path=[V3(RIG.mastX,6.4,0),V3(RIG.mastX-.28,6.4,side*.9)];
+    const spreader=BABYLON.MeshBuilder.CreateTube("spreader",{path,radius:.023,tessellation:12},scene);spreader.material=materials.anodized;spreader.parent=boat;
+    const lifeline=BABYLON.MeshBuilder.CreateTube("lifeline",{path:[V3(.30,1.22,side*1.15),V3(2.2,1.22,side*.77),V3(3.08,1.22,side*.39)],radius:.003,tessellation:6},scene);lifeline.material=materials.steel;lifeline.parent=boat;
   }
-  function makeDeckTexture(){
-    const N=256, dt=new BABYLON.DynamicTexture("deckTex",N,scene,true);
-    const ctx=dt.getContext();
-    ctx.fillStyle="#d9d6cc"; ctx.fillRect(0,0,N,N);
-    for(let i=0;i<26000;i++){ ctx.fillStyle=`rgba(80,78,70,${Math.random()*.16})`;
-      ctx.fillRect(Math.random()*N,Math.random()*N,1.4,1.4); }
-    dt.update(); dt.wrapU=dt.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE; return dt;
-  }
-  const sailM=new BABYLON.PBRMaterial("sailM",scene);
-  sailM.albedoTexture=makeSailAlbedo();
-  sailM.metallic=0; sailM.roughness=.6; sailM.emissiveColor=new BABYLON.Color3(.10,.10,.10);
-
-  sailM.backFaceCulling=false; sailM.twoSidedLighting=true;
-
-  // cabin trunk + deck hardware (photo-matched: low trunk forward, long open cockpit)
-  // the trunk is lofted from TRUNK/trunkSection rather than being a box: it
-  // tapers forward, the roof is cambered, and the base sits below the sheer so
-  // it reads as moulded into the deck instead of parked on top of it
-  const trunkRows=[];
-  const TRUNK_ST=12;
-  for(let i=0;i<=TRUNK_ST;i++)
-    trunkRows.push(trunkSection(TRUNK.xFwd+(TRUNK.xAft-TRUNK.xFwd)*(i/TRUNK_ST)));
-  const cabin=BABYLON.MeshBuilder.CreateRibbon("cabin",{pathArray:trunkRows,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-  cabin.material=hullM; cabin.parent=boat;
-  // cap the open fore and aft ends, the same fan trick the transom uses
-  for(const row of [trunkRows[0],trunkRows[trunkRows.length-1]]){
-    const cz=row.map(pt=>V3(pt.x,pt.y,0));
-    const cap=BABYLON.MeshBuilder.CreateRibbon("cabinCap",{pathArray:[row,cz],sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-    cap.material=hullM; cap.parent=boat;
-  }
-  // nonskid panel on the roof: inset from the moulded edge, lifted a few mm
-  const nonskidRows=trunkRows.slice(1,-1).map(r=>{
-    // take the inset section's plan outline but read the height off the real
-    // roof surface, so the panel floats just proud of it and never sinks in
-    const inset=trunkSection(r[0].x,.07);
-    return inset.slice(1,-1).map(pt=>V3(pt.x,trunkTopY(pt.x,pt.z)+.006,pt.z));
-  });
-  // nonskid is a shade darker and flatter than the gloss moulding, which is
-  // what stops the roof reading as one white slab
-  const nonskidM=new BABYLON.PBRMaterial("nonskidM",scene);
-  nonskidM.albedoTexture=makeDeckTexture();
-  nonskidM.albedoTexture.uScale=3; nonskidM.albedoTexture.vScale=3;
-  nonskidM.albedoColor=new BABYLON.Color3(.72,.71,.67);
-  nonskidM.metallic=0; nonskidM.roughness=.95;
-  const cabinTop=BABYLON.MeshBuilder.CreateRibbon("cabinTop",{pathArray:nonskidRows,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-  cabinTop.material=nonskidM; cabinTop.parent=boat;
-  // forehatch, sitting flush in the crown
-  const hatch=BABYLON.MeshBuilder.CreateBox("forehatch",{width:.44,height:.05,depth:.44},scene);
-  hatch.position=V3(1.85,trunkTopY(1.85,0)+.01,0); hatch.material=sparM; hatch.parent=boat;
-  const sole=BABYLON.MeshBuilder.CreateBox("sole",{width:3.1,height:.05,depth:1.1},scene);
-  sole.position=V3(-1.5,.42,0); sole.material=deckM; sole.parent=boat;
-  const benchP=BABYLON.MeshBuilder.CreateBox("benchP",{width:3.0,height:.09,depth:.42},scene);
-  benchP.position=V3(-1.5,.62,.72); benchP.material=hullM; benchP.parent=boat;
-  const benchS=benchP.clone("benchS"); benchS.position=V3(-1.5,.62,-.72); benchS.parent=boat;
-  // stainless: bow pulpit, stanchions, lifelines, stern rails
-  const steel=new BABYLON.PBRMaterial("steelTube",scene);
-  steel.albedoColor=new BABYLON.Color3(.8,.82,.85); steel.metallic=.85; steel.roughness=.3;
-  const pulpit=BABYLON.MeshBuilder.CreateTube("pulpit",{path:[
-    V3(3.15,.72,.34),V3(3.15,1.12,.30),V3(3.75,1.12,.12),V3(3.95,1.12,0),
-    V3(3.75,1.12,-.12),V3(3.15,1.12,-.30),V3(3.15,.72,-.34)],radius:.022},scene);
-  pulpit.material=steel; pulpit.parent=boat;
-  const lifelinesPts=[];
-  for(const side of [1,-1]){
-    const rail=[];
-    [[2.2,1.05],[0.8,1.15],[-0.8,1.22],[-2.4,1.24]].forEach(([x,hb])=>{
-      const st=BABYLON.MeshBuilder.CreateCylinder("st",{height:.46,diameter:.03},scene);
-      st.position=V3(x,.94,side*hb); st.material=steel; st.parent=boat;
-      rail.push(V3(x,1.17,side*hb));
-    });
-    lifelinesPts.push([V3(3.15,1.12,side*.30),...rail,V3(-3.5,1.12,side*.9)]);
-    const stern=BABYLON.MeshBuilder.CreateCylinder("sr",{height:.5,diameter:.03},scene);
-    stern.position=V3(-3.5,.9,side*.9); stern.material=steel; stern.parent=boat;
-  }
-  const lifelines=BABYLON.MeshBuilder.CreateLineSystem("lifelines",{lines:lifelinesPts},scene);
-  lifelines.color=new BABYLON.Color3(.75,.78,.8); lifelines.parent=boat;
-  // spreaders + shrouds routed over the tips
-  for(const side of [1,-1]){
-    const sp=BABYLON.MeshBuilder.CreateCylinder("sp",{height:.9,diameter:.05},scene);
-    sp.rotation.x=Math.PI/2; sp.position=V3(.72,6.4,side*.45); sp.material=steel; sp.parent=boat;
-  }
-  const travTrack=BABYLON.MeshBuilder.CreateBox("travTrack",{width:.07,height:.05,depth:1.7},scene);
-  travTrack.position=V3(-.95,.96,0); travTrack.material=sparM; travTrack.parent=boat;
-  const travCar=BABYLON.MeshBuilder.CreateBox("travCar",{width:.12,height:.09,depth:.14},scene);
-  travCar.material=sparM; travCar.parent=boat;
-  // jib tracks on the side decks aft of the mast: a 100% jib sheets aft, not forward
-  const jibTrackP=BABYLON.MeshBuilder.CreateBox("jibTrackP",{width:.9,height:.04,depth:.06},scene);
-  jibTrackP.position=V3(.2,.71,.62); jibTrackP.material=sparM; jibTrackP.parent=boat;
-  const jibTrackS=jibTrackP.clone("jibTrackS"); jibTrackS.position=V3(.2,.71,-.62); jibTrackS.parent=boat;
-  const jibCar=BABYLON.MeshBuilder.CreateBox("jibCar",{width:.14,height:.08,depth:.1},scene);
-  jibCar.material=sparM; jibCar.parent=boat;
-
-  // led-aft hardware: turning blocks at mast base -> organizers -> clutches
-  for(const side of [1,-1]){
-    const org=BABYLON.MeshBuilder.CreateCylinder("org",{height:.03,diameter:.12},scene);
-    org.position=V3(.45,.75,side*.22); org.material=sparM; org.parent=boat;
-    const clutch=BABYLON.MeshBuilder.CreateBox("clutch",{width:.3,height:.07,depth:.14},scene);
-    clutch.position=V3(-.25,.78,side*.34); clutch.material=sparM; clutch.parent=boat;
-  }
-  const winch=BABYLON.MeshBuilder.CreateCylinder("winch",{height:.14,diameterBottom:.16,diameterTop:.12},scene);
-  winch.position=V3(-.65,.82,.5); winch.material=sparM; winch.parent=boat;
-  const winchP=winch.clone("winchP"); winchP.position=V3(-.65,.82,-.5); winchP.parent=boat;
-  const fiddle=BABYLON.MeshBuilder.CreateBox("fiddle",{width:.07,height:.1,depth:.07},scene);
-  fiddle.material=sparM; fiddle.parent=boat; fiddle.position=V3(-.95,1.06,0);
-
+  const sailM=makeSailMaterial("main",scene),sailJ=makeSailMaterial("jib",scene);
   const sh0={boom:5,clew:9,twist:13,depth:.12,draft:.44};
   const mainSail=BABYLON.MeshBuilder.CreateRibbon("mainSail",{pathArray:sailPathArray("main",sh0),sideOrientation:BABYLON.Mesh.DOUBLESIDE,updatable:true},scene);
-  const jibSail =BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:sailPathArray("jib",{...sh0,clew:9}),sideOrientation:BABYLON.Mesh.DOUBLESIDE,updatable:true},scene);
-  mainSail.material=sailM; jibSail.material=sailM;
-  mainSail.parent=boat; jibSail.parent=boat;
+  const jibSail=BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:sailPathArray("jib",sh0),sideOrientation:BABYLON.Mesh.DOUBLESIDE,updatable:true},scene);
+  mainSail.material=sailM;jibSail.material=sailJ;mainSail.parent=boat;jibSail.parent=boat;
+  [...model.getChildMeshes(),...mast.getChildMeshes(),...boom.getChildMeshes(),mainSail,jibSail].forEach(m=>wm.addToRenderList(m));
 
-  [hull,transom,deck,mast,boom,mainSail,jibSail].forEach(m=>wm.addToRenderList(m));
-
-  B3={engine,scene,cam,boat,wm,mainSail,jibSail,boomMesh:boom,travCar,jibCar,
-      runLines:null,puffs:null,dyeR:null,dyeOn:true,t:0,heelCur:0};
+  B3={engine,scene,cam,boat,wm,mainSail,jibSail,boomMesh:boom,travCar,jibCar,lazyCar,boomBlock,jibBlock,lazyBlock,vangBlock,vangBase,lowerBlock,sheetLead,ratchet,rigidVang,rudder,materials,
+      runLines:null,puffs:null,dyeR:null,dyeOn:false,t:0,heelCur:0};
   B3dirty=true;
   initTelltales();
+  B3.paused=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const pauseBtn=$("pause3d");
+  const syncPause=()=>{
+    pauseBtn.textContent=B3.paused?"Resume motion":"Pause motion";
+    pauseBtn.setAttribute("aria-pressed",String(B3.paused));
+  };
+  syncPause();
+  pauseBtn.addEventListener("click",()=>{ B3.paused=!B3.paused; B3dirty=true; syncPause(); });
+  const views={rig:[2.55,1.20,19,.3,5.1,0],deck:[2.3,.72,8,-.2,.8,0],sails:[2.2,1.15,12,.5,6,0],rigging:[3.0,1.02,4.7,-1.0,.90,0]};
+  $("cameraViews").addEventListener("click",e=>{
+    const button=e.target.closest("button"); if(!button) return;
+    const [alpha,beta,radius,x,y,z]=views[button.dataset.view];
+    engine.resize();
+    // setTarget rebuilds spherical coordinates from the previous position.
+    // Set it first, then apply the preset angles and distance.
+    cam.setTarget(V3(x,y,z));
+    cam.alpha=alpha; cam.beta=beta;
+    // Frame the full rig in portrait as well as landscape.
+    cam.radius=radius*Math.max(1,1/engine.getAspectRatio(cam));
+    cam.inertialAlphaOffset=cam.inertialBetaOffset=cam.inertialRadiusOffset=0;
+    cam.inertialPanningX=cam.inertialPanningY=0;
+  });
   $("dyeBtn").addEventListener("click",()=>{
     B3.dyeOn=!B3.dyeOn;
+    $("dyeBtn").setAttribute("aria-pressed",String(B3.dyeOn));
     $("dyeBtn").classList.toggle("on",B3.dyeOn);
     $("dyeBtn").textContent="wind dye: "+(B3.dyeOn?"on":"off");
     if(!B3.dyeOn){ if(B3.puffs) B3.puffs.setEnabled(false); B3.dyeR=null; }
@@ -2192,12 +2276,14 @@ function ensure3Dinner(canvas){
   $("ttBtn").addEventListener("click",()=>{
     if(!(B3&&B3.tt)) return;
     B3.tt.on=!B3.tt.on;
+    $("ttBtn").setAttribute("aria-pressed",String(B3.tt.on));
     $("ttBtn").classList.toggle("on",B3.tt.on);
     $("ttBtn").textContent="telltales: "+(B3.tt.on?"on":"off");
     B3dirty=true;
   });
 
-  engine.runRenderLoop(()=>{ try{ tick3D(); scene.render(); }catch(err){
+  engine.runRenderLoop(()=>{ if(document.hidden||!$("pane-view3d").classList.contains("active")) return;
+    try{ tick3D(); scene.render(); }catch(err){
     if($("hud3d") && !$("hud3d").dataset.err){ $("hud3d").dataset.err="1";
       $("hud3d").innerHTML="3D render error: "+err.message; } } });
   window.addEventListener("resize",()=>engine.resize());
@@ -2522,16 +2608,17 @@ function clothRows(kind){
 }
 function tick3D(){
   if(!B3||!lastR) return;
-  const r=lastR, dt=B3.engine.getDeltaTime()/1000;
+  const r=lastR, dt=B3.paused?0:clamp(B3.engine.getDeltaTime()/1000,0,.05);
+  const stillUpdate=B3.paused&&B3dirty;
   B3.t+=dt;
   // Display-frame sail angles are signed by tack (+ = set to port) and eased
   // toward their targets, so a tack or gybe swings the boom and jib across the
   // centreline instead of snapping to the mirror image.
   const S=tackSign();
-  const tb=S*Math.max(r.main.boom,2);
-  const cj=r.jib.clew, tc=S*(cj<0?Math.min(cj,-3):Math.max(cj,3));
+  const tb=S*r.main.boom;
+  const tc=S*r.jib.clew;
   if(B3.boomShow===undefined){ B3.boomShow=tb; B3.clewShow=tc; }
-  const kA=Math.min(1,dt*3.2);
+  const kA=B3.paused?1:1-Math.exp(-dt*3.2);
   B3.boomShow+=(tb-B3.boomShow)*kA; B3.clewShow+=(tc-B3.clewShow)*kA;
   const swinging=Math.abs(tb-B3.boomShow)>.05||Math.abs(tc-B3.clewShow)>.05;
   if(!swinging){ B3.boomShow=tb; B3.clewShow=tc; }
@@ -2539,8 +2626,8 @@ function tick3D(){
   // the cloth retargets every frame of a swing, but the rigging tubes are
   // rebuilt meshes, so they follow at ~8 Hz and snap exact once the swing ends
   const rebuildRopes=B3dirty||settled||!B3.tubes||(B3.t-(B3.ropeT||0))>.12;
-  if(B3dirty||swinging){
-    const shM={boom:B3.boomShow,twist:r.main.twist,depth:r.main.depth,draft:r.main.draft,flip:B3.boomShow<0};
+  if(B3dirty||swinging||settled){
+    const shM={boom:B3.boomShow,twist:r.main.twist,depth:r.main.depth,draft:r.main.draft,flip:S<0};
     const shJ={clew:B3.clewShow,twist:r.jib.twist,depth:r.jib.depth,draft:r.jib.draft,wow:r.jib.wow,flip:(S<0)!==!!r.jib.wow};
     const tgtM=sailPathArray("main",shM,true), tgtJ=sailPathArray("jib",shJ,true);
     const pinM=sailPathArray("main",shM,false), pinJ=sailPathArray("jib",shJ,false);
@@ -2548,29 +2635,33 @@ function tick3D(){
     else { clothRetarget("main",tgtM,pinM); clothRetarget("jib",tgtJ,pinJ); }
     const d=rad(shM.boom);
     B3.boomMesh.rotation.y=d;                       // swing boom to port with the foot
-    B3.boomMesh.position=V3(.72,1.42,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(1.7));
+    B3.boomMesh.position=V3(RIG.mastX,RIG.boomY,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(RIG.boomLength/2));
     B3.boomMesh.rotation.z=Math.PI/2; B3.boomMesh.rotation.x=0;
     // deck hardware follows the lines
-    B3.travCar.position=V3(-.95,1.0,-S*state.trav*.75);
-    const jcarX=.6-.8*state.jcar;                    // forward (x .6) .. aft (x -.2), both aft of the mast
-    B3.jibCar.position=V3(jcarX,.75,S*.62);
-    // running rigging: mainsheet (mid-boom -> traveler car) + working jib sheet (clew -> car)
-    const boomMid=V3(.72,1.42,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(1.7));
+    B3.travCar.position=V3(RIG.travelerX,RIG.travelerY,-S*state.trav*RIG.travelerHalfWidth);
+    const jcarX=RIG.jibTrackForward-RIG.jibTrackTravel*state.jcar;
+    B3.jibCar.position=V3(jcarX,RIG.carY,S*RIG.jibTrackZ);
+    B3.lazyCar.position=V3(jcarX,RIG.carY,-S*RIG.jibTrackZ);
+    // Aft traveler/end-boom tackle and the cockpit ratchet share the solver anchors.
+    const boomMid=V3(RIG.mastX,RIG.boomY,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(RIG.sheetRadius));
+    B3.boomBlock.position=boomMid.add(V3(0,-RIG.blockDrop,0)); B3.boomBlock.rotation.y=0;
+    B3.vangBlock.position=V3(RIG.mastX,RIG.boomY,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(1.15)).add(V3(0,-.05,0));
+    const vangBottom=V3(RIG.mastX-.08,1.12,0),vangUpper=B3.vangBlock.position;
+    B3.rigidVang.position=vangBottom.add(vangUpper).scale(.5);
+    const vh=Math.hypot(vangUpper.x-vangBottom.x,vangUpper.z-vangBottom.z);
+    B3.rigidVang.rotation.z=Math.atan2(vh,vangUpper.y-vangBottom.y);B3.rigidVang.rotation.y=Math.atan2(vangUpper.z-vangBottom.z,vangBottom.x-vangUpper.x);
+    B3.rigidVang.scaling.y=BABYLON.Vector3.Distance(vangBottom,vangUpper)/1.2;
     // the sheet starts exactly where the cloth's clew particle is pinned
     const clew=pinJ[0][pinJ[0].length-1].clone();
     if(rebuildRopes){
     if(B3.tubes){ for(const k in B3.tubes) B3.tubes[k].forEach(m=>m.dispose()); }
     B3.tubes={};
     const boomDir=V3(-Math.cos(d),0,Math.sin(d));
-    const boomEnd=V3(.72,1.42,0).add(boomDir.scale(3.4));
-    const boomVangPt=V3(.72,1.42,0).add(boomDir.scale(1.15));
-    const mastHead=V3(.72,11.3,0), hounds=V3(.80,10.05,0), gooseneck=V3(.72,1.42,0);
+    const boomEnd=V3(RIG.mastX,RIG.boomY,0).add(boomDir.scale(RIG.boomLength));
+    const boomVangPt=V3(RIG.mastX,RIG.boomY,0).add(boomDir.scale(1.15));
     // main clew actually slides along the boom with the outhaul
-    const footLen=3.30*(1-(1-state.outhaul)*.09);
-    const mClew=V3(.72,1.47,0).add(boomDir.scale(footLen));
-    const cunSag=(1-state.cunn)*.10;
-    const cunTop=V3(.72,1.78,.09), cunBot=V3(.70,1.02,.09);
-    const cunMid=cunTop.add(cunBot).scale(.5).add(V3(-.02,0,cunSag+.03));
+    const footLen=RIG.mainFoot*(1-(1-state.outhaul)*.09);
+    const mClew=V3(RIG.mastX,RIG.boomY+.045,0).add(boomDir.scale(footLen));
     function sagLine(a,b,slack,floor,parts){
       // a line with `slack` metres more length than the span hangs in a curve
       // whose depth follows the parabolic catenary: d = sqrt(3 L s / 8).
@@ -2590,70 +2681,138 @@ function tick3D(){
         pts.push(pt);}
       return pts;
     }
-    // the deck at height y0, raised over the coachroof wherever the line
-    // crosses it — a rope radius clear of the moulding
-    const overTrunk=y0=>pt=>Math.max(y0, trunkTopY(pt.x,pt.z)+.03);
     const car=B3.travCar.position;
-    const boomMid2=V3(.72,1.42,0).add(boomDir.scale(1.95));
-    const mastBase=V3(.66,1.0,0);
-    const ropes={
-      // mainsheet: 3-part tackle — three falls between the boom block and the
-      // car block, then the tail aft to the helm. Slack only when the wind
-      // has swung the boom short of the sheet's limit.
-      sheet:(()=>{
-        const bb=boomMid.add(V3(0,-.05,0)), cb=car.add(V3(0,.09,0)), off=boomDir.scale(.035);
-        const s3=r.sheetSlack/3;
-        return [sagLine(bb.subtract(off), cb.subtract(off), s3),
-                sagLine(cb, bb, s3),
-                sagLine(bb.add(off), cb.add(off), s3).concat(sagLine(cb.add(off), V3(-2.2,.75,.3), .02).slice(1))];
-      })(),
-      // working sheet: clew -> leeward car -> leeward winch drum -> tail into the cockpit
-      jsheet:[sagLine(clew, B3.jibCar.position.clone(), r.jib.wow?.45:Math.min(.5, r.jib.sheetSlack*.6), overTrunk(.74)).concat(
-               [V3(-.62,.87,S*.59), V3(-.95,.72,S*.42)])],
-      // lazy sheet: clew -> across the coachroof to the windward car -> windward
-      // winch. There is no block between the clew and the car, so the run is a
-      // single span; its only bend comes from lying on the roof on the way down.
-      jsheetw:[sagLine(clew, V3(jcarX,.75,-S*.62), (1-state.jsheetw)*.45, overTrunk(.74), 18).concat(
-               sagLine(V3(jcarX,.75,-S*.62), V3(-.62,.87,-S*.59), (1-state.jsheetw)*.15, .74).slice(1),
-               [V3(-.95,.72,-S*.42)])],
-      jcar:[[V3(jcarX,.80,.62), V3(jcarX,.70,.62)]],
-      // vang: 2-part cascade boom bale <-> mast step, tail aft
-      vang:[[boomVangPt.add(V3(0,-.02,.04)), mastBase.add(V3(0,.04,.06)), boomVangPt.add(V3(-.06,-.06,.02)), mastBase.add(V3(0,0,.10)), V3(-.2,.78,.20)]],
-      // outhaul: clew -> boom end sheave -> forward under the boom -> gooseneck cleat
-      outhaul:[[mClew, boomEnd.add(V3(0,.02,0)), boomEnd.add(V3(0,-.07,0)), V3(.72,1.35,0).add(boomDir.scale(.35))]],
-      // cunningham: hook on the luff cringle -> mast-base block -> aft to the clutch
-      cunn:[[cunTop, cunMid, cunBot, V3(.45,.77,.22), V3(-.12,.80,.30)]],
-      // halyards: masthead sheave -> down the mast -> turning block -> organizer -> clutch
-      halyard:[[mastHead.add(V3(-.11,0,0)), V3(.58,1.05,-.06), V3(.45,.77,-.22), V3(-.12,.80,-.30)]],
-      jhal:[[hounds.add(V3(.10,-.02,0)), V3(.60,1.05,.06), V3(.45,.77,.22), V3(-.12,.80,.38)]],
-      toplift:[[mastHead, boomEnd.add(V3(0,.05,0))]],
-      trav:[[car.add(V3(0,.02,0)), V3(-.95,1.0,.85)],[car.add(V3(0,.02,0)), V3(-.95,1.0,-.85)]],
-      backstay:[[V3(.72,10.9,0),V3(-3.7,.85,0)]],
+    // All running rigging follows hardware centers. Four mainsheet falls,
+    // two vang falls, deck lanes, winch turns and hanging tails stay separate.
+    const arc=(center,r,a0,a1,axis="z",n=14)=>Array.from({length:n+1},(_,i)=>{
+      const a=lerp(a0,a1,i/n);
+      return axis==="y"?center.add(V3(r*Math.cos(a),0,r*Math.sin(a))):center.add(V3(r*Math.cos(a),r*Math.sin(a),0));
+    });
+    const coil=(center,side=1)=>Array.from({length:97},(_,i)=>{
+      const a=i/96*Math.PI*8,r=.075+.016*i/96;
+      return center.add(V3(Math.cos(a)*r*1.7,.0004*i,side*Math.sin(a)*r));
+    });
+    function jibRoute(side,loaded,block){
+      const C=V3(jcarX,RIG.carY+.06,side*RIG.jibTrackZ);
+      const W=V3(RIG.winchX,RIG.winchY+.045,side*RIG.winchZ),radius=.094,wrise=.073;
+      const tail=Array.from({length:145},(_,i)=>{
+        const a=side*(Math.PI/2+i/144*Math.PI*6),r=.115-.064*i/144;
+        return V3(-.30+1.4*r*Math.cos(a),.505,side*.75+r*Math.sin(a));
+      });
+      // Lazy sheet passes forward of the mast, rests on the roof, then drops
+      // over its actual edge. Never lift each sample independently into stairs.
+      let prefix=[clew],approach=clew;
+      if(!loaded){
+        const fromSide=clew.z>=0?1:-1,roofY=trunkTopY(RIG.mastX,0)+.025;
+        const mastArc=Array.from({length:25},(_,i)=>{
+          const a=fromSide*Math.PI/2*(1-2*i/24);
+          return V3(RIG.mastX+.18*Math.cos(a),roofY,.18*Math.sin(a));
+        });
+        const edgeX=Math.max(.40,jcarX+.10),edgeZ=side*(.78-(edgeX-.25)*(.46/2.4)-.07);
+        const edge=V3(edgeX,trunkCrown(edgeX)+.025,edgeZ);
+        prefix=sagLine(clew,mastArc[0],.012,undefined,18).concat(mastArc.slice(1),[edge]);
+        approach=edge;
+      }
+      const tangent=(p,entry)=>{
+        const phi=Math.atan2(p.z-W.z,p.x-W.x),d=Math.hypot(p.x-W.x,p.z-W.z);
+        return phi+(entry?1:-1)*Math.acos(clamp(radius/d,-1,1));
+      };
+      // Solve both tangencies together: rope wraps the fairlead wheel, then
+      // touches the winch cylinder tangentially. Both winches turn clockwise.
+      function sheaveRoute(A,B){
+        const u=A.subtract(C).normalize(),vb=B.subtract(C),n=BABYLON.Vector3.Cross(u,vb).normalize();
+        const v=BABYLON.Vector3.Cross(n,u).normalize(),r=.038;
+        const theta=Math.atan2(BABYLON.Vector3.Dot(vb,v),BABYLON.Vector3.Dot(vb,u));
+        const a=-Math.acos(clamp(r/BABYLON.Vector3.Distance(A,C),-1,1));
+        let b=theta+Math.acos(clamp(r/vb.length(),-1,1));while(b>a)b-=Math.PI*2;
+        const points=Array.from({length:33},(_,i)=>{const t=lerp(a,b,i/32);return C.add(u.scale(r*Math.cos(t))).add(v.scale(r*Math.sin(t)));});
+        return {points,u,v,n};
+      }
+      let entryAngle=tangent(C,true),contact,sheave;
+      for(let i=0;i<8;i++){
+        contact=W.add(V3(radius*Math.cos(entryAngle),0,radius*Math.sin(entryAngle)));
+        sheave=sheaveRoute(approach,contact);entryAngle=tangent(sheave.points.at(-1),true);
+      }
+      contact=W.add(V3(radius*Math.cos(entryAngle),0,radius*Math.sin(entryAngle)));
+      sheave=sheaveRoute(approach,contact);
+      block.position.copyFrom(C);
+      block.rotation=BABYLON.Vector3.RotationFromAxis(sheave.u,sheave.v,sheave.n);
+      let exitAngle=tangent(tail[0],false);
+      while(exitAngle<entryAngle)exitAngle+=Math.PI*2;
+      exitAngle+=Math.PI*6;
+      const steps=Math.ceil((exitAngle-entryAngle)*28);
+      const turns=Array.from({length:steps+1},(_,i)=>{
+        const t=i/steps,a=lerp(entryAngle,exitAngle,t);
+        return W.add(V3(radius*Math.cos(a),t*wrise,radius*Math.sin(a)));
+      });
+      const lead=sagLine(approach,sheave.points[0],loaded?(side===S?Math.min(.04,r.jib.sheetSlack):0):.004,undefined,20);
+      const tailRun=sagLine(turns.at(-1),tail[0],.035,.505,20);
+      const path=prefix.concat(lead.slice(1),sheave.points.slice(1),turns,tailRun.slice(1),tail.slice(1));
+      return {path,loaded,side,winch:W,radius,turns,sheave:sheave.points,center:C,tail:tailRun,prefix,entryAngle,exitAngle};
+    }
+    const windwardLoaded=r.jib.wow||(r.jib.clew<0&&state.jsheetw>0);
+    const working=jibRoute(S,!windwardLoaded,B3.jibBlock),lazy=jibRoute(-S,!!windwardLoaded,B3.lazyBlock);
+    B3.jibRoutes=[working,lazy];
+    const lane=(z,top)=>{
+      const lz=Math.sign(z)*(.43+Math.abs(z)-.14);
+      return [top,V3(1.25,1.14,lz),V3(.95,1.16,lz),V3(.72,1.16,lz),V3(.36,1.16,lz),V3(.20,1.08,lz),
+        ...Array.from({length:49},(_,i)=>{const a=i/48*Math.PI*6;return V3(.13-.016*i/48,.83+.19*Math.cos(a),lz+.028*Math.sin(a));})];
     };
+    const bb=B3.boomBlock.position,cb=car.add(V3(0,RIG.blockRise,0)),R=.060;
+    const front=V3(RIG.mastX,RIG.boomY-RIG.blockDrop,0).add(boomDir.scale(RIG.sheetLeadRadius));
+    const ratchet=V3(RIG.pedestalX,RIG.pedestalY,0);
+    B3.sheetLead.position=front;B3.ratchet.position=ratchet;
+    const fall=(a,b)=>r.sheetSlack>.005?sagLine(a,b,Math.min(.35,r.sheetSlack),.50,12):[a,b];
+    const mainSheet=[...fall(cb.add(V3(-R,0,-.0275)),bb.add(V3(-R,0,-.0275))),
+      ...arc(bb.add(V3(0,0,-.0275)),R,Math.PI,0).slice(1),...fall(bb.add(V3(R,0,-.0275)),cb.add(V3(R,0,-.0275))).slice(1),
+      ...arc(cb.add(V3(0,0,-.0275)),R,0,-Math.PI).slice(1),...fall(cb.add(V3(-R,0,-.0275)),bb.add(V3(-R,0,.0275))).slice(1),
+      ...arc(bb.add(V3(0,0,.0275)),R,Math.PI,Math.PI*1.5).slice(1),front.add(V3(0,-R,0)),...arc(front,R,Math.PI*1.5,Math.PI*2).slice(1),...fall(front.add(V3(R,0,0)),ratchet.add(V3(R,0,0)))];
+    const mainTail=coil(V3(RIG.pedestalX-.18,.23,.26));
+    const vangTop=B3.vangBlock.position,vangLow=V3(RIG.mastX-.08,1.12,0);
+    B3.mainSheetFalls=[[cb,bb],[bb,cb],[cb,bb],[front,ratchet]];
+    const ropes={
+      sheet:[mainSheet.concat(sagLine(mainSheet.at(-1),mainTail[0],.05,.23,14).slice(1),mainTail.slice(1))],
+      jsheet:[working.path],
+      jsheetw:[lazy.path],
+      jcar:[],
+      vang:[[vangLow.add(V3(-.035,0,-.017)),vangTop.add(V3(-.035,0,-.017)),
+        ...arc(vangTop.add(V3(0,0,-.017)),.037,Math.PI,0).slice(1),vangLow.add(V3(.035,0,-.017)),
+        ...lane(-.14,V3(RIG.mastX-.10,1.15,-.14))]],
+      // Outhaul and halyards run inside the extrusions. Only exposed ends show.
+      outhaul:[[mClew,boomEnd.add(V3(0,.025,0))],lane(-.21,V3(RIG.mastX-.07,RIG.boomY-.06,-.07))],
+      cunn:[[V3(RIG.mastX-.04,RIG.boomY+.24,.07),V3(RIG.mastX-.12,1.14,.14),...lane(.14,V3(RIG.mastX-.12,1.14,.14)).slice(1)]],
+      halyard:[lane(-.28,V3(RIG.mastX-.07,1.17,-.07))],
+      jhal:[lane(.21,V3(RIG.mastX-.08,1.17,.07))],
+      toplift:[], // Support is unloaded while sailing; omit a fake taut second stay.
+      trav:[sagLine(car.add(V3(0,.018,.10)),V3(RIG.travelerX,RIG.travelerY+.01,.82),.005),sagLine(car.add(V3(0,.018,-.10)),V3(RIG.travelerX,RIG.travelerY+.01,-.82),.005)],
+      backstay:[], // Standing wire is part of the permanent rig.
+    };
+    B3.ropePaths=ropes;
     const steelKeys={backstay:1,toplift:1};
     // color-coded like the rigging guides
-    const ROPE_COLORS={sheet:[.75,.1,.1], jsheet:[.82,.72,.5], jsheetw:[.6,.55,.4], jcar:[.9,.5,.15], vang:[.15,.55,.25],
+    const ROPE_COLORS={sheet:[.06,.55,.70], jsheet:[.82,.72,.5], jsheetw:[.6,.55,.4], jcar:[.9,.5,.15], vang:[.15,.55,.25],
       outhaul:[.85,.55,.15], cunn:[.8,.15,.35], halyard:[.9,.9,.88], jhal:[.2,.35,.75], trav:[.4,.4,.75]};
     if(!B3.ropeMats){ B3.ropeMats={};
-      const ropeTex=window.__ROPE_COLOR?new BABYLON.Texture(window.__ROPE_COLOR,B3.scene):null;
-      const ropeBump=window.__ROPE_NORMAL?new BABYLON.Texture(window.__ROPE_NORMAL,B3.scene):null;
+      const ropeTex=ropeAlbedo(B3.scene);
+      const ropeBump=null;
       // braid pitch on a real line is a few cm — repeat the weave ~40x along a
       // rope run so the tubes read as rope, not smooth cylinders
-      if(ropeTex){ ropeTex.uScale=2; ropeTex.vScale=40; }
-      if(ropeBump){ ropeBump.uScale=2; ropeBump.vScale=40; ropeBump.level=1.25; }
+      if(ropeTex){ ropeTex.uScale=1; ropeTex.vScale=1; }
+      if(ropeBump){ ropeBump.uScale=1; ropeBump.vScale=1; ropeBump.level=.5; ropeBump.gammaSpace=false; }
       for(const k in ROPE_COLORS){ const m=new BABYLON.PBRMaterial("rm_"+k,B3.scene);
-        m.albedoColor=new BABYLON.Color3(...ROPE_COLORS[k]); m.metallic=0; m.roughness=.9;
+        m.albedoColor=new BABYLON.Color3(...ROPE_COLORS[k]); m.metallic=0; m.roughness=.85;
         if(ropeTex) m.albedoTexture=ropeTex;
         if(ropeBump) m.bumpTexture=ropeBump;
+        marineMaterial(m,"braid",1,1,.45);
         B3.ropeMats[k]=m; } }
     if(!B3.ropeMat){
       B3.ropeMat=new BABYLON.PBRMaterial("ropeM",B3.scene);
       B3.ropeMat.albedoColor=new BABYLON.Color3(.45,.18,.10); B3.ropeMat.metallic=0; B3.ropeMat.roughness=.9;
       B3.ropeHi=new BABYLON.PBRMaterial("ropeHi",B3.scene);
       B3.ropeHi.albedoColor=new BABYLON.Color3(1,.35,.1); B3.ropeHi.metallic=0; B3.ropeHi.roughness=.5;
-      B3.ropeHi.emissiveColor=new BABYLON.Color3(.9,.3,.05);
-      if(window.__ROPE_COLOR){ const t=new BABYLON.Texture(window.__ROPE_COLOR,B3.scene); t.uScale=2; t.vScale=40; B3.ropeHi.albedoTexture=t; }
-      if(window.__ROPE_NORMAL){ const t=new BABYLON.Texture(window.__ROPE_NORMAL,B3.scene); t.uScale=2; t.vScale=40; t.level=1.25; B3.ropeHi.bumpTexture=t; }
+      B3.ropeHi.emissiveColor=new BABYLON.Color3(.20,.055,.015);
+      B3.ropeHi.albedoTexture=ropeAlbedo(B3.scene);
+      marineMaterial(B3.ropeHi,"braid",1,1,.45);
     }
     if(!B3.steelMat){
       B3.steelMat=new BABYLON.PBRMaterial("steelM",B3.scene);
@@ -2663,7 +2822,13 @@ function tick3D(){
       B3.tubes[key]=ropes[key].map((path,i)=>{
         const hot=key===B3.hiKey;
         // 10 mm braid, 6 mm wire; the highlighted line is drawn a touch heavier and glows
-        const t2=BABYLON.MeshBuilder.CreateTube("rope_"+key+i,{path,radius:hot?.0075:(steelKeys[key]?.003:.005),tessellation:10},B3.scene);
+        const t2=BABYLON.MeshBuilder.CreateTube("rope_"+key+i,{path,radius:hot?.008:(steelKeys[key]?.003:.006),tessellation:10},B3.scene);
+        // Tube U runs around each ring, V along the path. Physical repeat length
+        // keeps a short tackle fall and a long halyard at the same braid scale.
+        const uv=t2.getVerticesData(BABYLON.VertexBuffer.UVKind);
+        let length=0; for(let n=1;n<path.length;n++) length+=BABYLON.Vector3.Distance(path[n-1],path[n]);
+        for(let n=1;n<uv.length;n+=2) uv[n]*=length/.28;
+        t2.setVerticesData(BABYLON.VertexBuffer.UVKind,uv);
         t2.material=hot?B3.ropeHi:(steelKeys[key]?B3.steelMat:(B3.ropeMats[key]||B3.ropeMat)); t2.parent=B3.boat; return t2;
       });
     }
@@ -2677,7 +2842,7 @@ function tick3D(){
     } else if(B3.puffs){ B3.puffs.setEnabled(false); B3.dyeR=null; }
     if($("hud3d")) $("hud3d").innerHTML=
       `${fmt1(r.speed)} kt &nbsp;·&nbsp; heel ${fmt1(r.heel)}° &nbsp;·&nbsp; leeway ${fmt1(r.leeway)}°<br>`+
-      `main twist ${fmt1(r.main.twist)}° · belly ${(r.main.depth*100).toFixed(0)}% &nbsp;·&nbsp; jib twist ${fmt1(r.jib.twist)}° · power ${Math.round(r.eff*100)}%`+
+      `main twist ${fmt1(r.main.twist)}° · belly ${(r.main.depth*100).toFixed(0)}% &nbsp;·&nbsp; jib twist ${fmt1(r.jib.twist)}°`+
       `<br><span style="opacity:.8">${ttReadout(r)}</span>`;
     B3dirty=false;
   }
@@ -2696,6 +2861,7 @@ function tick3D(){
     // and the sails rippled on slower machines / busy tabs
     const CDT=1/60;
     B3.clothAcc=Math.min((B3.clothAcc||0)+dt, CDT*3);
+    if(stillUpdate) B3.clothAcc=CDT*20;
     let rowsM=null, rowsJ=null;
     while(B3.clothAcc>=CDT){
       B3.clothAcc-=CDT;
@@ -2709,14 +2875,14 @@ function tick3D(){
   }
   // heel to port (+z down means rotate.x negative in LH — sign tuned visually)
   const target=-S*rad(r.heel);                       // heel to leeward, whichever side that is
-  B3.heelCur += (target-B3.heelCur)*Math.min(1,dt*3);
+  B3.heelCur += (target-B3.heelCur)*(B3.paused?1:1-Math.exp(-dt*3));
   B3.boat.rotation.x=B3.heelCur;
-  const rud=B3.scene.getMeshByName("rudder");
-  if(rud) rud.rotation.y += ((S*rad(clamp(r.helm,-6,15))) - rud.rotation.y)*Math.min(1,dt*4);
+  const rud=B3.rudder;
+  if(rud) rud.rotation.y += ((S*rad(clamp(r.helm,-6,15))) - rud.rotation.y)*(B3.paused?1:1-Math.exp(-dt*4));
   B3.boat.rotation.z=Math.sin(B3.t*.8)*.012 + clamp(r.speed,0,7)*.004; // gentle pitch + bow-up with speed
   // heeled hull rotates about the keel line here, so add the buoyant rise a
   // real hull gets as its leeward volume immerses
-  B3.boat.position.y=Math.sin(B3.t*.62)*.06 + .42 + (1-Math.cos(B3.heelCur))*1.1;
+  B3.boat.position.y=Math.sin(B3.t*.62)*.025 + (1-Math.cos(B3.heelCur))*.30;
 }
 
 /* ================= AI COACH =================
@@ -2970,6 +3136,7 @@ $("railTabs").addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
   $("controls").dataset.rt=b.dataset.rt;
   [...$("railTabs").children].forEach(c=>c.classList.toggle("on",c===b));
+  [...$("railTabs").children].forEach(c=>c.setAttribute("aria-pressed",String(c===b)));
 });
 $("coachFab").addEventListener("click",()=>{ $("coachPanel").classList.toggle("open");
   if(!$("coachLog").childElementCount) coachNote("Ask about trim, or say “demonstrate how I can add more twist” — the coach will move the sliders and explain.");
