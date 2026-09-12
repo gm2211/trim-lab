@@ -78,6 +78,13 @@ frame.onload=async()=>{
     check('Solid vang and wooden tiller are imported',w.eval('B3.rigidVang.getChildMeshes().length===2 && B3.scene.getTransformNodeByName("woodenTiller").getChildMeshes().some(m=>m.material.name==="wood")'));
     check('Drawn tackle span matches physics constraint',w.eval('Math.abs(B3.mainSheetFalls.reduce((sum,[a,b])=>sum+BABYLON.Vector3.Distance(a,b),0)/4-mainSheetSpan(B3.boomShow,B3.travCar.position.z))<1e-6'));
     check('Halyard tails hang beside companionway',w.eval('["halyard","jhal","cunn","vang"].every(k=>{const p=B3.ropePaths[k].at(-1).at(-1);return p.x<.25&&p.x>.10&&p.y>.6&&p.y<1.1})'));
+    check('Control tails clear both winches including highlighted rope thickness',w.eval(`(()=>{
+      return ["halyard","jhal","cunn","vang","outhaul"].every(key=>B3.ropePaths[key].every(path=>path.slice(1).every((b,i)=>{
+        const a=path[i];
+        return [-1,1].every(side=>Array.from({length:65},(_,j)=>BABYLON.Vector3.Lerp(a,b,j/64)).every(p=>
+          p.y<RIG.winchY-.08-.008 || p.y>RIG.winchY+.19+.008 || Math.hypot(p.x-RIG.winchX,p.z-side*RIG.winchZ)>.115+.008));
+      })));
+    })()`));
     check('All rope paths remain finite',w.eval('Object.values(B3.ropePaths).flat(2).every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z))'));
     if(w.document.querySelector('#pause3d').getAttribute('aria-pressed')!=='true') w.document.querySelector('#pause3d').click();
     const routing=w.eval(`(()=>{
