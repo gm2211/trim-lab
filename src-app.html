@@ -2949,11 +2949,39 @@ function clothResolveContacts(){
     }
   }
 }
+// Display purchase beside the rigid support, with both sheaves in the rope plane.
+// Boom pitch remains supported; this animates the exposed control line, not a
+// second boom-height solver. Easing adds sag; hauling removes it continuously.
+function vangTackle(bottom,top,tension,t,aws){
+  const axis=top.subtract(bottom).normalize();
+  const normal=BABYLON.Vector3.Cross(V3(0,1,0),axis).normalize();
+  const across=BABYLON.Vector3.Cross(axis,normal).normalize();
+  const low=bottom.subtract(normal.scale(.135)),high=top.subtract(normal.scale(.135));
+  const radius=.039,groove=-.0275*.65;
+  const point=(center,x,y)=>center.add(across.scale(x)).add(axis.scale(y-.005*.65)).add(normal.scale(groove));
+  const ease=1-clamp(tension,0,1),sag=.15*ease*ease;
+  const fall=(a,b,phase)=>Array.from({length:17},(_,i)=>{
+    const u=i/16,envelope=Math.sin(Math.PI*u)**2;
+    const flutter=.014*ease*clamp(aws/18,0,1)*Math.sin(t*3.1+phase+u*2.4);
+    return BABYLON.Vector3.Lerp(a,b,u).add(V3(0,-sag*envelope,0))
+      .subtract(normal.scale((sag*.35+flutter)*envelope));
+  });
+  const arc=(center,start,end)=>Array.from({length:15},(_,i)=>{
+    const a=lerp(start,end,i/14);return point(center,radius*Math.cos(a),radius*Math.sin(a));
+  });
+  const falls=[fall(point(low,-radius,0),point(high,-radius,0),0),
+    fall(point(high,radius,0),point(low,radius,0),1.7)];
+  return {low,high,axis,across,normal,falls,
+    rotation:BABYLON.Vector3.RotationFromAxis(across,axis,normal),
+    path:[...falls[0],...arc(high,Math.PI,0).slice(1),...falls[1].slice(1),...arc(low,0,-Math.PI).slice(1)]};
+}
 function tick3D(elapsed){
   if(!B3||!lastR) return;
   const r=lastR, dt=B3.paused?0:clamp(elapsed??B3.engine.getDeltaTime()/1000,0,.05);
   const stillUpdate=B3.paused&&B3dirty;
   B3.t+=dt;
+  if(B3.vangShow===undefined||stillUpdate) B3.vangShow=state.vang;
+  else B3.vangShow+=(state.vang-B3.vangShow)*(1-Math.exp(-dt*8));
   // Display angles are signed by tack (+ = set to port). Both sails respond
   // to wind moments, with their moving anchors restrained by sheet length.
   const S=tackSign();
@@ -3012,7 +3040,6 @@ function tick3D(elapsed){
     B3.tubes={};
     const boomDir=V3(-Math.cos(d),0,Math.sin(d));
     const boomEnd=V3(RIG.mastX,RIG.boomY,0).add(boomDir.scale(RIG.boomLength));
-    const boomVangPt=V3(RIG.mastX,RIG.boomY,0).add(boomDir.scale(1.15));
     // main clew actually slides along the boom with the outhaul
     const footLen=RIG.mainFoot*(1-(1-state.outhaul)*.09);
     const mClew=V3(RIG.mastX,RIG.boomY+.045,0).add(boomDir.scale(footLen));
@@ -3144,16 +3171,19 @@ function tick3D(elapsed){
       ...arc(cb.add(V3(0,0,-.0275)),R,0,-Math.PI).slice(1),...fall(cb.add(V3(-R,0,-.0275)),bb.add(V3(-R,0,.0275))).slice(1),
       ...arc(bb.add(V3(0,0,.0275)),R,Math.PI,Math.PI*1.5).slice(1),front.add(V3(0,-R,0)),...arc(front,R,Math.PI*1.5,Math.PI*2).slice(1),...fall(front.add(V3(R,0,0)),ratchet.add(V3(R,0,0)))];
     const mainTail=coil(V3(RIG.pedestalX-.18,.23,.26));
-    const vangTop=B3.vangBlock.position,vangLow=V3(RIG.mastX-.08,1.12,0);
+    const vang=vangTackle(vangBottom,vangUpper,B3.vangShow,B3.t,r.aws);
+    B3.vangBase.position=vang.low;B3.vangBlock.position=vang.high;
+    B3.vangBase.rotation.copyFrom(vang.rotation);B3.vangBlock.rotation.copyFrom(vang.rotation);
+    B3.vangFalls=vang.falls;
+    const vangLane=lane(-.14,V3(RIG.mastX-.10,1.15,-.14));
+    const vangLead=sagLine(vang.path.at(-1),vangLane[0],0,p=>trunkTopY(p.x,p.z)+.018,14);
     B3.mainSheetFalls=[[cb,bb],[bb,cb],[cb,bb],[front,ratchet]];
     const ropes={
       sheet:[mainSheet.concat(sagLine(mainSheet.at(-1),mainTail[0],.05,.23,14).slice(1),mainTail.slice(1))],
       jsheet:[working.path],
       jsheetw:[lazy.path],
       jcar:[],
-      vang:[[vangLow.add(V3(-.035,0,-.017)),vangTop.add(V3(-.035,0,-.017)),
-        ...arc(vangTop.add(V3(0,0,-.017)),.037,Math.PI,0).slice(1),vangLow.add(V3(.035,0,-.017)),
-        ...lane(-.14,V3(RIG.mastX-.10,1.15,-.14))]],
+      vang:[[...vang.path,...vangLead.slice(1),...vangLane.slice(1)]],
       // Outhaul and halyards run inside the extrusions. Only exposed ends show.
       outhaul:[[mClew,boomEnd.add(V3(0,.025,0))],lane(-.21,V3(RIG.mastX-.07,RIG.boomY-.06,-.07))],
       cunn:[[V3(RIG.mastX-.04,RIG.boomY+.24,.07),V3(RIG.mastX-.12,1.14,.14),...lane(.14,V3(RIG.mastX-.12,1.14,.14)).slice(1)]],

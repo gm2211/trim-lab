@@ -27,6 +27,12 @@ hanging halyard coils and separate jib sheet coils on the seats. Halyards and ou
 extrusions are not drawn as loose external diagonals. Rope color has braid and
 tracer detail, with metre-based UV repeats. Wind dye starts on to show airflow; its toggle clears the view for inspection.
 
+The vang purchase sits 13.5 cm beside the rigid support, with its blocks and
+rope arcs aligned to the support axis. The slider smoothly removes or adds
+bounded sag in both exposed falls; eased line has wind-scaled motion. This is
+a visual tension approximation, not a boom-pitch or rope-load solver. Pause
+freezes that motion, while paused trim edits show the selected setting immediately.
+
 ## Reference correction
 
 The supplied photos exposed substantial layout errors in the first model.
