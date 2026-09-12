@@ -59,12 +59,13 @@ stacking, keyboard wind control and accessible selection states.
 
 ## Verification
 
-- Eleven physics tests pass, including 120 extreme-state cases. Five earlier
-  regressions reproduce against the original source.
-- 36 browser WebGL checks cover imported Blender geometry, material readiness,
+- Twenty-one physics tests pass, covering equilibrium extremes, boom excitation,
+  damping, zero wind, lowered sails, timestep consistency and sheet constraints.
+- 52 browser WebGL checks cover imported Blender geometry, material readiness,
   map color spaces, manufactured hardware, shared layout anchors, matching tackle spans, hanging tails,
   finite rope paths, winch entry/exit tangencies, cylinder clearance, swiveling
-  jib fairlead grooves, tack mirroring, pause, physical rope UVs and camera distances.
+  jib fairlead grooves, tack mirroring, pause, physical rope UVs, camera distances,
+  luffing boom/cloth attachment and reused rope geometry.
 - Exported position/normal/UV counts and triangle indices are valid.
 - Actual deck/rigging close-ups and full-boat views reviewed in the browser.
 - Editable Blender scene rendered separately to verify its geometry.
@@ -72,6 +73,25 @@ stacking, keyboard wind control and accessible selection states.
   checks pass. Final pages are approximately 4.2 MB each.
 
 ## Limits
+
+### Luffing boom correction
+
+Previously, only the cloth flapped: the boom eased toward a fixed trim angle,
+and pinned foot particles could not move it. The main now has a reduced-order
+yaw integrator with estimated rotational inertia, aerodynamic restoring torque,
+alternating luff pressure, damping, and two-sided mainsheet length stops. Boom
+and cloth use the same prescribed gust and pressure-wave functions; cloth
+incidence uses the moving boom angle. The foot, blocks, rigid vang and rope
+anchors follow that angle on each frame. Rope meshes are reused when their
+topology stays unchanged. Pause preserves the current angle and momentum;
+changing trim while paused still allows inspection of the new equilibrium.
+
+These are approximate one-axis dynamics. The rigid vang supports boom height;
+vertical bounce, flexible spar motion, and two-way cloth reaction forces are
+not solved. Boom motion does not feed back into the steady-state speed/heel
+estimate. The pressure waveform and inertia are estimates, not measured rig
+calibration. Browser regression checks cover visible luffing swing, foot and
+tackle attachment, line limits, finite cloth, rope reuse and motion pause.
 
 The model is photo-referenced, not a dimension-verified CAD replica. Published
 LOA, beam and draft guided overall proportions; intermediate hull stations and

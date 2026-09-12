@@ -756,12 +756,79 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror)
   }
   return {drive, side, hm};
 }
+// The boom has one free rotational axis here: the rigid vang supports its
+// height. These are reduced-order dynamics, not a calibrated flexible rig.
+function mainBoomLimits(sheet, carZ){
+  const length=mainSheetSpan(0,0)+Math.pow(1-sheet,2)*4.4;
+  let lo=-88, hi=88;
+  // Find the shortest tackle span, including a traveler off the centerline.
+  for(let i=0;i<45;i++){
+    const a=(2*lo+hi)/3,b=(lo+2*hi)/3;
+    if(mainSheetSpan(a,carZ)<mainSheetSpan(b,carZ)) hi=b; else lo=a;
+  }
+  const center=(lo+hi)/2;
+  const minimum=mainSheetSpan(center,carZ);
+  // At full trim the tackle bottoms out. Moving the traveler cannot demand
+  // a line shorter than this geometry permits.
+  if(minimum>=length) return {min:center,max:center,length:minimum};
+  function edge(end){
+    if(mainSheetSpan(end,carZ)<=length) return end;
+    let inside=center,outside=end;
+    for(let i=0;i<40;i++){
+      const mid=(inside+outside)/2;
+      if(mainSheetSpan(mid,carZ)<=length) inside=mid; else outside=mid;
+    }
+    return inside;
+  }
+  return {min:edge(-88),max:edge(88),length};
+}
+function sailWindAt(r,t){
+  return {...r,aws:r.aws*(1+.10*Math.sin(t*1.3)+.05*Math.sin(t*3.1+1.7)+.04*Math.sin(t*.55+4)),
+    awa:r.awa+2.2*Math.sin(t*.9+2)+1.2*Math.sin(t*2.3)};
+}
+function luffPressure(t,hf,cf){
+  // Coherent pressure reversals move the spar; faster traveling waves flog
+  // the cloth. Shared forcing, rather than a separate animated boom offset.
+  return .65*Math.sin(t*5.3+hf*2.1)+.35*Math.sin(t*22+cf*20.4+hf*10.8);
+}
+function stepBoom(motion,r,controls,side,dt,t,limits){
+  if(dt<=0) return motion;
+  const inertia=28*RIG.boomLength*RIG.boomLength/3; // estimated spar + carried sail, kg m²
+  const hoist=clamp(controls.mainhal/.35,0,1);
+  const steps=Math.max(1,Math.ceil(dt/(1/120))),h=dt/steps;
+  for(let i=0;i<steps;i++){
+    const time=t-dt+(i+1)*h,wind=sailWindAt(r,time);
+    const q=.5*RHO_A*Math.pow(wind.aws*KT,2)*hoist;
+    let pulse=0,exposure=0;
+    for(let row=0;row<6;row++){
+      const hf=(row+.5)/6,lever=RIG.mainFoot*(1-.9*hf)*.55;
+      const aoa=wind.awa+7*hf-(side*motion.angle+r.main.twist*Math.pow(hf,1.15));
+      const luff=clamp((8-aoa)/8,0,1);
+      const weight=BOAT.main.area/6*lever;
+      pulse+=weight*luff*luffPressure(time,hf,.55);
+      exposure+=weight;
+    }
+    const target=side*clamp(r.main.boom+(q>0?wind.awa-r.awa:0),-88,88);
+    const error=rad(target-motion.angle);
+    // Mean aerodynamic restoring moment, alternating luff pressure, and
+    // angular drag act on inertia. The sheet only pulls at its length limit.
+    const stiffness=18+q*exposure*.65;
+    const damping=2*Math.sqrt(inertia*stiffness)*(.35+.45*controls.vang);
+    const torque=stiffness*Math.sin(error)+side*q*pulse*.65-damping*motion.velocity;
+    motion.velocity+=torque/inertia*h;
+    motion.angle+=deg(motion.velocity*h);
+    if(motion.angle<limits.min){motion.angle=limits.min;motion.velocity=Math.max(0,motion.velocity);}
+    if(motion.angle>limits.max){motion.angle=limits.max;motion.velocity=Math.min(0,motion.velocity);}
+  }
+  return motion;
+}
 function compute(){
   const s = state;
   const JIB_F=2.90, JIB_H=1.05+.19*2.90-RIG.carY-.06, JIB_ZCAR=RIG.jibTrackZ;   // jib foot, clew height above the car, track offset from centreline
   const twsKt = s.tws + (s.gust?6:0);
   const tws = twsKt*KT;
   const twa = s.twaOv ?? s.twaC ?? POS[s.posIdx].twa;
+  const mainLimits=mainBoomLimits(s.sheet,-s.trav*RIG.travelerHalfWidth);
 
   let V=2.0, heel=8, lee=3, r=null;
   PANEL.ok=false;                              // it 0 uses factor 1; deterministic per-compute
@@ -778,21 +845,6 @@ function compute(){
   updatePanel(out.main, {...out.jib, boom:out.jib.clew}, out.awa);
   return out;
 
-  // The mainsheet is an inextensible line: its paid-out length plus the traveler
-  // car position bound how far the boom can swing. Wind pressure carries the boom
-  // out only as far as the sheet allows; a short sheet with the car to windward
-  // drags the boom past centerline, exactly like the real tackle.
-  function sheetGeom(Ls, zc){
-    const dist=d=>mainSheetSpan(d,zc);
-    let best=null, bd=1e9, argmin=0;
-    for(let d=-30; d<=88; d+=.5){
-      const dd=dist(d);
-      if(dd<bd){bd=dd; argmin=d;}
-      if(dd<=Ls) best=d;
-    }
-    const ang=best===null?argmin:best;
-    return {ang, dist};
-  }
   // The jib sheet is an inextensible line from the clew to the fairlead car.
   // The clew swings on the foot's arc (2.90 m from the tack at x 3.72, 0.55 m
   // above the tack, matching sailPathArray); the car sits on the track at
@@ -817,11 +869,9 @@ function compute(){
     const mainTension = clamp((s.mainhal-.35)/.65, 0, 1);
     const draftM = clamp(.42 + .010*(twsKt-8) + .04*s.backstay - .13*s.cunn
       - .10*(mainTension-(.90-.35)/.65), .32, .60);
-    const Lsheet = mainSheetSpan(0,0) + Math.pow(1-s.sheet,2)*4.4;
-    const sg = sheetGeom(Lsheet, -s.trav*RIG.travelerHalfWidth);
     const boomWind = clamp(awa-5, -5, 88);                 // weathervane limit
-    const boomM = clamp(Math.min(boomWind, sg.ang), -28, 88);
-    const sheetSlack = Math.max(0, Lsheet - sg.dist(boomM));
+    const boomM = clamp(boomWind, mainLimits.min, mainLimits.max);
+    const sheetSlack = Math.max(0, mainLimits.length-mainSheetSpan(boomM,-s.trav*RIG.travelerHalfWidth));
     const leechJ = clamp(s.jsheet*(1-.5*s.jcar)*1.05 + .05*(1-s.jcar), 0, 1.1);
     const twistJ = clamp(34 - 30*leechJ, 5, 40);
     const depthJ = .08 + .075*(1 - .45*s.backstay - .40*s.jcar);
@@ -948,7 +998,7 @@ function coachAdvice(r){
   const tips=[]; const idl=r.idl; const off=r.off;
   const push=(sev,html)=>tips.push({sev,html});
 
-  if((state.twaC||POS[state.posIdx].twa)<27) push(32, "<b>In irons.</b> The bow is inside the no-sail zone — no sail trim can make lift here; the sails can only flap. Drag the wind back to at least the close-hauled mark to fill them.");
+  if((state.twaC??POS[state.posIdx].twa)<27) push(32, "<b>In irons.</b> The bow is inside the no-sail zone — no sail trim can make lift here; the sails can only flap. Drag the wind back to at least the close-hauled mark to fill them.");
   if(state.mainhal<.35) push(30, "<b>Main halyard released — the main is coming down.</b> Hoist it back up (halyard to the top of its range) before trimming anything else.");
   if(state.jhal<.35) push(28, "<b>Jib halyard released — the jib is dropping.</b> Hoist first, then set luff tension.");
   if(state.jsheetw>.25 && !r.jib.wow) push(26, "<b>The "+sideWord("jsheetw")+" jib sheet is hauled — the jib is backed.</b> That's how you heave-to on purpose; release it to sail normally.");
@@ -1006,7 +1056,7 @@ function renderTiles(r){
   const effV = OPT_R ? clamp(r.speed/Math.max(OPT_R.speed,.1),0,1) : r.eff;
   const effCls = effV>.92?"good":effV>.75?"warn":"crit";
   const effTxt = effV>.92?"✓ in the groove":effV>.75?"! trim off":"✕ way off";
-  const tw=state.twaC||POS[state.posIdx].twa;
+  const tw=state.twaC??POS[state.posIdx].twa;
   $("tiles").innerHTML = `
     <div class="tile"><div class="lbl">True wind</div><div class="num">${state.tws+(state.gust?6:0)}<small> kt</small></div>${pill(POS[state.posIdx].name.toLowerCase()+" "+Math.round(tw)+"°","mut")}</div>
     <div class="tile"><div class="lbl">Boat speed</div><div class="num">${fmt1(r.speed)}<small> kt</small></div>${pill("hull speed ≈ 6.0 kt","mut")}</div>
@@ -1189,7 +1239,7 @@ function renderDeck(r){
     const rx=cx+S*Math.sin(ra)*26, ry=sternY+Math.cos(ra)*26;
     out += `<line x1="${cx}" y1="${sternY-2}" x2="${rx}" y2="${ry}" stroke="${sev}" stroke-width="4" stroke-linecap="round"/>
       <text x="${cx+34}" y="${sternY+10}" font-size="12" fill="var(--ink3)">rudder ${fmt1(helmDeg)}° (×2.5)</text>`; }
-  out += `<text x="16" y="318" font-size="12.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° off centerline · ${Math.round(state.twaC||POS[state.posIdx].twa)}° true · rudder shows helm you must hold</text>`;
+  out += `<text x="16" y="318" font-size="12.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° off centerline · ${Math.round(state.twaC??POS[state.posIdx].twa)}° true · rudder shows helm you must hold</text>`;
   $("svg-deck").innerHTML = out;
   if($("deckHint")) $("deckHint").textContent=(S<0?"wind on port":"wind on starboard")+" · dotted = sheets";
 }
@@ -1298,7 +1348,7 @@ function jsheetLabel(r){
 function renderVals(){
   syncJibSheetRail();
   $("v-tws").textContent = state.tws+" kt"+(state.gust?" (+6 gust)":"");
-  { const tw=state.twaC||POS[state.posIdx].twa;
+  { const tw=state.twaC??POS[state.posIdx].twa;
     if($("twaBig")) $("twaBig").textContent = (tw<27?"In irons":POS[state.posIdx].name)+" \u00B7 "+Math.round(tw)+"\u00B0";
     if($("awCard")&&lastR) $("awCard").innerHTML = "Apparent wind is what the sails actually feel: <b>"+fmt1(lastR.aws)+" kt</b> at <b>"+Math.round(lastR.awa)+"\u00B0</b> off the bow."; }
   renderDial();
@@ -1385,7 +1435,7 @@ function renderNext(src){
   }
   const wrongWay = (src in OPT) && PREV_STATE &&
     Math.abs(state[src]-OPT[src]) > Math.abs(PREV_STATE[src]-OPT[src]) + .01;
-  const tw2=Math.round(state.twaC||POS[state.posIdx].twa);
+  const tw2=Math.round(state.twaC??POS[state.posIdx].twa);
   if(wd<=.06){
     nextEl.className="fx-zone fx-next good";
     $("fxMove").textContent="You're at the solver's best trim.";
@@ -1426,7 +1476,7 @@ function update(src){
 /* ---------------- wind compass dial ---------------- */
 function renderDial(){
   const el=$("windDial"); if(!el) return;
-  const twa=state.twaC||POS[state.posIdx].twa;
+  const twa=state.twaC??POS[state.posIdx].twa;
   const c=65, R=48;
   // needle follows the dragged side all the way around; trim physics is
   // tack-symmetric, so the model itself always holds starboard
@@ -2280,7 +2330,7 @@ function ensure3Dinner(canvas){
     pauseBtn.setAttribute("aria-pressed",String(B3.paused));
   };
   syncPause();
-  pauseBtn.addEventListener("click",()=>{ B3.paused=!B3.paused; B3dirty=true; syncPause(); });
+  pauseBtn.addEventListener("click",()=>{ B3.paused=!B3.paused; syncPause(); });
   const views={rig:[2.55,1.20,19,.3,5.1,0],deck:[2.3,.72,8,-.2,.8,0],sails:[2.2,1.15,12,.5,6,0],rigging:[3.0,1.02,4.7,-1.0,.90,0]};
   $("cameraViews").addEventListener("click",e=>{
     const button=e.target.closest("button"); if(!button) return;
@@ -2597,8 +2647,7 @@ function clothStep(kind, r, dt, t){
     // get a whisper of pressure plus the travelling flog wave
     const press=(luffRow?.1:.35)*aws*aws;
     let f=n.scale(press*dot);
-    if(luffRow){ const ph=t*22+ix*1.7+iy*.9;
-      f.addInPlace(n.scale(Math.sin(ph)*aws*aws*.9)); }
+    if(luffRow) f.addInPlace(n.scale(luffPressure(t,iy/(c.NR-1),ix/(NC-1))*aws*aws*.9));
     if(dropping){ // buckle seed so surplus cloth folds out of plane instead of collapsing flat
       const ph2=ix*2.3+iy*1.1;
       f.z+=Math.sin(ph2)*6*(1-hoist); f.x+=Math.cos(ph2*1.7)*3*(1-hoist); }
@@ -2642,21 +2691,27 @@ function tick3D(){
   const r=lastR, dt=B3.paused?0:clamp(B3.engine.getDeltaTime()/1000,0,.05);
   const stillUpdate=B3.paused&&B3dirty;
   B3.t+=dt;
-  // Display-frame sail angles are signed by tack (+ = set to port) and eased
-  // toward their targets, so a tack or gybe swings the boom and jib across the
-  // centreline instead of snapping to the mirror image.
+  // Display angles are signed by tack (+ = set to port). The main responds
+  // to wind moments and sheet stops; the jib retains its eased trim target.
   const S=tackSign();
   const tb=S*r.main.boom;
   const tc=S*r.jib.clew;
   if(B3.boomShow===undefined){ B3.boomShow=tb; B3.clewShow=tc; }
+  if(!B3.boomMotion) B3.boomMotion={angle:B3.boomShow,velocity:0};
+  if(B3dirty||!B3.boomLimits) B3.boomLimits=mainBoomLimits(state.sheet,-S*state.trav*RIG.travelerHalfWidth);
+  const previousBoom=B3.boomShow;
+  if(stillUpdate){ B3.boomMotion.angle=tb; B3.boomMotion.velocity=0; }
+  else stepBoom(B3.boomMotion,r,state,S,dt,B3.t,B3.boomLimits);
+  B3.boomShow=B3.boomMotion.angle;
+  const boomMoved=Math.abs(B3.boomShow-previousBoom)>1e-8;
   const kA=B3.paused?1:1-Math.exp(-dt*3.2);
-  B3.boomShow+=(tb-B3.boomShow)*kA; B3.clewShow+=(tc-B3.clewShow)*kA;
-  const swinging=Math.abs(tb-B3.boomShow)>.05||Math.abs(tc-B3.clewShow)>.05;
-  if(!swinging){ B3.boomShow=tb; B3.clewShow=tc; }
+  B3.clewShow+=(tc-B3.clewShow)*kA;
+  const swinging=boomMoved||Math.abs(tc-B3.clewShow)>.05;
+  if(!swinging) B3.clewShow=tc;
   const settled=!swinging&&B3.swingPrev; B3.swingPrev=swinging;
-  // the cloth retargets every frame of a swing, but the rigging tubes are
-  // rebuilt meshes, so they follow at ~8 Hz and snap exact once the swing ends
-  const rebuildRopes=B3dirty||settled||!B3.tubes||(B3.t-(B3.ropeT||0))>.12;
+  // Moving boom anchors and ropes stay together on every frame. Reuse tube
+  // meshes where topology is unchanged instead of allocating them each time.
+  const rebuildRopes=B3dirty||boomMoved||settled||!B3.tubes||(B3.t-(B3.ropeT||0))>.12;
   if(B3dirty||swinging||settled){
     const shM={boom:B3.boomShow,twist:r.main.twist,depth:r.main.depth,draft:r.main.draft,flip:S<0};
     const shJ={clew:B3.clewShow,twist:r.jib.twist,depth:r.jib.depth,draft:r.jib.draft,wow:r.jib.wow,flip:(S<0)!==!!r.jib.wow};
@@ -2685,7 +2740,7 @@ function tick3D(){
     // the sheet starts exactly where the cloth's clew particle is pinned
     const clew=pinJ[0][pinJ[0].length-1].clone();
     if(rebuildRopes){
-    if(B3.tubes){ for(const k in B3.tubes) B3.tubes[k].forEach(m=>m.dispose()); }
+    const oldTubes=B3.tubes||{};
     B3.tubes={};
     const boomDir=V3(-Math.cos(d),0,Math.sin(d));
     const boomEnd=V3(RIG.mastX,RIG.boomY,0).add(boomDir.scale(RIG.boomLength));
@@ -2793,7 +2848,8 @@ function tick3D(){
     const front=V3(RIG.mastX,RIG.boomY-RIG.blockDrop,0).add(boomDir.scale(RIG.sheetLeadRadius));
     const ratchet=V3(RIG.pedestalX,RIG.pedestalY,0);
     B3.sheetLead.position=front;B3.ratchet.position=ratchet;
-    const fall=(a,b)=>r.sheetSlack>.005?sagLine(a,b,Math.min(.35,r.sheetSlack),.50,12):[a,b];
+    const sheetSlack=Math.max(0,B3.boomLimits.length-mainSheetSpan(B3.boomShow,car.z));
+    const fall=(a,b)=>sheetSlack>.005?sagLine(a,b,Math.min(.35,sheetSlack),.50,12):[a,b];
     const mainSheet=[...fall(cb.add(V3(-R,0,-.0275)),bb.add(V3(-R,0,-.0275))),
       ...arc(bb.add(V3(0,0,-.0275)),R,Math.PI,0).slice(1),...fall(bb.add(V3(R,0,-.0275)),cb.add(V3(R,0,-.0275))).slice(1),
       ...arc(cb.add(V3(0,0,-.0275)),R,0,-Math.PI).slice(1),...fall(cb.add(V3(-R,0,-.0275)),bb.add(V3(-R,0,.0275))).slice(1),
@@ -2853,16 +2909,25 @@ function tick3D(){
       B3.tubes[key]=ropes[key].map((path,i)=>{
         const hot=key===B3.hiKey;
         // 10 mm braid, 6 mm wire; the highlighted line is drawn a touch heavier and glows
-        const t2=BABYLON.MeshBuilder.CreateTube("rope_"+key+i,{path,radius:hot?.008:(steelKeys[key]?.003:.006),tessellation:10},B3.scene);
+        const radius=hot?.008:(steelKeys[key]?.003:.006);
+        const old=oldTubes[key]?.[i];
+        const reuse=old&&old.metadata?.pathLength===path.length&&old.metadata?.radius===radius;
+        const t2=BABYLON.MeshBuilder.CreateTube("rope_"+key+i,{path,radius,tessellation:10,updatable:true,...(reuse?{instance:old}:{})},B3.scene);
+        t2.metadata={pathLength:path.length,radius};
         // Tube U runs around each ring, V along the path. Physical repeat length
         // keeps a short tackle fall and a long halyard at the same braid scale.
         const uv=t2.getVerticesData(BABYLON.VertexBuffer.UVKind);
         let length=0; for(let n=1;n<path.length;n++) length+=BABYLON.Vector3.Distance(path[n-1],path[n]);
-        for(let n=1;n<uv.length;n+=2) uv[n]*=length/.28;
+        // Instance updates preserve UVs; derive the repeat from ring index so
+        // successive updates do not multiply the previous frame's repeat.
+        for(let n=1;n<uv.length;n+=2) uv[n]=Math.floor((n-1)/2/11)/(path.length-1)*length/.28;
         t2.setVerticesData(BABYLON.VertexBuffer.UVKind,uv);
         t2.material=hot?B3.ropeHi:(steelKeys[key]?B3.steelMat:(B3.ropeMats[key]||B3.ropeMat)); t2.parent=B3.boat; return t2;
       });
     }
+    for(const key in oldTubes) oldTubes[key].forEach((old,i)=>{
+      if(B3.tubes[key]?.[i]!==old) old.dispose();
+    });
     B3.ropeT=B3.t;
     }
     // wind dye streamlines (steady flow -> rebuild only when trim changes)
@@ -2884,9 +2949,9 @@ function tick3D(){
   if(CLOTH.main){
     // atmospheric turbulence: ~10% speed modulation + direction wander, so the
     // cloth breathes — laboratory-steady wind would hold a trimmed sail rigid
-    const g=1+.10*Math.sin(B3.t*1.3)+.05*Math.sin(B3.t*3.1+1.7)+.04*Math.sin(B3.t*.55+4);
-    const rT=Object.assign({},r);
-    rT.aws=r.aws*g; rT.awa=r.awa+2.2*Math.sin(B3.t*.9+2)+1.2*Math.sin(B3.t*2.3);
+    const rT=sailWindAt(r,B3.t);
+    rT.main={...r.main,boom:S*B3.boomShow};
+    rT.jib={...r.jib,clew:S*B3.clewShow};
     // fixed 60 Hz substeps: forces enter the Verlet update as f*dt*dt, so a
     // 30 fps frame used to push the cloth 4x harder per step than a 60 fps one
     // and the sails rippled on slower machines / busy tabs
