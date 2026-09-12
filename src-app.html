@@ -1591,8 +1591,7 @@ function renderDial(){
   const el=$("windDial"); if(!el) return;
   const twa=state.twaC??POS[state.posIdx].twa;
   const c=65, R=48;
-  // needle follows the dragged side all the way around; trim physics is
-  // tack-symmetric, so the model itself always holds starboard
+  // Both direction indicators follow the signed wind bearing on either tack.
   const twaS=twa*(state.twaSide||1);
   el.setAttribute("aria-valuenow",String(Math.round(twaS)));
   el.setAttribute("aria-valuetext",`${Math.round(twa)} degrees, wind on ${twaS<0?"port":"starboard"}`);
@@ -1634,7 +1633,7 @@ function renderDial(){
     <circle cx="${c}" cy="${c}" r="${R}" fill="var(--panel2)" stroke="var(--line)"/>
     ${zones}${seps}
     ${ticks}
-    <path d="M ${c} ${c-24} L ${c-7} ${c+18} L ${c} ${c+12} L ${c+7} ${c+18} Z" fill="var(--ink2)"/>
+    <path d="M ${c} ${c-24} L ${c-7} ${c+18} L ${c} ${c+12} L ${c+7} ${c+18} Z" fill="var(--ink2)" transform="rotate(${twaS} ${c} ${c})"/>
     <line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="var(--teal)" stroke-width="3" stroke-linecap="round"/>
     <path d="M ${bx} ${by} l ${(c-bx)*.28} ${(c-by)*.28}" stroke="var(--teal)" stroke-width="3" stroke-linecap="round"/>
     <circle cx="${ax}" cy="${ay}" r="7" fill="var(--teal)" opacity=".25"/>`;
