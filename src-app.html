@@ -264,6 +264,7 @@
     background:rgba(10,20,26,.65);color:#fff;border:1.5px solid rgba(255,255,255,.5)}
   .dye-btn.on{background:var(--accent);border-color:var(--accent)}
   .dye-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .controls .dye-btn{position:static;display:block;width:100%;min-height:44px;margin-top:12px}
   /* ============ AI COACH ============ */
   .coach-fab{font-family:var(--disp);letter-spacing:.08em;text-transform:uppercase;font-size:12px;font-weight:700;
     padding:7px 14px;border-radius:3px;cursor:pointer;background:var(--accent);color:#fff;border:none}
@@ -438,6 +439,7 @@
         <div class="twa-big" id="twaBig"></div>
         <div class="twa-hint" id="twaHint">drag the dial to change heading</div>
         <div class="aw-card" id="awCard"></div>
+        <button id="dyeBtn" class="dye-btn on" aria-pressed="true">wind dye: on</button>
       </div>
       <div class="ctl-group" data-g="main">
         <div class="ctl"><div class="row1"><label for="sheet">Mainsheet</label><span class="val" id="v-sheet"></span></div>
@@ -482,7 +484,6 @@
             <button data-view="rig">Full rig</button><button data-view="deck">Deck detail</button><button data-view="sails">Sail detail</button><button data-view="rigging">Rigging</button>
           </div>
           <div class="scene-toggles" role="group" aria-label="Visual aids">
-            <button id="dyeBtn" class="dye-btn on" aria-pressed="true">wind dye: on</button>
             <button id="ttBtn" class="dye-btn on" aria-pressed="true">telltales: on</button>
             <button id="pause3d" aria-pressed="false">Pause motion</button>
           </div>
