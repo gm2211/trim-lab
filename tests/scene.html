@@ -8,11 +8,22 @@
 <p><button onclick="inspectJib(1)">Inspect port jib gear</button> <button onclick="inspectJib(-1)">Inspect starboard jib gear</button> <button onclick="inspectLuff()">Inspect luffing boom</button> <button onclick="inspectJibLuff()">Inspect luffing jib sheets</button> <button onclick="inspectTiller()">Inspect tiller clearance</button> <button onclick="inspectSail(1)">Inspect port sail face</button> <button onclick="inspectSail(-1)">Inspect starboard sail face</button></p>
 <p><button onclick="inspectSails(1)">Inspect starboard tack slot</button> <button onclick="inspectSails(-1)">Inspect port tack slot</button></p>
 <p><button onclick="inspectGrazing(1)">Inspect grazing jib</button> <button onclick="inspectGrazing(-1)">Inspect opposite grazing jib</button></p>
-<p><button onclick="inspectTelltales(1)">Inspect red port yarn</button> <button onclick="inspectTelltales(-1)">Inspect green starboard yarn</button></p>
+<p><button onclick="inspectStreamingJib()">Inspect solved-trim streaming</button> <button onclick="inspectTelltales(1)">Inspect red port yarn</button> <button onclick="inspectTelltales(-1)">Inspect green starboard yarn</button></p>
 <iframe title="Simulator under test"></iframe>
 <script>
 const frame=document.querySelector('iframe'), results=document.querySelector('#results');
 const check=(name,pass)=>{const li=document.createElement('li');li.textContent=(pass?'PASS: ':'FAIL: ')+name;li.className=pass?'':'fail';results.append(li);};
+function inspectStreamingJib(){
+  frame.style.height='900px';
+  frame.contentWindow.eval(`Object.assign(state,{tws:12,twaSide:1,twaC:45,posIdx:0,gust:false,jsheetw:0,mainhal:.9,jhal:.9});
+    Object.assign(state,solvePerfectTrim(true));B3.paused=true;update('jsheet');tick3D();
+    const rows=clothRows('jib'),a=rows[5][3],t=rows[5][4].subtract(rows[5][2]).normalize(),u=rows[6][3].subtract(rows[4][3]).normalize();
+    stepTelltales(clothRows('main'),rows,lastR,1);
+    const n=BABYLON.Vector3.Cross(u,t).normalize();if(n.z<0)n.scaleInPlace(-1);
+    B3.boat.computeWorldMatrix(true);const world=B3.boat.getWorldMatrix(),target=BABYLON.Vector3.TransformCoordinates(a.add(t.scale(.10)),world),normal=BABYLON.Vector3.TransformNormal(n,world).normalize();
+    B3.cam.lowerRadiusLimit=.25;B3.cam.setTarget(target);B3.cam.setPosition(target.add(normal.scale(.65)));B3.engine.resize();B3.scene.render();`);
+  frame.scrollIntoView();
+}
 function inspectTelltales(side){
   frame.style.height='900px';
   frame.contentWindow.eval(`Object.assign(state,{twaSide:1,twaC:55,sheet:.85,jsheet:.7,jsheetw:0,jhal:.9});B3.paused=true;update('jsheet');tick3D();
