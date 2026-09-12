@@ -26,6 +26,7 @@ const CASES=[
   ['beam reach',{tws:12,posIdx:2,twaC:90,jsheetw:0}],
   ['run',{tws:12,posIdx:4,twaC:165,sheet:.1,vang:.7,jsheet:.1,jsheetw:.75}],
   ['backed jib',{tws:12,posIdx:0,twaC:45,jsheet:.75,jsheetw:.75}],
+  ['reefed main',{tws:20,posIdx:0,twaC:45,reef2:1}],
 ];
 
 function freeStream(r,y) {
@@ -87,6 +88,17 @@ test('backed jib carries no attached-flow circulation',()=>{
   assert.equal(r.jib.backed,true,'fixture did not back the jib');
   for(const row of api.PANEL.H)
     assert.ok(row.g.slice(row.split).every(value=>value===0),'backed jib retained bound circulation');
+});
+
+test('reefed field follows the shortened main geometry',()=>{
+  run({tws:20,posIdx:0,twaC:45,reef2:1});
+  const lower=api.PANEL.H.find(row=>row.y===6.2),upper=api.PANEL.H.find(row=>row.y===8.4);
+  assert.equal(lower.split,4,'main disappeared below the reefed head');
+  assert.equal(lower.polys.length,2,'lower field omitted a sail element');
+  assert.equal(upper.split,0,'main circulation remained above the reefed head');
+  assert.equal(upper.polys.length,1,'upper field retained main geometry');
+  assert.ok(upper.element.every(index=>index===0),'single-jib station indices are inconsistent');
+  assert.deepEqual(Array.from(upper.span[0]),[1.05,10.05]);
 });
 
 function clamp(value,lo,hi){ return Math.max(lo,Math.min(hi,value)); }

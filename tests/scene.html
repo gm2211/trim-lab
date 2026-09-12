@@ -470,6 +470,23 @@ frame.onload=async()=>{
     for(const sample of yarnPixels)check(
       'Yarn occlusion on tack '+sample.tack+', face '+sample.face+': '+sample.near+' near / '+sample.far+' far pixels',
       sample.near>20 && sample.far<=8);
+    const reefChecks=w.eval(`(()=>{
+      const saved={...state},paused=B3.paused,checks=[];
+      try{
+        B3.paused=true;
+        for(const side of [1,-1])for(const level of [0,1,2,0]){
+          Object.assign(state,{twaSide:side,twaC:60,mainhal:.9,reef1:level===1?1:0,reef2:level===2?1:0});
+          update(level===2?'reef2':'reef1');tick3D();B3.scene.render();
+          const rows=clothRows('main'),head=rows.at(-1)[0],reef=mainReef();
+          const finite=B3.ropePaths.reef1.concat(B3.ropePaths.reef2).every(path=>path.every(p=>[p.x,p.y,p.z].every(Number.isFinite)));
+          checks.push({side,level,pass:Math.abs(head.y-(RIG.boomY+.045+9*reef.height))<.001 && finite &&
+            B3.tubes.reef1.length===2 && B3.tubes.reef2.length===2 &&
+            (!!B3.reefBundle?.isEnabled())===(level>0) && lastR.main.reef===level});
+        }
+        return checks;
+      } finally {Object.assign(state,saved);update('sheet');tick3D();B3.paused=paused;}
+    })()`);
+    for(const sample of reefChecks)check('Reef '+sample.level+' cloth, pennants and bundle on tack '+sample.side,sample.pass);
     w.document.querySelector('[data-view="rigging"]').click();
     document.title=results.querySelector('.fail')?'FAIL: Trim Lab scene checks':'PASS: Trim Lab scene checks';
   }catch(error){check(error.message,false); document.title='FAIL: Trim Lab scene checks';}

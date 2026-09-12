@@ -74,6 +74,7 @@
   .ctl .val{font-family:var(--mono);font-size:11px;color:var(--ink2);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .ctl .val .opt{color:var(--good);font-weight:700}
   .ctl .sub{font-size:11px;color:var(--ink3);margin:-1px 0 3px}
+  #reefNote{font-size:11px;line-height:1.45;color:var(--ink2);margin:0 0 8px}
   .rail-legend{display:flex;justify-content:flex-end;align-items:center;gap:5px;font-size:10.5px;color:var(--ink3);margin-bottom:6px}
   .rail-legend i{display:inline-block;width:3px;height:11px;background:var(--good);border-radius:1px}
   .ctl-group h3{margin:0 0 5px}
@@ -456,6 +457,11 @@
           <input type="range" id="backstay" min="0" max="100" value="35"></div>
         <div class="ctl"><div class="row1"><label for="mainhal">Main halyard</label><span class="val" id="v-mainhal"></span></div>
           <input type="range" id="mainhal" min="0" max="100" value="90"></div>
+        <div class="ctl"><div class="row1"><label for="reef1">Reef 1 line</label><span class="val" id="v-reef1"></span></div>
+          <input type="range" id="reef1" min="0" max="100" step="100" value="0" aria-describedby="reefNote"></div>
+        <div class="ctl"><div class="row1"><label for="reef2">Reef 2 line</label><span class="val" id="v-reef2"></span></div>
+          <input type="range" id="reef2" min="0" max="100" step="100" value="0" aria-describedby="reefNote"></div>
+        <div id="reefNote" class="sub">Each setting simulates easing the halyard, securing the reef tack and clew, then re-tensioning. Reef 2 takes priority.</div>
       </div>
       <div class="ctl-group" data-g="jib">
         <div class="ctl"><div class="row1"><label for="jsheetP">Jib sheet · port</label><span class="val" id="v-jsheetP"></span></div>
@@ -7806,8 +7812,20 @@ const POS = [
 const state = {
   tws:12, posIdx:0, twaC:null, gust:false,
   sheet:.85, trav:0, vang:.40, outhaul:.50, cunn:.25, backstay:.35,
-  jsheet:.75, jsheetw:0, jcar:.50, jhal:.55, mainhal:.90,
+  jsheet:.75, jsheetw:0, jcar:.50, jhal:.55, mainhal:.90, reef1:0, reef2:0,
 };
+
+// Two slab reefs. Heights are training estimates, not sailmaker measurements.
+// A set reef includes the secured tack and halyard reset; mainhal still controls
+// hoist/tension relative to that reef. The deeper set line takes precedence.
+function mainReef(s=state){
+  const level=s.reef2>=.5?2:s.reef1>=.5?1:0;
+  const fraction=[0,.16,.30][level], height=1-fraction;
+  const foot=1-.90*Math.pow(fraction,1.05);
+  const integral=h=>h-.90/2.05*Math.pow(h,2.05);
+  const areaScale=(integral(1)-integral(fraction))/integral(1);
+  return {level,fraction,height,foot,areaScale};
+}
 
 /* ---------------- physics ---------------- */
 function ideals(tws, awa){
@@ -7876,7 +7894,7 @@ function panelSolve(els, awa){
   return {vor,g,sums};
 }
 function updatePanelFactors(shM, shJ, awa){
-  const hf=.5, chM=RIG.mainFoot*(1-.9*hf), chJ=2.9*(1-.9*hf);
+  const hf=.5, chM=RIG.mainFoot*mainReef().foot*(1-.9*hf), chJ=2.9*(1-.9*hf);
   const angM=shM.boom+shM.twist*Math.pow(hf,1.15);
   const angJ=shJ.boom+shJ.twist*Math.pow(hf,1.15);
   const elM=panelElement(RIG.mastX, chM, angM, shM.depth, shM.draft, 20);
@@ -7894,16 +7912,21 @@ function updatePanel(shM, shJ, awa){
   // unchanged; these per-height strengths are bounded by the lift a finite,
   // possibly separated sail section can actually carry.
   PANEL.H=[];
-  for(const y of [2.2,5,7.8]){
-    const hfM=clamp((y-RIG.boomY-.045)/9.0,0,.98), hfJ=clamp((y-1.05)/9,0,.98);
-    const cM=RIG.mainFoot*(1-.90*Math.pow(hfM,1.05)), cJ=2.9*(1-.94*Math.pow(hfJ,1.05));
-    const wow=!!shJ.wow;
-    const aM=shM.boom+shM.twist*Math.pow(hfM,1.15);
+  for(const y of [1.8,4,6.2,8.4]){
+    const reef=mainReef(),topM=RIG.boomY+.045+9*reef.height;
+    const hfM=clamp((y-RIG.boomY-.045)/(9*reef.height),0,.98),hfJ=clamp((y-1.05)/9,0,.98);
+    const cM=RIG.mainFoot*(1-.90*Math.pow(reef.fraction+reef.height*hfM,1.05)),cJ=2.9*(1-.94*Math.pow(hfJ,1.05));
+    const wow=!!shJ.wow,aM=shM.boom+shM.twist*Math.pow(hfM,1.15);
     const aJ=shJ.boom+(wow?-1:1)*shJ.twist*Math.pow(hfJ,1.15);
     const camM=shM.depth*(1-.25*hfM),camJ=shJ.depth*(1-.25*hfJ);
     const eM=panelElement(RIG.mastX,cM,aM,camM,shM.draft,16);
     const eJ=panelElement(3.72+(RIG.mastX+.03-3.72)*hfJ,cJ,aJ,wow?-camJ:camJ,shJ.draft,16);
-    const sol=panelSolve([eM,eJ],awa);
+    const hasMain=y<=topM;
+    const entries=hasMain?
+      [{poly:eM,chord:cM,cam:camM,aoa:awa-aM,hoist:state.mainhal,span:[RIG.boomY+.045,topM],jib:false},
+       {poly:eJ,chord:cJ,cam:camJ,aoa:wow?awa+Math.abs(aJ)-180:awa-aJ,hoist:state.jhal,span:[1.05,10.05],jib:true}]:
+      [{poly:eJ,chord:cJ,cam:camJ,aoa:wow?awa+Math.abs(aJ)-180:awa-aJ,hoist:state.jhal,span:[1.05,10.05],jib:true}];
+    const sol=panelSolve(entries.map(entry=>entry.poly),awa);
     if(sol){
       const liftGamma=(aoa,cam,chord)=>{
         const incidence=Math.abs(aoa),stallA=11+55*Math.abs(cam),clmax=.95+2.5*Math.abs(cam);
@@ -7918,27 +7941,27 @@ function updatePanel(shM, shJ, awa){
         }
         return .5*cl*chord;
       };
-      const aoaM=awa-aM,aoaJ=wow?awa+Math.abs(aJ)-180:awa-aJ;
-      const rawM=sol.sums[0],rawJ=sol.sums[1];
-      const hoistM=Math.pow(clamp(state.mainhal/.35,0,1),1.6);
-      const hoistJ=Math.pow(clamp(state.jhal/.35,0,1),1.6);
-      const scaleM=Math.min(1,liftGamma(aoaM,camM,cM)/Math.max(Math.abs(rawM),1e-9))*hoistM;
-      const scaleJ=(shJ.backed?0:Math.min(1,liftGamma(aoaJ,camJ,cJ)/Math.max(Math.abs(rawJ),1e-9)))*hoistJ;
-      const rawG=sol.g.map((v,i)=>v*(i<eM.length-1?scaleM:scaleJ)),rawSplit=eM.length-1;
+      const scales=entries.map((entry,i)=>(entry.jib&&shJ.backed?0:
+        Math.min(1,liftGamma(entry.aoa,entry.cam,entry.chord)/Math.max(Math.abs(sol.sums[i]),1e-9)))
+        *Math.pow(clamp(entry.hoist/.35,0,1),1.6));
       // Four stations per element retain the chordwise shape and slot while
       // keeping the per-puff field cheap enough for a full smoke rake.
-      const vor=[],g=[];
-      for(const [start,end] of [[0,rawSplit],[rawSplit,rawG.length]]) for(let bin=0;bin<4;bin++){
-        const lo=Math.round(start+(end-start)*bin/4),hi=Math.round(start+(end-start)*(bin+1)/4);
+      const vor=[],g=[],element=[];let rawStart=0;
+      for(let ei=0;ei<entries.length;ei++){
+        const rawEnd=rawStart+entries[ei].poly.length-1;
+        for(let bin=0;bin<4;bin++){
+        const lo=Math.round(rawStart+(rawEnd-rawStart)*bin/4),hi=Math.round(rawStart+(rawEnd-rawStart)*(bin+1)/4);
         let sx=0,sz=0,sg=0;
-        for(let i=lo;i<hi;i++){ sx+=sol.vor[i][0];sz+=sol.vor[i][1];sg+=rawG[i]; }
-        vor.push([sx/(hi-lo),sz/(hi-lo)]);g.push(sg);
+        for(let i=lo;i<hi;i++){ sx+=sol.vor[i][0];sz+=sol.vor[i][1];sg+=sol.g[i]*scales[ei]; }
+        vor.push([sx/(hi-lo),sz/(hi-lo)]);g.push(sg);element.push(ei);
+        }
+        rawStart=rawEnd;
       }
-      const split=4;
-      const center=[vor.slice(0,split),vor.slice(split)].map(points=>[
+      const center=entries.map((entry,ei)=>vor.filter((_,i)=>element[i]===ei)).map(points=>[
         points.reduce((sum,p)=>sum+p[0],0)/points.length,
         points.reduce((sum,p)=>sum+p[1],0)/points.length]);
-      PANEL.H.push({y,vor,g,polys:[eM,eJ],span:[[RIG.boomY+.045,RIG.boomY+.045+9],[1.05,10.05]],center,split});
+      const split=hasMain?4:0;
+      PANEL.H.push({y,vor,g,polys:entries.map(entry=>entry.poly),span:entries.map(entry=>entry.span),center,element,split});
     }
   }
 }
@@ -8119,16 +8142,17 @@ function stepBoom(motion,r,controls,side,dt,t,limits){
   if(dt<=0) return motion;
   const inertia=28*RIG.boomLength*RIG.boomLength/3; // estimated spar + carried sail, kg m²
   const hoist=clamp(controls.mainhal/.35,0,1);
+  const reef=mainReef(controls);
   const steps=Math.max(1,Math.ceil(dt/(1/120))),h=dt/steps;
   for(let i=0;i<steps;i++){
     const time=t-dt+(i+1)*h,wind=sailWindAt(r,time);
     const q=.5*RHO_A*Math.pow(wind.aws*KT,2)*hoist;
     let pulse=0,exposure=0;
     for(let row=0;row<6;row++){
-      const hf=(row+.5)/6,lever=RIG.mainFoot*(1-.9*hf)*.55;
+      const hf=(row+.5)/6,lever=RIG.mainFoot*reef.foot*(1-.9*hf)*.55;
       const aoa=wind.awa+7*hf-(side*motion.angle+r.main.twist*Math.pow(hf,1.15));
       const luff=clamp((8-aoa)/8,0,1);
-      const weight=BOAT.main.area/6*lever;
+      const weight=BOAT.main.area*reef.areaScale/6*lever;
       pulse+=weight*luff*luffPressure(time,hf,.55);
       exposure+=weight;
     }
@@ -8270,6 +8294,9 @@ function stepJibSheetSpan(span,a,b,length,wind,dt,t,side){
 }
 function compute(){
   const s = state;
+  const reef=mainReef(s);
+  const reefedMain={...BOAT.main,area:BOAT.main.area*reef.areaScale,
+    span:BOAT.main.span*reef.height,ar:BOAT.main.ar*reef.height**2/reef.areaScale};
   const JIB_F=2.90, JIB_H=1.05+.19*2.90-RIG.carY-.06, JIB_ZCAR=RIG.jibTrackZ;   // jib foot, clew height above the car, track offset from centreline
   const twsKt = s.tws + (s.gust?6:0);
   const tws = twsKt*KT;
@@ -8350,7 +8377,7 @@ function compute(){
     const shadowJ = awa>140 ? clamp(1-(awa-140)/40*.65, .35, 1) : 1;  // jib in main's shadow on a run
     const blanketJ = shadowJ*(1-sh.wowF) + 1*sh.wowF;                  // wing-on-wing flies in clear air
     const hoistM = clamp(s.mainhal/.35, 0, 1), hoistJ = clamp(s.jhal/.35, 0, 1);
-    const FM = segForces(sh.m, BOAT.main, tws, twa, V, heelR, 1, PANEL.ok?PANEL.fM:1, Math.pow(hoistM,1.6));
+    const FM = segForces(sh.m, reefedMain, tws, twa, V, heelR, 1, PANEL.ok?PANEL.fM:1, Math.pow(hoistM,1.6));
     const FJ = segForces(sh.j, BOAT.jib,  tws, twa, V, heelR, blanketJ, PANEL.ok?PANEL.fJ:1, Math.pow(hoistJ,1.6), sh.j.wow);
     const drive = FM.drive + FJ.drive;
     const side  = FM.side + FJ.side;
@@ -8415,7 +8442,8 @@ function compute(){
     const sheetT = taut ? Fn/(8*Math.max(sh.j.depth,.06))*(1+.6*(1-sn)) : 0;   // newtons
     const sheetSlackJ = Math.max(0,jb.length-actualSpan);  // active sheet, metres
     return {tws:twsKt, twa, aws:aws/KT, awa, upwind:sh.upwind, wowF:sh.wowF, off,
-      main:{...sh.m, aoa:aoaM, eff:M.eff, luff:M.luff, stall:M.stall},
+      main:{...sh.m, reef:reef.level, area:reefedMain.area, span:reefedMain.span,
+        aoa:aoaM, eff:M.eff, luff:M.luff, stall:M.stall},
       jib:{...sh.j, clew:sh.j.boom, aoa:aoaJ, eff:J.eff, luff:J.luff, stall:J.stall,
         sheetT, sheetSlack:sheetSlackJ, sheetLen:sh.j.sheetLen, eased:sh.j.eased, taut},
       idl, eff, heel:clamp(heel,0,40), helm, leeway:lee, sheetSlack:sh.m.slack, speed:V/KT};
@@ -8549,6 +8577,7 @@ function hArrow(tx,ty,awa,len,color,label){
     ${label?`<text x="${sx-2}" y="${sy-6}" font-size="12" fill="${color}" font-weight="700">${label}</text>`:""}</g>`;
 }
 function renderSections(r){
+  const reef=mainReef();
   const rows=[
     {lab:"HEAD", h:1.0, y:78,  Lm:120, Lj:84},
     {lab:"MID",  h:.55, y:186, Lm:172, Lj:120},
@@ -8566,14 +8595,16 @@ function renderSections(r){
     const mAng = tw(r.main), jAng = tw(r.jib);
     const T=tgt(r);
     const mIdl = T.mt*(Math.pow(row.h,1.15)-Math.pow(.15,1.15));
+    const physicalH=reef.fraction+reef.height*row.h;
     const depthTaper = 1-0.25*row.h;
+    const chordScale=(1-.90*Math.pow(physicalH,1.05))/Math.max(.08,1-.90*Math.pow(row.h,1.05));
     const awaLocal = r.awa + 7*row.h - (r.main.boom + r.main.twist*.15); // wind relative to foot chord
     out += `<line x1="24" y1="${row.y}" x2="616" y2="${row.y}" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"/>
       <text x="24" y="${row.y-8}" font-size="12.5" fill="var(--ink3)" letter-spacing="1.5">${row.lab}</text>
       <text x="238" y="${row.y-8}" font-size="10" fill="var(--ink2)" font-family="var(--mono)">+${fmt1(mAng)}° twist</text>`;
     out += hArrow(xm+34, row.y-14*S, clamp(awaLocal,12,150)*S, 40, "var(--teal)", ri===0?"apparent wind":"");
-    out += `<path class="sailpath" d="${hSection(xm,row.y,mIdl,row.Lm,T.md*depthTaper,T.mdr,false,S)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
-    { const g=hSectionGeom(xm,row.y,mAng,row.Lm,r.main.depth*depthTaper,r.main.draft,false,S);
+    out += `<path class="sailpath" d="${hSection(xm,row.y,mIdl,row.Lm*chordScale,T.md*depthTaper,T.mdr,false,S)}" fill="none" stroke="var(--ghost)" stroke-width="1.6" stroke-dasharray="5 5"/>`;
+    { const g=hSectionGeom(xm,row.y,mAng,row.Lm*chordScale,r.main.depth*depthTaper,r.main.draft,false,S);
       out += `<path class="sailpath" d="${g.d}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
       const [dx2,dy2]=g.at(r.main.draft), [tx2,ty2]=g.at(T.mdr);
       out += `<circle cx="${tx2}" cy="${ty2}" r="4" fill="none" stroke="var(--ghost)" stroke-width="1.4"/>`;
@@ -8588,12 +8619,13 @@ function renderSections(r){
       out += `<circle cx="${dx2}" cy="${dy2}" r="3.2" fill="var(--accent)" stroke="var(--bg)" stroke-width="1"/>`; }
     out += `<circle cx="${xj}" cy="${row.y}" r="3" fill="var(--ink)"/>`;
   });
-  out += `<text x="14" y="350" font-size="13" fill="var(--ink3)">Head opens +${fmt1(r.main.twist)}° · ● = draft (deepest point, cunningham/halyard move it) · ○ = its target.</text>`;
+  out += `<text x="14" y="350" font-size="13" fill="var(--ink3)">Head opens +${fmt1(r.main.twist)}°${reef.level?` · reef ${reef.level} main height ${Math.round(reef.height*100)}%`:""} · ● = draft (deepest point, cunningham/halyard move it) · ○ = its target.</text>`;
   $("svg-sections").innerHTML = out;
 }
 
 /* ---------------- render: deck view ---------------- */
 function renderDeck(r){
+  const reef=mainReef();
   const cx=150, bowY=38, sternY=300, mastY=135, tackY=64, S=tackSign();
   const boomD=S*r.main.boom, clewD=S*r.jib.clew;   // display angles: + swings to port
   const hull = `M ${cx} ${bowY} C ${cx+34} ${bowY+50} ${cx+42} ${sternY-70} ${cx+34} ${sternY}
@@ -8605,7 +8637,7 @@ function renderDeck(r){
           <circle cx="${cx + S*state.trav*24}" cy="${sternY-18}" r="4.5" fill="var(--accent)"/>
           <text x="${cx}" y="${sternY-3}" font-size="12" fill="var(--ink3)" text-anchor="middle">traveler</text>`;
   // sail feet: aft is down, boom/clew swing to port (left), belly to leeward
-  out += `<path class="sailpath" d="${sectionPath(cx,mastY,boomD,118,r.main.depth,r.main.draft,S<0)}" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round"/>`;
+  out += `<path class="sailpath" d="${sectionPath(cx,mastY,boomD,118*reef.foot,r.main.depth,r.main.draft,S<0)}" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round"/>`;
   out += `<path class="sailpath" d="${sectionPath(cx,tackY,clewD,92,r.jib.depth,r.jib.draft,(S<0)!==!!r.jib.wow)}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
   out += `<circle cx="${cx}" cy="${mastY}" r="4" fill="var(--ink)"/><circle cx="${cx}" cy="${tackY}" r="3" fill="var(--ink)"/>`;
   // jib fairlead tracks + car + working sheet (port = leeward side)
@@ -8629,20 +8661,21 @@ function renderDeck(r){
     const rx=cx+S*Math.sin(ra)*26, ry=sternY+Math.cos(ra)*26;
     out += `<line x1="${cx}" y1="${sternY-2}" x2="${rx}" y2="${ry}" stroke="${sev}" stroke-width="4" stroke-linecap="round"/>
       <text x="${cx+34}" y="${sternY+10}" font-size="12" fill="var(--ink3)">rudder ${fmt1(helmDeg)}° (×2.5)</text>`; }
-  out += `<text x="16" y="318" font-size="12.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° off centerline · ${Math.round(state.twaC??POS[state.posIdx].twa)}° true · rudder shows helm you must hold</text>`;
+  out += `<text x="16" y="318" font-size="12.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° off centerline${reef.level?` · reef ${reef.level}`:""} · ${Math.round(state.twaC??POS[state.posIdx].twa)}° true · rudder shows helm you must hold</text>`;
   $("svg-deck").innerHTML = out;
   if($("deckHint")) $("deckHint").textContent=(S<0?"wind on port":"wind on starboard")+" · dotted = sheets";
 }
 
 /* ---------------- render: twist from astern ---------------- */
 function renderTwist(r){
+  const reef=mainReef();
   // display exaggeration — small upwind angles are stretched ×2.3, but never
   // past 80° on screen so an eased boom/clew off the wind does not fold back
   const maxAng=Math.max(1, Math.abs(r.main.boom)+r.main.twist, Math.abs(r.main.boom)+tgt(r).mt, Math.abs(r.jib.clew)+r.jib.twist);
   const EX=Math.min(2.3, 80/maxAng);
   // looking at the boat from dead astern: mast vertical, each height's chord
   // sticks out to leeward (left) by sin(local angle) * chord length
-  const baseX=250, footY=300, headY=30, H=footY-headY;
+  const baseX=250, footY=300, headY=30, H=footY-headY, sailH=H*reef.height, sailHeadY=footY-sailH;
   const idl=r.idl, S=tackSign();
   let out=`<line x1="${baseX}" y1="${headY-8}" x2="${baseX}" y2="${footY+8}" stroke="var(--ink2)" stroke-width="2.5"/>
     <text x="${baseX+8}" y="${headY+2}" font-size="10" fill="var(--ink3)">mast</text>`;
@@ -8659,12 +8692,14 @@ function renderTwist(r){
     if(aoa>r.idl.aoa+13) return "var(--crit)";      // stalled (upwind only — flow should be attached)
     return "var(--good)";                            // driving
   }
-  function leechPath(boom, twist, footLen, taper, color, w, dash){
+  function leechPath(boom, twist, footLen, taper, color, w, dash, reefed=false){
     const px=[];
     for(let i=0;i<=10;i++){
-      const hf=i/10, y=footY-H*hf*.92;
+      const hf=i/10, y=footY-(reefed?sailH:H)*hf*.92;
       const ang=(boom+twist*Math.pow(hf,1.15))*EX;
-      const len=footLen*(1-taper*Math.pow(hf,1.05));
+      const physicalH=reefed?reef.fraction+reef.height*hf:hf;
+      const chordScale=(1-.90*Math.pow(physicalH,1.05))/Math.max(.08,1-.90*Math.pow(hf,1.05));
+      const len=footLen*chordScale*(1-taper*Math.pow(hf,1.05));
       px.push([baseX-S*Math.sin(rad(ang))*len, y, hf]);
     }
     if(dash){
@@ -8678,20 +8713,20 @@ function renderTwist(r){
     return out;
   }
   // main: solid vs ideal-twist ghost (same boom angle so the difference IS twist)
-  out += leechPath(r.main.boom, tgt(r).mt, 190, .90, "var(--ghost)", 1.6, true);
-  out += leechPath(r.main.boom, r.main.twist, 190, .90, "var(--accent)", 3, false);
+  out += leechPath(r.main.boom, tgt(r).mt, 190, .90, "var(--ghost)", 1.6, true, true);
+  out += leechPath(r.main.boom, r.main.twist, 190, .90, "var(--accent)", 3, false, true);
   // jib (drawn smaller, inboard)
   out += leechPath(r.jib.clew, r.jib.twist, 120, .94, "var(--teal)", 2.2, false);
   // horizontal reference marks each quarter height
-  for(let i=1;i<4;i++){ const y=footY-H*.92*i/4;
+  for(let i=1;i<4;i++){ const y=footY-sailH*.92*i/4;
     out += `<line x1="60" y1="${y}" x2="${baseX}" y2="${y}" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"/>`; }
   const topAoa=r.awa+7-(r.main.boom+r.main.twist);
-  out += `<text x="20" y="${footY+16}" font-size="12.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° · head opens +${fmt1(r.main.twist)}° · angles ×${EX.toFixed(1)}</text>
+  out += `<text x="20" y="${footY+16}" font-size="12.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° · head opens +${fmt1(r.main.twist)}°${reef.level?` · reef ${reef.level}`:""} · angles ×${EX.toFixed(1)}</text>
     <text x="40" y="${headY+2}" font-size="10" fill="var(--good)">■ driving</text>
     <text x="40" y="${headY+16}" font-size="10" fill="var(--ink3)">■ spilling</text>
     <text x="40" y="${headY+30}" font-size="10" fill="var(--warn)">■ soft</text>
     <text x="40" y="${headY+44}" font-size="10" fill="var(--crit)">■ stalled</text>`;
-  if(topAoa<6) out += `<text x="${S>0?baseX-160:baseX+16}" y="${headY+8}" font-size="11" font-weight="700" fill="var(--ink3)">SPILLING AT THE HEAD ◢</text>`;
+  if(topAoa<6) out += `<text x="${S>0?baseX-160:baseX+16}" y="${sailHeadY+8}" font-size="11" font-weight="700" fill="var(--ink3)">SPILLING AT THE HEAD ◢</text>`;
   $("svg-twist").innerHTML=out;
 }
 
@@ -8751,6 +8786,9 @@ function renderVals(){
   $("v-"+jibSheetSideId("jsheet")).textContent = jsheetLabel(lastR);
   $("v-"+jibSheetSideId("jsheetw")).textContent = (lastR&&lastR.jib&&lastR.jib.wow) ? "trimmed — wing-on-wing" : state.jsheetw<.08?"slack (lazy)":state.jsheetw<.5?"taking up — backing!":"hauled — jib backed";
   $("v-mainhal").textContent = state.mainhal<.35?"DROPPED "+Math.round(state.mainhal/.35*100)+"%":state.mainhal<.7?"hoisted · soft":"hoisted · tight";
+  { const reef=mainReef();
+    $("v-reef1").textContent = reef.level===1 ? "set · reef 1" : state.reef1 ? "set · overridden by reef 2" : "released";
+    $("v-reef2").textContent = reef.level===2 ? "set · reef 2" : "released"; }
   $("v-jcar").textContent = state.jcar<.33?"forward · power":state.jcar<.7?"middle":"aft · twist";
   $("v-jhal").textContent = state.jhal<.35?"DROPPED "+Math.round(state.jhal/.35*100)+"%":state.jhal<.7?"hoisted · snug":"hoisted · hard";
   // exact numbers (current → solver's fast setting) so trim is replicable
@@ -8775,6 +8813,8 @@ const LINEMETA = {
   jcar:{name:"Fairlead car",job:"jib twist vs foot"},
   jhal:{name:"Jib halyard",job:"hoist, then jib draft position"},
   mainhal:{name:"Main halyard",job:"hoist, then main luff tension"},
+  reef1:{name:"Reef 1 line",job:"reduce main area to first reef; secure tack and clew"},
+  reef2:{name:"Reef 2 line",job:"reduce main area to second reef; secure tack and clew"},
   jsheetw:{name:"Lazy jib sheet",job:"backs the jib upwind; flies it wing-on-wing on a run"},
   tws:{name:"True wind",job:"conditions changed"},
   pos:{name:"Point of sail",job:"conditions changed"},
@@ -8872,7 +8912,7 @@ function update(src){
   renderSections(r); renderDeck(r); renderHeel(r); renderTwist(r);
   if(src && lastR) renderFx(src,lastR,r);
   else renderNext(src,r);
-  if(src && B3 && TRIM_KEYS.includes(src)) B3.hiKey=src;
+  if(src && B3 && (TRIM_KEYS.includes(src)||src==="reef1"||src==="reef2")) B3.hiKey=src;
   lastR=r;
   $("v-"+jibSheetSideId("jsheet")).textContent = jsheetLabel(r);
   B3dirty=true;
@@ -8967,9 +9007,10 @@ function renderDial(){
 [["tws",v=>state.tws=+v],["sheet",v=>state.sheet=v/100],["trav",v=>state.trav=v/100],
  ["vang",v=>state.vang=v/100],["outhaul",v=>state.outhaul=v/100],["cunn",v=>state.cunn=v/100],
  ["backstay",v=>state.backstay=v/100],["mainhal",v=>state.mainhal=v/100],
+ ["reef1",v=>state.reef1=+v>=50?1:0],["reef2",v=>state.reef2=+v>=50?1:0],
  ["jsheetP",v=>state[jibSheetRole("jsheetP")]=v/100],["jsheetS",v=>state[jibSheetRole("jsheetS")]=v/100],["jcar",v=>state.jcar=v/100],
  ["jhal",v=>state.jhal=v/100]].forEach(([id,fn])=>{
-  $(id).addEventListener("input",e=>{fn(e.target.value);update(jibSheetRole(id));});
+  $(id).addEventListener("input",e=>{fn(e.target.value); if(id==="reef1"||id==="reef2") e.target.value=state[id]*100; update(jibSheetRole(id));});
 });
 $("gust").addEventListener("click",()=>{
   state.gust=!state.gust;
@@ -9128,8 +9169,12 @@ document.querySelector(".helm-modes").addEventListener("keydown",e=>{
 /* ---------------- demo sweep: pull a line and watch ---------------- */
 function demo(id){
   const el=ctlOf(id); if(!el) return;
+  const group=el.closest(".ctl-group")?.dataset.g;
+  if(group) $("railTabs").querySelector(`[data-rt="${group}"]`)?.click();
+  el.focus({preventScroll:true});el.scrollIntoView({block:"nearest"});
   const start=+el.value, min=+el.min, max=+el.max;
   const setV=v=>{el.value=v; el.dispatchEvent(new Event("input"));};
+  if(id==="reef1"||id==="reef2"){setV(start<50?max:min);return;}
   if(matchMedia("(prefers-reduced-motion: reduce)").matches){
     setV(max); setTimeout(()=>setV(min),800); setTimeout(()=>setV(start),1600);
     return;
@@ -9184,8 +9229,16 @@ const LINES = [
   tight:"Draft forward, fine entry, points well.", ease:"Sagging arcs between the clips that hold the sail to the wire; draft aft, round entry.",
   when:"Set for the day's breeze; snug it when the wind builds.",
   c26:"Led aft to the cabin-top clutch — easy to tweak without leaving the cockpit."},
+ {n:"Reef 1 line", tag:"first reef", t:"Pull once to set the first reef. This simplified control lowers the main to the reef point, secures the reef tack and clew, and re-tensions the halyard automatically.",
+  tight:"First reef set: less sail area, heel and helm load.", ease:"Released: full mainsail returns unless Reef 2 is set.",
+  when:"Building breeze when flattening and traveler or sheet ease no longer keep the boat balanced.",
+  c26:"Two reef lines lead to cabin-top clutches. The modeled pennant tensions the clew; the reef tack is secured separately."},
+ {n:"Reef 2 line", tag:"second reef", t:"Pull once to set the second reef. This simplified control lowers the main farther, secures the second reef tack and clew, and re-tensions the halyard automatically. It takes priority over Reef 1.",
+  tight:"Second reef set: smallest modeled main, lower heel and helm load.", ease:"Released: Reef 1 remains if its line is still set.",
+  when:"Heavy air after the first reef, when the boat still heels hard or the helm loads up.",
+  c26:"Second reef uses its own tack and clew points; inspect both reef lines before leaving the dock."},
 ];
-const LINE_CTL=["sheet","trav","vang","outhaul","cunn","backstay","jsheet","jcar","jhal"];
+const LINE_CTL=["sheet","trav","vang","outhaul","cunn","backstay","jsheet","jcar","jhal","reef1","reef2"];
 
 function lineFig(key, label){
   const base=`
@@ -9210,6 +9263,8 @@ function lineFig(key, label){
     jsheet:{extra:`<polyline points="186,100 142,104 100,104" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>`, mx:100, my:104, txt:"clew → car → cockpit winch"},
     jcar:{extra:`<line x1="186" y1="100" x2="142" y2="104" stroke="var(--ghost)" stroke-width="1.5" stroke-dasharray="2 3"/><line x1="128" y1="104" x2="158" y2="104" stroke="var(--accent)" stroke-width="3"/>`, mx:142, my:104, txt:"track on the side deck"},
     jhal:{extra:`<polyline points="176,28 160,14 161,100 118,96" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>`, mx:118, my:96, txt:"cabin-top clutch"},
+    reef1:{extra:`<polyline points="160,78 160,55 205,96" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>`, mx:205, my:96, txt:"first reef tack + clew"},
+    reef2:{extra:`<polyline points="160,62 160,42 220,96" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>`, mx:220, my:96, txt:"second reef tack + clew"},
   };
   const o=overlays[key]||{extra:"",mx:150,my:104,txt:""};
   const marker=`<circle cx="${o.mx}" cy="${o.my}" r="4.5" fill="var(--accent)" stroke="var(--bg)" stroke-width="1.5"/>`;
@@ -9231,6 +9286,9 @@ LINE_CTL.forEach((id,i)=>{ const el=ctlOf(id); if(!el) return;
 });
 ["mainhal"].forEach(id=>{ const el=$(id); if(!el) return;
   el.closest(".ctl").title = "Main halyard\nBottom third of travel = the sail drops and piles on the boom.\nAbove that \u2192 luff tension (draft forward)."; });
+['reef1','reef2'].forEach(id=>{ const el=$(id); if(!el) return;
+  el.closest('.ctl').title = `${LINEMETA[id].name}\nSet: lower to the reef point, secure reef tack and clew, then re-tension halyard.\nRelease: line no longer selected; deeper reef remains if set.`;
+});
 const JIB_LINE = LINES.find(l=>l.n==="Jib sheet");
 let RAIL_TACK=null;
 // keep each side's slider showing the sheet that is physically on that side
@@ -9618,12 +9676,13 @@ function sailPathArray(kind, sh, forceFull){
   // kind 'main'|'jib'; sh: {boom|clew, twist, depth, draft}
   const rows=[], NR=11, NC=13;
   const dp=clamp(sh.draft,.32,.6), k=Math.log(.5)/Math.log(dp);
+  const reef=mainReef();
   for(let iy=0; iy<NR; iy++){
     const hf=iy/(NR-1);
     let luff, chord;
     const hoistM3=forceFull?1:clamp(state.mainhal/.35,0,1), hoistJ3=forceFull?1:clamp(state.jhal/.35,0,1);
-    if(kind==="main"){ luff=V3(RIG.mastX, RIG.boomY+.045+9.0*hf*Math.max(hoistM3,.12), 0);
-      chord=RIG.mainFoot*(1-.90*Math.pow(hf,1.05))*(1-(1-state.outhaul)*.09*(1-hf)); }
+    if(kind==="main"){ luff=V3(RIG.mastX, RIG.boomY+.045+9.0*reef.height*hf*Math.max(hoistM3,.12), 0);
+      chord=RIG.mainFoot*(1-.90*Math.pow(reef.fraction+reef.height*hf,1.05))*(1-(1-state.outhaul)*.09*(1-hf)); }
     else { const bow=V3(3.72,1.05,0), hd=V3(RIG.mastX+.03,10.05,0);
            luff=BABYLON.Vector3.Lerp(bow,hd,hf*Math.max(hoistJ3,.12)); chord=2.90*(1-.94*Math.pow(hf,1.05)); }
     const delta=rad((kind==="main"?sh.boom:sh.clew) + (sh.flip?-1:1)*sh.twist*Math.pow(hf,1.15));
@@ -9837,7 +9896,7 @@ function flowVel(x,z,y,r){
       const r2=dx*dx+dz*dz,coreR2=r2+.12;
       // A bounded vertical vortex segment approaches the 2-D panel result
       // nearby, but its influence falls as 1/r² outside the finite sail span.
-      const spanFactor=finite[j<H.split?0:1];
+      const spanFactor=finite[H.element[j]];
       ivx += -gj/(2*Math.PI*coreR2)*dz*spanFactor;
       ivz +=  gj/(2*Math.PI*coreR2)*dx*spanFactor;
     }
@@ -10101,7 +10160,7 @@ function clothInit(kind, targets, pins){
   clothRetarget(kind,targets,pins||targets);
 }
 function clothRetarget(kind, targets, pins){
-  // targets: FULL-hoist shape (cloth rest lengths never shrink);
+  // targets: full hoist for the selected reef; unused cloth is bundled on boom.
   // pins: actual luff/foot anchor positions (slide down the mast as the halyard eases)
   const c=CLOTH[kind]; c.targets=targets;
   const NC=c.NC, flat=[], flatPin=[];
@@ -10372,12 +10431,30 @@ function tick3D(elapsed){
     const shJ={clew:B3.clewShow,twist:r.jib.twist,depth:r.jib.depth,draft:r.jib.draft,wow:r.jib.wow,flip:(S<0)!==!!r.jib.wow};
     const tgtM=sailPathArray("main",shM,true), tgtJ=sailPathArray("jib",shJ,true);
     const pinM=sailPathArray("main",shM,false), pinJ=sailPathArray("jib",shJ,false);
+    const reef=mainReef();
+    // A reef changes the exposed mesh topology in sail coordinates. Reset its
+    // particles so old full-sail positions cannot stretch into the smaller sail.
+    if(B3.reefLevel!==reef.level){ delete CLOTH.main; B3.reefLevel=reef.level; }
     if(!CLOTH.main){ clothInit("main",tgtM,pinM); clothInit("jib",tgtJ,pinJ); }
     else { clothRetarget("main",tgtM,pinM); clothRetarget("jib",tgtJ,pinJ); }
     const d=rad(shM.boom);
     B3.boomMesh.rotation.y=d;                       // swing boom to port with the foot
     B3.boomMesh.position=V3(RIG.mastX,RIG.boomY,0).add(V3(-Math.cos(d),0,Math.sin(d)).scale(RIG.boomLength/2));
     B3.boomMesh.rotation.z=Math.PI/2; B3.boomMesh.rotation.x=0;
+    // Show the unused lower sail gathered around the boom, rather than making
+    // reefed cloth disappear. This bundle is illustrative, not another sail.
+    if(reef.level){
+      const along=V3(-Math.cos(d),0,Math.sin(d)), across=V3(Math.sin(d),0,Math.cos(d));
+      const bundle=Array.from({length:7},(_,i)=>Array.from({length:25},(_,j)=>{
+        const q=j/24, a=i/6*Math.PI*2, radius=(.07+.10*reef.fraction)*( .8+.2*Math.sin(j*2.5));
+        return V3(RIG.mastX,RIG.boomY+.015,0).add(along.scale(.08+q*RIG.mainFoot*.96))
+          .add(across.scale(Math.cos(a)*radius)).add(V3(0,Math.sin(a)*radius,0));
+      }));
+      B3.reefBundle=BABYLON.MeshBuilder.CreateRibbon("reefBundle",{pathArray:bundle,updatable:true,
+        ...(B3.reefBundle?{instance:B3.reefBundle}:{sideOrientation:BABYLON.Mesh.DOUBLESIDE})},B3.scene);
+      if(!B3.reefCloth){B3.reefCloth=new BABYLON.PBRMaterial("reefCloth",B3.scene);B3.reefCloth.albedoColor=new BABYLON.Color3(.90,.91,.87);B3.reefCloth.roughness=1;B3.reefCloth.metallic=0;}
+      B3.reefBundle.material=B3.reefCloth;B3.reefBundle.parent=B3.boat;B3.reefBundle.setEnabled(true);
+    } else if(B3.reefBundle) B3.reefBundle.setEnabled(false);
     // deck hardware follows the lines
     B3.travCar.position=V3(RIG.travelerX,RIG.travelerY,-S*state.trav*RIG.travelerHalfWidth);
     const jcarX=RIG.jibTrackForward-RIG.jibTrackTravel*state.jcar;
@@ -10400,8 +10477,7 @@ function tick3D(elapsed){
     const boomDir=V3(-Math.cos(d),0,Math.sin(d));
     const boomEnd=V3(RIG.mastX,RIG.boomY,0).add(boomDir.scale(RIG.boomLength));
     // main clew actually slides along the boom with the outhaul
-    const footLen=RIG.mainFoot*(1-(1-state.outhaul)*.09);
-    const mClew=V3(RIG.mastX,RIG.boomY+.045,0).add(boomDir.scale(footLen));
+    const mClew=pinM[0].at(-1).clone();
     function sagLine(a,b,slack,floor,parts){
       // a line with `slack` metres more length than the span hangs in a curve
       // whose depth follows the parabolic catenary: d = sqrt(3 L s / 8).
@@ -10530,6 +10606,22 @@ function tick3D(elapsed){
       ...arc(cb.add(V3(0,0,-.0275)),R,0,-Math.PI).slice(1),...fall(cb.add(V3(-R,0,-.0275)),bb.add(V3(-R,0,.0275))).slice(1),
       ...arc(bb.add(V3(0,0,.0275)),R,Math.PI,Math.PI*1.5).slice(1),front.add(V3(0,-R,0)),...arc(front,R,Math.PI*1.5,Math.PI*2).slice(1),...fall(front.add(V3(R,0,0)),ratchet.add(V3(R,0,0)))];
     const mainTail=coil(V3(RIG.pedestalX-.18,.23,.26));
+    // Slab-reef pennants: boom attachment → leech cringle → aft sheave,
+    // then inside the boom and out to separate cabin-top clutches.
+    const reefRope=(level)=>{
+      const original=[0,.16,.30][level], hf=clamp((original-reef.fraction)/reef.height,0,1);
+      const row=hf*(pinM.length-1), lo=Math.floor(row), hi=Math.ceil(row);
+      const cloth=clothRows("main"), edge=hf===0?pinM:cloth;
+      const cringle=BABYLON.Vector3.Lerp(edge[lo].at(-1),edge[hi].at(-1),row-lo);
+      const attachment=BABYLON.Vector3.Lerp(pinM[lo].at(-1),pinM[hi].at(-1),row-lo);
+      const offset=V3(Math.sin(d),0,Math.cos(d)).scale(level===1?.055:-.055);
+      const anchor=V3(attachment.x,RIG.boomY,attachment.z).add(offset);
+      const aft=boomEnd.add(offset).add(V3(0,.035,0));
+      const slack=reef.level===level?0:.15;
+      return [[...sagLine(anchor,cringle,slack,RIG.boomY+.015),
+        ...sagLine(cringle,aft,slack,RIG.boomY+.015).slice(1)],
+        lane(level===1?.28:.35,V3(RIG.mastX-.09,RIG.boomY-.06,level===1?.08:.12))];
+    };
     const vang=vangTackle(vangBottom,vangUpper,B3.vangShow,B3.t,r.aws);
     B3.vangBase.position=vang.low;B3.vangBlock.position=vang.high;
     B3.vangBase.rotation.copyFrom(vang.rotation);B3.vangBlock.rotation.copyFrom(vang.rotation);
@@ -10543,6 +10635,8 @@ function tick3D(elapsed){
       jsheet:[working.path],
       jsheetw:[lazy.path],
       jcar:[],
+      reef1:reefRope(1),
+      reef2:reefRope(2),
       vang:[[...vang.path,...vangLead.slice(1),...vangLane.slice(1)]],
       // Outhaul and halyards run inside the extrusions. Only exposed ends show.
       outhaul:[[mClew,boomEnd.add(V3(0,.025,0))],lane(-.21,V3(RIG.mastX-.07,RIG.boomY-.06,-.07))],
@@ -10556,7 +10650,8 @@ function tick3D(elapsed){
     const steelKeys={backstay:1,toplift:1};
     // color-coded like the rigging guides
     const ROPE_COLORS={sheet:[.06,.55,.70], jsheet:[.82,.72,.5], jsheetw:[.6,.55,.4], jcar:[.9,.5,.15], vang:[.15,.55,.25],
-      outhaul:[.85,.55,.15], cunn:[.8,.15,.35], halyard:[.9,.9,.88], jhal:[.2,.35,.75], trav:[.4,.4,.75]};
+      outhaul:[.85,.55,.15], cunn:[.8,.15,.35], halyard:[.9,.9,.88], jhal:[.2,.35,.75], trav:[.4,.4,.75],
+      reef1:[.78,.24,.08],reef2:[.48,.24,.70]};
     if(!B3.ropeMats){ B3.ropeMats={};
       const ropeTex=ropeAlbedo(B3.scene);
       const ropeBump=null;
@@ -10699,7 +10794,7 @@ function detectCred(raw){
   return {kind: token.startsWith("sk-ant-")&&!token.startsWith("sk-ant-oat") ? "api-key":"oauth", token};
 }
 function coachInstructions(){
-  const lines=TRIM_KEYS.map(k=>{
+  const lines=TRIM_KEYS.concat(["reef1","reef2"]).map(k=>{
     const m=LINEMETA[k];
     return `- ${k} (${lineName(k)}): ${m.job}; range ${k==="trav"?"-1..1":"0..1"}, now ${state[k].toFixed(2)}`;
   }).join("\n");
@@ -10729,9 +10824,9 @@ function coachApply(changes){
   if(!changes||typeof changes!=="object") return null;
   const before={speed:lastR.speed, heel:lastR.heel, twist:lastR.main.twist, eff:lastR.eff};
   const applied=[];
-  for(const k of TRIM_KEYS){
+  for(const k of TRIM_KEYS.concat(["reef1","reef2"])){
     if(!(k in changes)) continue;
-    const v=clamp(Number(changes[k]), k==="trav"?-1:0, 1);
+    const v=(k==="reef1"||k==="reef2") ? (Number(changes[k])>=.5?1:0) : clamp(Number(changes[k]), k==="trav"?-1:0, 1);
     if(!isFinite(v)) continue;
     const el=ctlOf(k);
     const oldV=+el.value, lo=+el.min, hi=+el.max;
