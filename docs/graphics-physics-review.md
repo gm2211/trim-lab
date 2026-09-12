@@ -59,13 +59,15 @@ stacking, keyboard wind control and accessible selection states.
 
 ## Verification
 
-- Twenty-one physics tests pass, covering equilibrium extremes, boom excitation,
-  damping, zero wind, lowered sails, timestep consistency and sheet constraints.
-- 52 browser WebGL checks cover imported Blender geometry, material readiness,
+- Thirty-six physics and free-sheet tests pass, covering equilibrium extremes,
+  boom/jib excitation, damping, zero wind, lowered sails, timestep consistency,
+  sheet constraints, rope settling and incompatible contact geometry.
+- 67 browser WebGL checks cover imported Blender geometry, material readiness,
   map color spaces, manufactured hardware, shared layout anchors, matching tackle spans, hanging tails,
   finite rope paths, winch entry/exit tangencies, cylinder clearance, swiveling
   jib fairlead grooves, tack mirroring, pause, physical rope UVs, camera distances,
-  luffing boom/cloth attachment and reused rope geometry.
+  luffing boom/cloth and jib-sheet attachment, free-span length bounds, and
+  reused rope geometry.
 - Exported position/normal/UV counts and triangle indices are valid.
 - Actual deck/rigging close-ups and full-boat views reviewed in the browser.
 - Editable Blender scene rendered separately to verify its geometry.
@@ -73,6 +75,28 @@ stacking, keyboard wind control and accessible selection states.
   checks pass. Final pages are approximately 4.2 MB each.
 
 ## Limits
+
+### Jib sheet dynamics
+
+The jib clew now responds to wind moments, inertia and damping rather than
+easing toward a fixed angle. Static trim and transient motion share the active
+sheet's two-sided geometric length bounds. The existing backing/wing-on-wing
+control selects the windward sheet; its prescribed trim angle determines the
+windward line length. The working slider continues to measure paid-out length.
+
+Both sheets follow the moving cloth clew every frame. Their free spans use
+17 point masses under gravity and wind drag, with damping, fixed endpoints,
+distance constraints and approximate coachroof/deck contact. Endpoints and
+paid length take priority when contact geometry is incompatible. The released
+sheet keeps its route around the mast; sheave grooves and winch wraps retain
+their geometric routing. Pause freezes the clew and rope state. Changing trim
+while paused updates the anchors for inspection.
+
+These are reduced-order dynamics. The active sheet restrains clew yaw; the
+released line is modeled as having available slack. Rope reactions are not
+fed back into the cloth or boat force solver. Clew height, sail stretch,
+knots, and full collision/contact dynamics remain unmodeled. The displayed
+speed, heel and sheet-load readouts remain steady-state estimates.
 
 ### Luffing boom correction
 

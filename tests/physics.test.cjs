@@ -6,8 +6,8 @@ const src = fs.readFileSync(process.env.TRIM_SOURCE || 'src-app.html', 'utf8');
 const start = src.indexOf('"use strict";');
 const end = src.indexOf('/* ---------------- coach ---------------- */', start);
 const ctx = vm.createContext({});
-vm.runInContext(src.slice(start, end) + '\nglobalThis.model={state,compute,KT,BOAT,RIG,mainSheetSpan,mainBoomLimits,stepBoom,sailWindAt,luffPressure};', ctx);
-const {state,compute,KT,mainBoomLimits,stepBoom,sailWindAt,luffPressure}=ctx.model;
+vm.runInContext(src.slice(start, end) + '\nglobalThis.model={state,compute,KT,BOAT,RIG,mainSheetSpan,mainBoomLimits,stepBoom,sailWindAt,luffPressure,jibLead,jibClewLimits,stepJibClew};', ctx);
+const {state,compute,KT,mainBoomLimits,stepBoom,sailWindAt,luffPressure,jibLead,jibClewLimits,stepJibClew}=ctx.model;
 const defaults={...state};
 function run(overrides={}) {
   Object.keys(state).forEach(k=>delete state[k]);
@@ -184,4 +184,66 @@ test('computed boom angle respects tackle limits across courses',()=>{
     assert.ok(r.main.boom>=q.min-1e-8&&r.main.boom<=q.max+1e-8,
       `boom ${r.main.boom} outside [${q.min},${q.max}] at twa ${twaC}, sheet ${sheet}, traveler ${trav}`);
   }
+});
+function integrateJib(r,controls,seconds,dt=1/60,side=1){
+  const limits=jibClewLimits(r.jib,controls,side);
+  const motion={angle:side*r.jib.clew,velocity:0},samples=[];
+  for(let t=dt;t<=seconds+1e-9;t+=dt){
+    stepJibClew(motion,r,controls,side,dt,t,limits);
+    samples.push(motion.angle);
+  }
+  return {motion,samples,limits};
+}
+test('jib clew stays within active sheet limits',()=>{
+  for(const controls of [
+    {...state,twaC:45,jsheet:.75,jsheetw:0,jcar:0},
+    {...state,twaC:45,jsheet:.75,jsheetw:.9,jcar:1},
+    {...state,twaC:165,jsheet:.05,jsheetw:.6,jcar:.5},
+  ]){
+    const r=run(controls),q=jibClewLimits(r.jib,controls,1);
+    assert.ok(q.min<=q.max&&Number.isFinite(q.length));
+    assert.ok(r.jib.clew>=q.min-1e-8&&r.jib.clew<=q.max+1e-8,
+      `clew ${r.jib.clew} outside [${q.min},${q.max}]`);
+    const lead=jibLead(controls.jcar);
+    assert.ok(lead.dist(q.loadedSide*r.jib.clew)<=q.length+1e-6,
+      `active jib sheet span exceeds paid length`);
+  }
+});
+test('luffing jib pressure excites clew motion',()=>{
+  const controls={...state,twaC:45,jsheet:.75,jsheetw:0};
+  const r=run(controls),q=integrateJib(r,controls,3);
+  assert.ok(Math.max(...q.samples)-Math.min(...q.samples)>.1);
+  assert.ok(q.samples.every(a=>a>=q.limits.min-1e-8&&a<=q.limits.max+1e-8));
+});
+test('lowered jib has no wind-driven clew excitation',()=>{
+  const controls={...state,twaC:45,jsheet:.75,jsheetw:0,jhal:0};
+  const r=run(controls),q=integrateJib({...r,aws:0},controls,2);
+  assert.ok(Math.max(...q.samples)-Math.min(...q.samples)<1e-8);
+  assert.ok(Math.abs(q.motion.velocity)<1e-8);
+});
+test('shorter jib sheet restricts clew swing',()=>{
+  const eased={...state,twaC:45,jsheet:.2,jsheetw:0};
+  const tight={...state,twaC:45,jsheet:.75,jsheetw:0};
+  const re=run(eased),rt=run(tight);
+  const qe=integrateJib(re,eased,3),qt=integrateJib(rt,tight,3);
+  assert.ok(qt.limits.max-qt.limits.min<qe.limits.max-qe.limits.min);
+});
+test('jib clew tack mirroring preserves normal and wing modes',()=>{
+  for(const controls of [
+    {...state,twaC:45,jsheet:.75,jsheetw:0,jcar:0},
+    {...state,twaC:165,jsheet:.05,jsheetw:.6,jcar:1},
+  ]){
+    const r=run(controls),a=integrateJib(r,controls,2,1/60,1),b=integrateJib(r,controls,2,1/60,-1);
+    assert.ok(Math.abs(a.motion.angle+b.motion.angle)<1e-8);
+    assert.ok(Math.abs(a.motion.velocity+b.motion.velocity)<1e-8);
+    assert.equal(a.limits.loadedSide,-b.limits.loadedSide);
+  }
+});
+test('jib clew timestep partition remains stable',()=>{
+  const controls={...state,twaC:45,jsheet:.75,jsheetw:0,jcar:.5},r=run(controls),q=jibClewLimits(r.jib,controls,1);
+  const a={angle:r.jib.clew,velocity:0},b={angle:r.jib.clew,velocity:0};
+  stepJibClew(a,r,controls,1,.5,.5,q);
+  for(let i=1;i<=30;i++) stepJibClew(b,r,controls,1,1/60,i/60,q);
+  assert.ok(Math.abs(a.angle-b.angle)<.02);
+  assert.ok(Math.abs(a.velocity-b.velocity)<.002);
 });
