@@ -26,11 +26,13 @@ python3 build.py                # all build inputs are committed; Blender is opt
 repo root and `docs/index.html`. Both are committed; rebuild and commit them whenever
 `src-app.html` or the bundled library changes.
 
-Run `node --test tests/*.test.cjs` for physics and free-sheet regressions. Serve locally
+Run `node --test tests/*.test.cjs` for physics, free-sheet and sail-contact regressions. Serve locally
 with `python3 -m http.server 8765 --bind 127.0.0.1` and open
 `http://127.0.0.1:8765/tests/scene.html` for WebGL integration checks.
 Use **Inspect luffing boom** on that page to see the head-to-wind motion.
 Use **Inspect luffing jib sheets** to inspect both sheets following the clew.
+Use the two **Inspect … tack slot** buttons to inspect sail contact with an
+eased main and tightly sheeted jib on either tack.
 See [Blender model authoring](assets/boat/README.md), [material authoring](assets/materials/README.md) and the
 [graphics, physics and UI review](docs/graphics-physics-review.md) for details and
 the model's calibration limits.

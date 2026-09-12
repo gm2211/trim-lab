@@ -59,9 +59,10 @@ stacking, keyboard wind control and accessible selection states.
 
 ## Verification
 
-- Thirty-six physics and free-sheet tests pass, covering equilibrium extremes,
+- Thirty-nine physics, free-sheet and cloth tests pass, covering equilibrium extremes,
   boom/jib excitation, damping, zero wind, lowered sails, timestep consistency,
-  sheet constraints, rope settling and incompatible contact geometry.
+  sheet constraints, rope settling, tack-mirrored geometry, sail contact during
+  luffing tack changes, fixed anchors and contact velocity preservation.
 - 67 browser WebGL checks cover imported Blender geometry, material readiness,
   map color spaces, manufactured hardware, shared layout anchors, matching tackle spans, hanging tails,
   finite rope paths, winch entry/exit tangencies, cylinder clearance, swiveling
@@ -98,6 +99,22 @@ fed back into the cloth or boat force solver. Clew height, sail stretch,
 knots, and full collision/contact dynamics remain unmodeled. The displayed
 speed, heel and sheet-load readouts remain steady-state estimates.
 
+### Sail contact correction
+
+Upper-sail twist now mirrors with the foot angle on the opposite tack. Previously
+the port-tack foot was mirrored while positive twist turned the head back across
+the centerline. The cloth solver also resolves main/jib contact after each fixed
+substep. It checks the rendered ribbon triangles, including edge crossings between
+particles, and lets unpinned cloth yield fore/aft where both sails occupy the same
+height and lateral position. Luff, boom-foot and sheet-clew anchors stay fixed.
+The Verlet history receives the same displacement to avoid injecting bounce.
+
+This is an approximate, frictionless contact constraint for this fore-and-aft rig,
+not a general fabric solver. It uses a small 2 cm fore/aft contact envelope;
+legitimate overlap in a camera view or deck plan remains. Cloth self-contact,
+contact with standing rigging, and feedback into the steady aerodynamic forces
+remain outside this correction.
+
 ### Luffing boom correction
 
 Previously, only the cloth flapped: the boom eased toward a fixed trim angle,
@@ -125,7 +142,7 @@ added to the active sailing simulation.
 
 The force model remains approximate and steady-state, without measured polar
 calibration, transient boat inertia, dynamic buoyancy or sheet elasticity.
-Cloth and rope collision handling is approximate; extreme sail/rig intersections
+Cloth and rope collision handling is approximate; sail/rig and cloth self-intersections
 are not a fully solved contact system. Water motion and sail breathing are visual
 approximations. Lighting has environment reflections but no new real-time shadow
 pipeline. Browser geometry decompression requires DecompressionStream.
