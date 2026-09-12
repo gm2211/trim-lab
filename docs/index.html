@@ -8001,6 +8001,55 @@ function luffPressure(t,hf,cf){
   // the cloth. Shared forcing, rather than a separate animated boom offset.
   return .65*Math.sin(t*5.3+hf*2.1)+.35*Math.sin(t*22+cf*20.4+hf*10.8);
 }
+function jibLead(jcar){
+  const xCar=RIG.jibTrackForward-RIG.jibTrackTravel*jcar;
+  const foot=2.90,height=1.05+.19*foot-RIG.carY-.06;
+  const reach=Math.hypot(3.72-xCar,RIG.jibTrackZ);
+  const d0=deg(Math.atan2(RIG.jibTrackZ,3.72-xCar));
+  const K=reach*reach+height*height+foot*foot;
+  const dist=d=>Math.sqrt(Math.max(0,K-2*foot*reach*Math.cos(rad(d-d0))));
+  const angFor=L=>d0+deg(Math.acos(clamp((K-L*L)/(2*foot*reach),-1,1)));
+  return {xCar,d0,dist,angFor};
+}
+function jibClewLimits(jib,controls,side){
+  const lead=jibLead(controls.jcar);
+  const windward=jib.wow||(jib.clew<0&&controls.jsheetw>0);
+  const loadedSide=side*(windward?-1:1);
+  // The working slider pays out metres; the existing backing/wing control
+  // specifies an angle. Infer that windward sheet's length from its trim pose.
+  const length=windward?lead.dist(-jib.clew):jib.sheetLen;
+  const half=lead.angFor(length)-lead.d0;
+  const a=loadedSide*(lead.d0-half),b=loadedSide*(lead.d0+half);
+  return {min:Math.max(-80,Math.min(a,b)),max:Math.min(80,Math.max(a,b)),length,loadedSide};
+}
+function stepJibClew(motion,r,controls,side,dt,t,limits){
+  if(dt<=0) return motion;
+  const inertia=6*2.90*2.90/3; // estimated carried jib mass, kg m²
+  const hoist=clamp(controls.jhal/.35,0,1);
+  const steps=Math.max(1,Math.ceil(dt/(1/120))),h=dt/steps;
+  for(let i=0;i<steps;i++){
+    const time=t-dt+(i+1)*h,wind=sailWindAt(r,time);
+    const q=.5*RHO_A*Math.pow(wind.aws*KT,2)*hoist;
+    let pulse=0,exposure=0;
+    for(let row=0;row<6;row++){
+      const hf=(row+.5)/6,angle=side*motion.angle;
+      const twist=r.jib.twist*Math.pow(hf,1.15);
+      const aoa=r.jib.wow?wind.awa+7*hf+Math.abs(angle)+twist-180:wind.awa+7*hf-angle-twist;
+      const weight=BOAT.jib.area/6*2.90*(1-.94*hf)*.55;
+      pulse+=weight*clamp((8-aoa)/8,0,1)*luffPressure(time,hf,.75);
+      exposure+=weight;
+    }
+    const target=side*(r.jib.clew+(q>0?(wind.awa-r.awa)*(r.jib.wow?-1:1):0));
+    const stiffness=8+q*exposure*.65;
+    const damping=2*Math.sqrt(inertia*stiffness)*.65;
+    const torque=stiffness*Math.sin(rad(target-motion.angle))+side*q*pulse*.55-damping*motion.velocity;
+    motion.velocity+=torque/inertia*h;
+    motion.angle+=deg(motion.velocity*h);
+    if(motion.angle<limits.min){motion.angle=limits.min;motion.velocity=Math.max(0,motion.velocity);}
+    if(motion.angle>limits.max){motion.angle=limits.max;motion.velocity=Math.min(0,motion.velocity);}
+  }
+  return motion;
+}
 function stepBoom(motion,r,controls,side,dt,t,limits){
   if(dt<=0) return motion;
   const inertia=28*RIG.boomLength*RIG.boomLength/3; // estimated spar + carried sail, kg m²
@@ -8032,6 +8081,128 @@ function stepBoom(motion,r,controls,side,dt,t,limits){
   }
   return motion;
 }
+// Reduced-order free-span dynamics for a jib sheet between two hardware
+// anchors. This is a damped, inextensible line model, not a calibrated rope or
+// knot simulation: point masses carry inertia while gravity and wind drag move
+// the slack span, then distance constraints enforce the paid-out length.
+function stepJibSheetSpan(span,a,b,length,wind,dt,t,side){
+  const N=16, EPS=1e-9;
+  span=span||{};
+  const number=x=>Number.isFinite(Number(x))?Number(x):0;
+  const point=p=>({x:number(p?.x),y:number(p?.y),z:number(p?.z)});
+  a=point(a); b=point(b);
+  const chord=Math.hypot(b.x-a.x,b.y-a.y,b.z-a.z);
+  const paid=Math.max(chord,Number.isFinite(length)?length:chord);
+  const finitePoint=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z);
+  const valid=span.points?.length===N+1&&span.velocity?.length===N+1&&
+    span.points.every(finitePoint)&&span.velocity.every(finitePoint)&&finitePoint(span.endA)&&finitePoint(span.endB);
+  if(!valid){
+    span.points=Array.from({length:N+1},(_,i)=>{
+      const u=i/N; return {x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u};
+    });
+    span.velocity=Array.from({length:N+1},()=>({x:0,y:0,z:0}));
+    span.endA={...a}; span.endB={...b};
+  }else{
+    // Carry the existing curve with moving blocks instead of injecting an
+    // endpoint jump as fictitious line velocity.
+    const da={x:a.x-span.endA.x,y:a.y-span.endA.y,z:a.z-span.endA.z};
+    const db={x:b.x-span.endB.x,y:b.y-span.endB.y,z:b.z-span.endB.z};
+    for(let i=0;i<=N;i++){
+      const u=i/N,p=span.points[i];
+      p.x+=da.x*(1-u)+db.x*u; p.y+=da.y*(1-u)+db.y*u; p.z+=da.z*(1-u)+db.z*u;
+    }
+    span.endA={...a}; span.endB={...b};
+  }
+  span.length=paid;
+  const pin=()=>{
+    Object.assign(span.points[0],a); Object.assign(span.points[N],b);
+    Object.assign(span.velocity[0],{x:0,y:0,z:0}); Object.assign(span.velocity[N],{x:0,y:0,z:0});
+  };
+  pin();
+  if(!(dt>0)||!Number.isFinite(dt)) return span;
+
+  const frameDt=clamp(dt,0,.05);
+  if(!frameDt) return span;
+  const steps=clamp(Math.ceil(frameDt/(1/120)),1,6),h=frameDt/steps,rest=paid/N;
+  const speed=Math.max(0,number(wind?.aws))*KT,awa=rad(number(wind?.awa)),S=side<0?-1:1;
+  const floorAt=typeof wind?.floorAt==="function"?wind.floorAt:null;
+  // A 10 mm polyester line is represented by lumped masses. Wind includes a
+  // modest deterministic turbulence field, scaled to zero with apparent wind.
+  const mass=Math.max(.004,.060*paid/N),dragArea=.010*paid/N;
+  for(let sub=0;sub<steps;sub++){
+    const now=number(t)-frameDt+(sub+1)*h;
+    const before=span.points.map(p=>({...p}));
+    for(let i=1;i<N;i++){
+      const u=i/N,p=span.points[i],v=span.velocity[i];
+      const gust=1+.10*Math.sin(now*2.1+u*5.7)+.04*Math.sin(now*6.3-u*3.1);
+      const air={x:-Math.cos(awa)*speed*gust,
+        y:.06*speed*Math.sin(now*3.4+u*7.2),z:S*Math.sin(awa)*speed*gust};
+      const rx=air.x-v.x,ry=air.y-v.y,rz=air.z-v.z,rel=Math.hypot(rx,ry,rz);
+      const drag=.5*1.225*1.15*dragArea*rel/mass;
+      v.x=(v.x+rx*drag*h)*Math.exp(-1.8*h);
+      v.y=(v.y+(-9.81+ry*drag)*h)*Math.exp(-1.8*h);
+      v.z=(v.z+rz*drag*h)*Math.exp(-1.8*h);
+      p.x+=v.x*h; p.y+=v.y*h; p.z+=v.z*h;
+    }
+    // A rope resists extension, not compression. Iterating both directions
+    // avoids a persistent bias toward either pinned endpoint.
+    for(let iter=0;iter<16;iter++){
+      pin();
+      for(let k=0;k<N;k++){
+        const i=iter&1?N-1-k:k,j=i+1,p=span.points[i],q=span.points[j];
+        const dx=q.x-p.x,dy=q.y-p.y,dz=q.z-p.z,d=Math.hypot(dx,dy,dz);
+        if(d<=rest+EPS) continue;
+        const excess=(d-rest)/d,wi=(i===0||i===N)?0:1,wj=(j===0||j===N)?0:1,ws=wi+wj;
+        if(!ws) continue;
+        const cx=dx*excess,cy=dy*excess,cz=dz*excess;
+        p.x+=cx*wi/ws; p.y+=cy*wi/ws; p.z+=cz*wi/ws;
+        q.x-=cx*wj/ws; q.y-=cy*wj/ws; q.z-=cz*wj/ws;
+      }
+      if(floorAt) for(let i=1;i<N;i++){
+        const floor=Number(floorAt(span.points[i]));
+        if(Number.isFinite(floor)&&span.points[i].y<floor) span.points[i].y=floor;
+      }
+    }
+    // Local projections converge slowly when the chord consumes nearly all of
+    // the line. A final global tension projection scales the transverse curve
+    // toward its straight (or floor-clearing) baseline until total length fits.
+    const used=points=>{let sum=0;for(let i=1;i<points.length;i++)sum+=Math.hypot(
+      points[i].x-points[i-1].x,points[i].y-points[i-1].y,points[i].z-points[i-1].z);return sum;};
+    if(used(span.points)>paid+EPS){
+      let base=Array.from({length:N+1},(_,i)=>{
+        const u=i/N,p={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u};
+        if(floorAt&&i>0&&i<N){const floor=Number(floorAt(p));if(Number.isFinite(floor))p.y=Math.max(p.y,floor);}
+        return p;
+      });
+      // Endpoint pins and paid length are hard constraints. If clearing the
+      // floor would itself require a longer line, fall back to the chord and
+      // treat contact as best effort rather than silently stretching the sheet.
+      if(used(base)>paid+EPS) base=Array.from({length:N+1},(_,i)=>{
+        const u=i/N; return {x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u};
+      });
+      const lengthAt=f=>{let sum=0,px=base[0].x,py=base[0].y,pz=base[0].z;for(let i=1;i<=N;i++){
+        const p=span.points[i],q=base[i],nx=q.x+(p.x-q.x)*f,ny=q.y+(p.y-q.y)*f,nz=q.z+(p.z-q.z)*f;
+        sum+=Math.hypot(nx-px,ny-py,nz-pz);px=nx;py=ny;pz=nz;
+      }return sum;};
+      let lo=0,hi=1;
+      for(let iter=0;iter<16;iter++){
+        const f=(lo+hi)/2;
+        if(lengthAt(f)<=paid) lo=f; else hi=f;
+      }
+      for(let i=1;i<N;i++){
+        const p=span.points[i],q=base[i];
+        p.x=q.x+(p.x-q.x)*lo; p.y=q.y+(p.y-q.y)*lo; p.z=q.z+(p.z-q.z)*lo;
+      }
+    }
+    pin();
+    for(let i=1;i<N;i++){
+      const p=span.points[i],old=before[i],v=span.velocity[i];
+      v.x=(p.x-old.x)/h; v.y=(p.y-old.y)/h; v.z=(p.z-old.z)/h;
+    }
+  }
+  pin();
+  return span;
+}
 function compute(){
   const s = state;
   const JIB_F=2.90, JIB_H=1.05+.19*2.90-RIG.carY-.06, JIB_ZCAR=RIG.jibTrackZ;   // jib foot, clew height above the car, track offset from centreline
@@ -8055,22 +8226,6 @@ function compute(){
   updatePanel(out.main, {...out.jib, boom:out.jib.clew}, out.awa);
   return out;
 
-  // The jib sheet is an inextensible line from the clew to the fairlead car.
-  // The clew swings on the foot's arc (2.90 m from the tack at x 3.72, 0.55 m
-  // above the tack, matching sailPathArray); the car sits on the track at
-  // (xCar, RIG.carY + .06, ZCAR). Distance clew->car at angle d:
-  //   dist^2 = R^2 + h^2 + F^2 - 2 F R cos(d - d0)
-  // with R = hypot(3.72-xCar, ZCAR), h = JIB_H (clew above the block),
-  // F = 2.90, d0 = atan2(ZCAR, 3.72-xCar) the angle where the sheet leads
-  // straight along the foot (shortest possible sheet: two-blocked).
-  function jibLead(jcar){
-    const xCar=RIG.jibTrackForward-RIG.jibTrackTravel*jcar;                       // same track as the 3D view
-    const a=3.72-xCar, R=Math.hypot(a,JIB_ZCAR), d0=deg(Math.atan2(JIB_ZCAR,a));
-    const K=R*R+JIB_H*JIB_H+JIB_F*JIB_F;
-    const dist=d=>Math.sqrt(Math.max(0,K-2*JIB_F*R*Math.cos(rad(d-d0))));
-    const angFor=L=>d0+deg(Math.acos(clamp((K-L*L)/(2*JIB_F*R),-1,1)));
-    return {xCar,d0,dist,angFor};
-  }
   function shapes(awa){
     const upwind = clamp(1-(awa-35)/80, 0, 1);
     const leechM = clamp(s.sheet*upwind*0.95 + s.vang*0.6*(1-0.4*upwind), 0, 1.15);
@@ -8106,8 +8261,10 @@ function compute(){
     // clear air. The windward sheet's paid-out length sets how far it squares out.
     const wowF = clamp((awa-135)/15,0,1) * clamp((s.jsheetw-.10)/.15,0,1) * clamp((.35-s.jsheet)/.15,0,1);
     const clewWind = -(4 + (1-s.jsheetw)*72);
-    const clewJ = clewLee*(1-wowF) + clewWind*wowF;
+    let clewJ = clewLee*(1-wowF) + clewWind*wowF;
     const wow = wowF>.5;
+    const bounds=jibClewLimits({clew:clewJ,wow,sheetLen:Ljib},s,1);
+    clewJ=clamp(clewJ,bounds.min,bounds.max);
     return {upwind, wowF,
       m:{leech:leechM,twist:twistM,depth:depthM,draft:draftM,boom:boomM,slack:sheetSlack},
       j:{leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ,wow,sheetLen:Ljib,clewSheet,eased}};
@@ -8177,15 +8334,17 @@ function compute(){
     // along the foot (sn -> 0) restrains the sail less per unit tension, so
     // the load climbs. Slack when the wind holds the clew short of the sheet.
     const jl = jibLead(s.jcar);
-    const dJ = Math.abs(sh.j.boom);
-    const taut = sh.j.wow || dJ >= sh.j.clewSheet - .05;
+    const jb=jibClewLimits({...sh.j,clew:sh.j.boom},s,1);
+    const dJ = jb.loadedSide*sh.j.boom;
+    const actualSpan=jl.dist(dJ);
+    const taut = actualSpan>=jb.length-1e-4;
     const cJ = {x:3.72-JIB_F*Math.cos(rad(dJ)), y:1.05+.19*JIB_F, z:JIB_F*Math.sin(rad(dJ))};
     const sv = {x:jl.xCar-cJ.x, y:RIG.carY+.06-cJ.y, z:JIB_ZCAR-cJ.z};
     const sl = Math.hypot(sv.x,sv.y,sv.z)||1;
     const sn = clamp(-(sv.x/sl*Math.sin(rad(dJ)) + sv.z/sl*Math.cos(rad(dJ))), 0, 1);
     const Fn = Math.hypot(FJ.drive, FJ.side);
     const sheetT = taut ? Fn/(8*Math.max(sh.j.depth,.06))*(1+.6*(1-sn)) : 0;   // newtons
-    const sheetSlackJ = taut ? 0 : Math.max(0, sh.j.sheetLen - jl.dist(dJ));  // metres
+    const sheetSlackJ = Math.max(0,jb.length-actualSpan);  // active sheet, metres
     return {tws:twsKt, twa, aws:aws/KT, awa, upwind:sh.upwind, wowF:sh.wowF, off,
       main:{...sh.m, aoa:aoaM, eff:M.eff, luff:M.luff, stall:M.stall},
       jib:{...sh.j, clew:sh.j.boom, aoa:aoaJ, eff:J.eff, luff:J.luff, stall:J.stall,
@@ -9901,28 +10060,33 @@ function tick3D(){
   const r=lastR, dt=B3.paused?0:clamp(B3.engine.getDeltaTime()/1000,0,.05);
   const stillUpdate=B3.paused&&B3dirty;
   B3.t+=dt;
-  // Display angles are signed by tack (+ = set to port). The main responds
-  // to wind moments and sheet stops; the jib retains its eased trim target.
+  // Display angles are signed by tack (+ = set to port). Both sails respond
+  // to wind moments, with their moving anchors restrained by sheet length.
   const S=tackSign();
   const tb=S*r.main.boom;
   const tc=S*r.jib.clew;
   if(B3.boomShow===undefined){ B3.boomShow=tb; B3.clewShow=tc; }
   if(!B3.boomMotion) B3.boomMotion={angle:B3.boomShow,velocity:0};
+  if(!B3.jibMotion) B3.jibMotion={angle:B3.clewShow,velocity:0};
   if(B3dirty||!B3.boomLimits) B3.boomLimits=mainBoomLimits(state.sheet,-S*state.trav*RIG.travelerHalfWidth);
+  if(B3dirty||!B3.jibLimits) B3.jibLimits=jibClewLimits(r.jib,state,S);
   const previousBoom=B3.boomShow;
+  const previousClew=B3.clewShow;
   if(stillUpdate){ B3.boomMotion.angle=tb; B3.boomMotion.velocity=0; }
   else stepBoom(B3.boomMotion,r,state,S,dt,B3.t,B3.boomLimits);
+  if(stillUpdate){ B3.jibMotion.angle=tc; B3.jibMotion.velocity=0; }
+  else stepJibClew(B3.jibMotion,r,state,S,dt,B3.t,B3.jibLimits);
   B3.boomShow=B3.boomMotion.angle;
+  B3.clewShow=B3.jibMotion.angle;
   const boomMoved=Math.abs(B3.boomShow-previousBoom)>1e-8;
-  const kA=B3.paused?1:1-Math.exp(-dt*3.2);
-  B3.clewShow+=(tc-B3.clewShow)*kA;
-  const swinging=boomMoved||Math.abs(tc-B3.clewShow)>.05;
-  if(!swinging) B3.clewShow=tc;
+  const clewMoved=Math.abs(B3.clewShow-previousClew)>1e-8;
+  const swinging=boomMoved||clewMoved;
+  const sheetMotion=dt>0;
   const settled=!swinging&&B3.swingPrev; B3.swingPrev=swinging;
   // Moving boom anchors and ropes stay together on every frame. Reuse tube
   // meshes where topology is unchanged instead of allocating them each time.
-  const rebuildRopes=B3dirty||boomMoved||settled||!B3.tubes||(B3.t-(B3.ropeT||0))>.12;
-  if(B3dirty||swinging||settled){
+  const rebuildRopes=B3dirty||swinging||sheetMotion||settled||!B3.tubes;
+  if(B3dirty||swinging||sheetMotion||settled){
     const shM={boom:B3.boomShow,twist:r.main.twist,depth:r.main.depth,draft:r.main.draft,flip:S<0};
     const shJ={clew:B3.clewShow,twist:r.jib.twist,depth:r.jib.depth,draft:r.jib.draft,wow:r.jib.wow,flip:(S<0)!==!!r.jib.wow};
     const tgtM=sailPathArray("main",shM,true), tgtJ=sailPathArray("jib",shJ,true);
@@ -9988,6 +10152,17 @@ function tick3D(){
       const a=i/96*Math.PI*8,r=.075+.016*i/96;
       return center.add(V3(Math.cos(a)*r*1.7,.0004*i,side*Math.sin(a)*r));
     });
+    const spanKey=[S,state.jsheet,state.jsheetw,state.jcar,state.jhal,B3.jibLimits.loadedSide].join(',');
+    if(B3.jibSpanKey!==spanKey){B3.jibSpans={};B3.jibSpanLengths={};B3.jibSpanKey=spanKey;}
+    const lineWind=sailWindAt(r,B3.t);
+    // Contact support for the free sheet above the foredeck/coachroof. Fixed
+    // hardware routes still own mast clearance, sheave grooves and winch wraps.
+    lineWind.floorAt=p=>Math.abs(p.z)<.64&&p.x>.25&&p.x<2.65?trunkTopY(p.x,p.z)+.018:.50;
+    function movingSheet(key,a,b,length){
+      const span=stepJibSheetSpan(B3.jibSpans[key],a,b,length,lineWind,dt,B3.t,S);
+      B3.jibSpans[key]=span;
+      return span.points.map(p=>V3(p.x,p.y,p.z));
+    }
     function jibRoute(side,loaded,block){
       const C=V3(jcarX,RIG.carY+.06,side*RIG.jibTrackZ);
       const W=V3(RIG.winchX,RIG.winchY+.045,side*RIG.winchZ),radius=.094,wrise=.073;
@@ -10006,7 +10181,9 @@ function tick3D(){
         });
         const edgeX=Math.max(.40,jcarX+.10),edgeZ=side*(.78-(edgeX-.25)*(.46/2.4)-.07);
         const edge=V3(edgeX,trunkCrown(edgeX)+.025,edgeZ);
-        prefix=sagLine(clew,mastArc[0],.012,undefined,18).concat(mastArc.slice(1),[edge]);
+        const key='lazy'+side+':'+fromSide;
+        if(B3.jibSpanLengths[key]===undefined) B3.jibSpanLengths[key]=BABYLON.Vector3.Distance(clew,mastArc[0])+.12;
+        prefix=movingSheet(key,clew,mastArc[0],B3.jibSpanLengths[key]).concat(mastArc.slice(1),[edge]);
         approach=edge;
       }
       const tangent=(p,entry)=>{
@@ -10041,12 +10218,13 @@ function tick3D(){
         const t=i/steps,a=lerp(entryAngle,exitAngle,t);
         return W.add(V3(radius*Math.cos(a),t*wrise,radius*Math.sin(a)));
       });
-      const lead=sagLine(approach,sheave.points[0],loaded?(side===S?Math.min(.04,r.jib.sheetSlack):0):.004,undefined,20);
+      const lead=loaded?movingSheet('loaded'+side,approach,sheave.points[0],Math.sqrt(Math.max(0,B3.jibLimits.length**2-.038**2)))
+        :sagLine(approach,sheave.points[0],.004,undefined,20);
       const tailRun=sagLine(turns.at(-1),tail[0],.035,.505,20);
       const path=prefix.concat(lead.slice(1),sheave.points.slice(1),turns,tailRun.slice(1),tail.slice(1));
       return {path,loaded,side,winch:W,radius,turns,sheave:sheave.points,center:C,tail:tailRun,prefix,entryAngle,exitAngle};
     }
-    const windwardLoaded=r.jib.wow||(r.jib.clew<0&&state.jsheetw>0);
+    const windwardLoaded=B3.jibLimits.loadedSide!==S;
     const working=jibRoute(S,!windwardLoaded,B3.jibBlock),lazy=jibRoute(-S,!!windwardLoaded,B3.lazyBlock);
     B3.jibRoutes=[working,lazy];
     const lane=(z,top)=>{

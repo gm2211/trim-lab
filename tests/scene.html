@@ -5,7 +5,7 @@
 <h1>Trim Lab scene checks</h1>
 <p>Local WebGL integration checks. No external dependencies.</p>
 <ol id="results"></ol>
-<p><button onclick="inspectJib(1)">Inspect port jib gear</button> <button onclick="inspectJib(-1)">Inspect starboard jib gear</button> <button onclick="inspectLuff()">Inspect luffing boom</button></p>
+<p><button onclick="inspectJib(1)">Inspect port jib gear</button> <button onclick="inspectJib(-1)">Inspect starboard jib gear</button> <button onclick="inspectLuff()">Inspect luffing boom</button> <button onclick="inspectJibLuff()">Inspect luffing jib sheets</button></p>
 <iframe src="../app.html" title="Simulator under test"></iframe>
 <script>
 const frame=document.querySelector('iframe'), results=document.querySelector('#results');
@@ -16,6 +16,12 @@ function inspectJib(side){
 function inspectLuff(){
   frame.contentWindow.eval('state.twaSide=1;state.twaC=0;state.sheet=.45;state.trav=0;state.vang=.15;state.mainhal=.9;update("sheet");if(B3.paused)document.querySelector("#pause3d").click();');
   frame.contentWindow.document.querySelector('[data-view="sails"]').click();
+}
+function inspectJibLuff(){
+  frame.style.height='1050px';
+  frame.contentWindow.eval('state.twaSide=1;state.twaC=5;state.sheet=1;state.trav=0;state.jsheet=.3;state.jsheetw=0;state.jhal=.9;update("jsheet");if(B3.paused)document.querySelector("#pause3d").click();');
+  frame.contentWindow.eval('B3.cam.setTarget(V3(.85,1.35,0));B3.cam.radius=3.4;B3.cam.alpha=.55;B3.cam.beta=1;B3.engine.resize();');
+  frame.scrollIntoView();
 }
 frame.onload=async()=>{
   const w=frame.contentWindow;
@@ -146,6 +152,44 @@ frame.onload=async()=>{
     })()`);
     for(const [key,label] of Object.entries({moves:'Luffing drives visible boom swing',pins:'Sail foot remains attached to moving boom',gear:'Boom and tackle anchors follow every dynamics frame',sheet:'Luffing boom respects paid mainsheet length',finite:'Moving cloth remains finite',reuse:'Moving vang reuses its rope mesh',pause:'Pause freezes boom angle and angular momentum',highlight:'Highlighted rope rebuilds at the wider radius'}))check(label,dynamics[key]);
     check('Luffing excursion measured: '+dynamics.excursion.toFixed(2)+' degrees',dynamics.excursion>1);
+    const jibDynamics=w.eval(`(()=>{
+      const saved={...state},getDelta=B3.engine.getDeltaTime;
+      const ok={clew:true,ends:true,length:true,finite:true,wrap:true,pause:true,slackMoves:false};
+      let excursion=0,overrun=0,worst=null;
+      try{
+        B3.engine.getDeltaTime=()=>1000/60;
+        for(const side of [-1,1])for(const mode of ['luff','backed','wing']){
+          B3.paused=true;
+          Object.assign(state,{twaSide:side,twaC:mode==='wing'?165:5,sheet:1,trav:0,jsheet:mode==='wing'?.05:.3,jsheetw:mode==='wing'?.6:mode==='backed'?.9:0,jhal:.9});update('jsheet');tick3D();
+          B3.paused=false;let min=Infinity,max=-Infinity,firstMid=null;
+          for(let i=0;i<120;i++){
+            tick3D();min=Math.min(min,B3.clewShow);max=Math.max(max,B3.clewShow);
+            const clew=CLOTH.jib.p[CLOTH.jib.NC-1];
+            ok.ends&&=B3.jibRoutes.every(q=>BABYLON.Vector3.Distance(q.path[0],clew)<1e-8);
+            ok.clew&&=B3.clewShow>=B3.jibLimits.min-1e-8&&B3.clewShow<=B3.jibLimits.max+1e-8;
+            ok.wrap&&=B3.jibRoutes.every(q=>q.turns.every(p=>Math.abs(Math.hypot(p.x-q.winch.x,p.z-q.winch.z)-q.radius)<1e-8));
+            for(const [key,span] of Object.entries(B3.jibSpans)){
+              const length=span.points.slice(1).reduce((sum,p,j)=>sum+Math.hypot(p.x-span.points[j].x,p.y-span.points[j].y,p.z-span.points[j].z),0);
+              if(length-span.length>overrun){overrun=length-span.length;worst={key,mode,side,a:span.endA,b:span.endB,paid:span.length};}
+              ok.length&&=length<=span.length+.003;
+              ok.finite&&=span.points.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z));
+              if(mode==='luff'&&key.startsWith('lazy')){
+                if(i===30)firstMid={...span.points[8]};
+                if(i>30&&firstMid)ok.slackMoves||=Math.hypot(span.points[8].x-firstMid.x,span.points[8].y-firstMid.y,span.points[8].z-firstMid.z)>.005;
+              }
+            }
+          }
+          if(mode==='luff')excursion=Math.max(excursion,max-min);
+          const frozen=JSON.stringify([B3.clewShow,B3.jibMotion,B3.jibSpans]);
+          document.querySelector('#pause3d').click();tick3D();tick3D();
+          ok.pause&&=JSON.stringify([B3.clewShow,B3.jibMotion,B3.jibSpans])===frozen;
+        }
+        return {...ok,excursion,overrun,worst};
+      }finally{B3.engine.getDeltaTime=getDelta;B3.paused=true;Object.assign(state,saved);update('jsheet');tick3D();}
+    })()`);
+    for(const [key,label] of Object.entries({clew:'Moving jib stays inside active sheet limits on both tacks',ends:'Both jib sheets remain attached to the moving cloth clew',length:'Free sheet spans stay within paid length',finite:'Dynamic sheets remain finite when luffing, backed and wing-on-wing',wrap:'Moving jib sheets preserve winch wraps',pause:'Pause freezes jib clew and free-sheet motion',slackMoves:'Lazy jib sheet moves under wind and gravity'}))check(label,jibDynamics[key]);
+    check('Jib luffing excursion: '+jibDynamics.excursion.toFixed(2)+' degrees; max line overrun '+jibDynamics.overrun.toFixed(4)+' m',jibDynamics.excursion>.5&&jibDynamics.overrun<.003);
+    if(!jibDynamics.length)check('Overlength span '+JSON.stringify(jibDynamics.worst),false);
     w.document.querySelector('[data-view="rigging"]').click();
     document.title=results.querySelector('.fail')?'FAIL: Trim Lab scene checks':'PASS: Trim Lab scene checks';
   }catch(error){check(error.message,false); document.title='FAIL: Trim Lab scene checks';}
