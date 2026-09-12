@@ -4,11 +4,25 @@ Interactive trainer: approximate steady-state physics (segment aero, two-element
 heel/leeway force balance), Babylon.js 3D with PBD sail cloth (folding, flogging),
 wind-driven boom yaw with inertia, damping and mainsheet length limits,
 wind-driven jib clew motion and constrained free-sheet spans,
+elastic backstay load, animated mast bend and wind-loaded forestay sag,
+visible Cunningham tackle with a cloth-attached cringle and animated luff tension,
 wind-dye streamlines from solved circulation, depth-tested 3D yarn telltales,
 per-slider trim-optimality indicators,
 and a coordinate-descent "perfect trim" solver. 2D views: sail sections, deck plan,
 twist-from-astern, heel gauge, a hand-written, reviewed static drill list (in `src-app.html`),
 and concept guides.
+
+Two reef-line controls select a first or second slab reef. The deeper set line
+takes precedence; releasing both restores the full main. Each setting represents
+the completed maneuver (ease halyard, secure reef tack and clew, re-tension),
+with halyard hoist/tension then relative to the selected reef. The trim optimizer
+preserves this manual sail-area choice. Both pennants and gathered cloth appear
+in 3D; reduced area and span feed the force model and 2D views.
+
+The [Colgate 26 sail-away package](https://www.colgate26.com/price-packages/sail-away-package/)
+specifies two reef lines. Reef heights here (16% and 30% of the luff) and the
+cloth bundle are training approximations, not measured sailmaker dimensions or
+a simulation of each step of the maneuver.
 
 ## Layout
 - `src-app.html` — the entire app (HTML/CSS/JS) with a `<script id="lib-slot">` placeholder.
@@ -41,8 +55,13 @@ Use **Inspect luffing boom** on that page to see the head-to-wind motion.
 Use **Inspect luffing jib sheets** to inspect both sheets following the clew.
 Use **Inspect boom vang** for a close-up of the purchase beside the rigid support;
 change Boom vang and resume motion to see the line tighten or ease.
+Use the **Cunningham** camera preset and mainsail slider to watch the luff eye lower and the exposed falls tighten.
 Use the two **Inspect … tack slot** buttons to inspect sail contact with an
 eased main and tightly sheeted jib on either tack.
+Use **Mast bend** in the simulator, then change **Mainsail → Backstay** to see
+the mast bow, masthead move aft, and sails flatten. The readout gives estimated
+tension and bend relative to the heel–head chord. Easing reverses the response;
+paused mode shows the new shape immediately.
 See [Blender model authoring](assets/boat/README.md), [material authoring](assets/materials/README.md) and the
 [graphics, physics and UI review](docs/graphics-physics-review.md) for details and
 the model's calibration limits.
