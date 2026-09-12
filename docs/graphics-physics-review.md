@@ -181,10 +181,25 @@ An unreleased sheet holds the jib aback after a tack. The backed sail uses a
 normal-pressure force with aft drive and leeward side force. A jibe preserves
 the held side and can enter or leave wing-on-wing instead.
 
-This provides the backed-jib setup for heaving-to. Heading remains prescribed
-by the wind dial, and the helm number is a readout, so the trainer does not solve
-a free-yaw equilibrium between the jib, main, rudder and hull. When both sheets
-are hauled to mutually incompatible lengths, the reduced-order model reports
+Free sailing integrates forward and lateral velocity and yaw from the sail,
+hull, keel and rudder forces. The tiller controls the rudder through its full
+range; local water flow determines its lift and drag, including reverse flow.
+Sail moments use their geometric centers of effort and a shared yaw reference.
+Added lateral water inertia uses energy-consistent body-frame coupling, so
+turning momentum persists through a tack without adding a steering impulse.
+Heel follows the current force balance. No target heading or heave-to speed is
+imposed: a retained, backed jib, adjusted main and leeward tiller can settle
+into a balance with leeward drift. Releasing the jib or changing the tiller
+changes that balance. A jibe alone is not a heave-to maneuver.
+
+The integrator uses fixed 50 ms steps, bounded catch-up and 5 Hz instrument
+updates. Pause, hidden pages and inactive simulator tabs freeze motion.
+Course-held trim comparison retains the original equilibrium solve. These
+are reduced-order teaching coefficients and estimated hydrodynamic geometry,
+not calibrated Colgate handling data. Moving-entry regressions cover mirrored
+tacks, wind changes, perturbation recovery and rudder release.
+
+When both sheets are hauled to mutually incompatible lengths, the model reports
 `constraintConflict` and prioritizes the held-side constraint; it does not model
 fabric compression or hardware loads for that impossible rigid-clew geometry.
 

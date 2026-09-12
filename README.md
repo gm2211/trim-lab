@@ -1,7 +1,7 @@
 # Trim Lab — Colgate 26 sail-trim trainer
 
-Interactive trainer: approximate steady-state physics (segment aero, two-element vortex panel method,
-heel/leeway force balance), Babylon.js 3D with PBD sail cloth (folding, flogging),
+Interactive trainer: approximate steady-state and free-sailing physics (segment aero, two-element vortex panel method,
+heel/leeway force balance, coupled surge/sway/yaw), Babylon.js 3D with PBD sail cloth (folding, flogging),
 wind-driven boom yaw with inertia, damping and mainsheet length limits,
 wind-driven jib clew motion and constrained free-sheet spans,
 physical jib sheets that remain cleated through tacks and jibes,
@@ -28,6 +28,25 @@ a simulation of each step of the maneuver.
 See [guided trim and explanations](docs/trim-guidance.md) for the objective,
 condition-aware next moves, soft teaching bands, and verification limits.
 
+## Free sailing and heaving-to
+
+The trainer starts with the course held for steady trim comparisons. Choose
+**Free sailing**, or move **Tiller**, to let sail and water forces change the
+boat's heading, forward speed and sideways drift. Positive tiller values move
+it to port; negative values move it to starboard. **Center tiller** releases the
+helm angle without holding the course. **Hold course** returns to the steady
+trim solver.
+
+For heaving-to, tack with the working jib sheet still cleated, ease the main,
+and hold the tiller to leeward. Adjust main and tiller to balance the bow's
+motion; heading and drift remain live. Release the backed jib sheet, trim the
+new working sheet and center the tiller to get underway again. A jibe alone
+does not establish this balance. Maneuver coefficients are teaching estimates,
+not calibrated Colgate handling data.
+
+**Pause sailing** works in both Helm views. Hidden pages and other app tabs
+suspend the maneuver without a catch-up jump on return.
+
 ## Layout
 - `src-app.html` — the entire app (HTML/CSS/JS) with a `<script id="lib-slot">` placeholder.
 - `babylon.lib.js` — committed canonical WebGL-only Babylon bundle and water normals.
@@ -48,7 +67,8 @@ repo root and `docs/index.html`. Both are committed; rebuild and commit them whe
 Run `node --test tests/*.test.cjs` for physics, free-sheet and sail-contact regressions. Serve locally
 with `python3 -m http.server 8765 --bind 127.0.0.1` and open
 `http://127.0.0.1:8765/tests/scene.html` for WebGL integration checks.
-Open `http://127.0.0.1:8765/tests/performance.html` to profile a running scene.
+Open `http://127.0.0.1:8765/tests/heave-to-browser.html` for steering and pause/resume checks.
+Open `http://127.0.0.1:8765/tests/performance.html` to profile a running scene; add `?sailing=1` to include free-sailing dynamics.
 It warms up for two seconds, measures six seconds of frame/update work with wind dye
 enabled, reports timings and call counts, then pauses. Compare runs in the same browser
 and viewport; rendering is capped at 60 FPS, while simulation uses elapsed time.

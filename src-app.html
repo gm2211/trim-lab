@@ -844,7 +844,7 @@ function mainSheetSpan(angle,carZ){
   const lead=Math.hypot(RIG.mastX-Math.cos(a)*RIG.sheetLeadRadius-RIG.pedestalX,RIG.boomY-RIG.blockDrop-RIG.pedestalY,Math.sin(a)*RIG.sheetLeadRadius);
   return (3*aft+lead)/4; // Three aft falls and the forward return to the cockpit ratchet.
 }
-function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror){
+function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror, lateral=0){
   // sh: {twist,depth,draft,boom}  geom: BOAT.main/jib  → {drive, side, hm}
   let drive=0, side=0, hm=0;
   const heelEff = Math.pow(Math.cos(heelR), 1.3);
@@ -855,7 +855,7 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror)
     const z = geom.z0 + geom.span*hf;
     const Vt = tws*Math.pow(Math.max(z,1)/10, .11);          // gradient aloft
     const awx = Vt*Math.cos(rad(twa)) + V;
-    const awy = Vt*Math.sin(rad(twa))*Math.cos(heelR);
+    const awy = Vt*Math.sin(rad(twa))*Math.cos(heelR)-lateral;
     const aws = Math.hypot(awx,awy);
     const awa = clamp(deg(Math.atan2(awy,awx)), 0, 180);
     const delta = (mirror?Math.abs(sh.boom):sh.boom) + sh.twist*Math.pow(hf,1.15);   // local chord angle
@@ -1173,9 +1173,15 @@ function compute({flow=true,motion=null}={}){
     lee  = lee*.55 + r.leeNew*.45;
   }
   heel=clamp(heel,0,40);
-  if(motion) r=step(V,heel,lee);
+  if(motion){
+    // Instantaneous dynamics skip the equilibrium iterations above, so solve
+    // the slot once from their current sail shapes before evaluating forces.
+    r=step(V,heel,lee);
+    updatePanelFactors(r.sh.m,r.sh.j,r.awa);
+    r=step(V,heel,lee);
+  }
   // Report wind, sail shape, and loads at the returned equilibrium estimate.
-  const out=finish(step(V, heel, lee), V, heel, lee);
+  const out=finish(motion?r:step(V, heel, lee), V, heel, lee);
   if(flow) updatePanel(out.main, {...out.jib, boom:out.jib.clew}, out.awa);
   return out;
 
@@ -1244,8 +1250,15 @@ function compute({flow=true,motion=null}={}){
     const shadowJ = awa>140 ? clamp(1-(awa-140)/40*.65, .35, 1) : 1;  // jib in main's shadow on a run
     const blanketJ = shadowJ*(1-sh.wowF) + 1*sh.wowF;                  // wing-on-wing flies in clear air
     const hoistM = clamp(s.mainhal/.35, 0, 1), hoistJ = clamp(s.jhal/.35, 0, 1);
-    const FM = segForces(sh.m, reefedMain, tws, twa, V, heelR, 1, PANEL.ok?PANEL.fM:1, Math.pow(hoistM,1.6));
-    const FJ = segForces(sh.j, BOAT.jib,  tws, twa, V, heelR, blanketJ, PANEL.ok?PANEL.fJ:1, Math.pow(hoistJ,1.6), sh.j.wow);
+    const lateral=motion?.swayLee||0;
+    // A backed jib no longer forms a lifting slot with the main. Fade the
+    // coupled-flow correction out with backing instead of letting the panel
+    // solver's irrelevant backed-sail circulation perturb the main force.
+    const slotBlend=(1-sh.j.backedF)**2;
+    const slotM=PANEL.ok?1+(PANEL.fM-1)*slotBlend:1;
+    const slotJ=PANEL.ok?1+(PANEL.fJ-1)*slotBlend:1;
+    const FM = segForces(sh.m, reefedMain, tws, twa, V, heelR, 1, slotM, Math.pow(hoistM,1.6),false,lateral);
+    const FJ = segForces(sh.j, BOAT.jib,  tws, twa, V, heelR, blanketJ, slotJ, Math.pow(hoistJ,1.6), sh.j.wow,lateral);
     const drive = FM.drive + FJ.drive;
     const side  = FM.side + FJ.side;
     const hm    = FM.hm + FJ.hm;
@@ -1342,29 +1355,49 @@ function stepManeuver(motion,dt){
   const aero=result.forces,tiller=clamp(Number(state.tiller)||0,-35,35);
   const omega=rad(motion.yawRate);
   const surgeDrag=70*u*Math.abs(u);
+  // Moment arms share this estimated yaw reference in the model's boat-x frame.
+  // Hydrodynamic stations are teaching calibrations relative to that reference.
+  const YAW_REF_X=1.0;
   const bowV=v+2.1*omega,aftV=v-2.1*omega;
   const hullBow=-410*bowV*Math.abs(bowV),hullAft=-410*aftV*Math.abs(aftV);
   const hullSide=hullBow+hullAft,hullYaw=2.1*(hullBow-hullAft);
   const keelV=v-1.2*omega,keelSide=-260*keelV*Math.abs(u),keelYaw=-1.2*keelSide;
-  const rudderV=v-2.75*omega;
-  const rudderSide=500*u*Math.abs(u)*rad(clamp(tiller,-15,15))-90*rudderV*Math.abs(u);
-  const rudderYaw=-2.75*rudderSide;
+  const rudderX=RIG.rudderX-YAW_REF_X;
+  const rudderV=v+rudderX*omega,rudderFlow=Math.hypot(u,rudderV);
+  const rudderBeta=Math.atan2(rudderV,u),rudderIncidence=rad(tiller)-rudderBeta;
+  const rudderQ=.5*RHO_W*.45*rudderFlow*rudderFlow;
+  const rudderLift=rudderQ*Math.sin(2*rudderIncidence);
+  const rudderDrag=rudderQ*(.02+1.1*Math.sin(rudderIncidence)**2);
+  const rudderDrive=-rudderLift*Math.sin(rudderBeta)-rudderDrag*Math.cos(rudderBeta);
+  const rudderSide=rudderLift*Math.cos(rudderBeta)-rudderDrag*Math.sin(rudderBeta);
+  const rudderYaw=rudderX*rudderSide;
   const side=S*aero.side+hullSide+keelSide+rudderSide;
-  // Fixed centers of effort: backing changes force, not the sail's location.
-  const yawAero=S*(aero.jib.side*.20-aero.main.side*.15);
+  // Area centroids from the same triangular sail plan used by the renderer,
+  // relative to the common yaw reference. Backing changes force, not location.
+  const mainChord=RIG.mainFoot*mainReef(state).foot/3,mainAngle=rad(result.main.boom);
+  const mainCE={x:RIG.mastX-mainChord*Math.cos(mainAngle)-YAW_REF_X,z:mainChord*Math.sin(mainAngle)};
+  const jibLuffX=(2*3.72+(RIG.mastX+.03))/3;
+  const jibCE={x:jibLuffX-2.90/3*Math.cos(rad(result.jib.clew))-YAW_REF_X,z:2.90/3*Math.sin(rad(result.jib.clew))};
+  const jibYaw=S*(jibCE.x*aero.jib.side-jibCE.z*aero.jib.drive);
+  const mainYaw=S*(mainCE.x*aero.main.side-mainCE.z*aero.main.drive);
+  const yawAero=jibYaw+mainYaw;
   const yawDamping=950*rad(motion.yawRate)*Math.max(.35,Math.abs(u));
-  const yaw=yawAero+rudderYaw+keelYaw+hullYaw-yawDamping;
-  motion.surge+=((aero.drive-surgeDrag)/BOAT.disp+omega*v)*h;
-  motion.sway+=(side/BOAT.disp-omega*u)*h;
-  motion.yawRate+=deg(yaw/(BOAT.disp*4.2)*h);
+  // Water accelerated sideways with the hull adds substantially to sway
+  // inertia. Keep the associated body-frame and yaw coupling terms together.
+  const massX=BOAT.disp,massY=BOAT.disp*1.1,inertia=BOAT.disp*4.2;
+  const yaw=yawAero+rudderYaw+keelYaw+hullYaw-yawDamping+(massX-massY)*u*v;
+  motion.surge+=((aero.drive-surgeDrag+rudderDrive+massY*v*omega)/massX)*h;
+  motion.sway+=((side-massX*u*omega)/massY)*h;
+  motion.yawRate+=deg(yaw/inertia*h);
   motion.bearing+=motion.yawRate*h;
   while(motion.bearing>180)motion.bearing-=360;
   while(motion.bearing<=-180)motion.bearing+=360;
   motion.heel+=(result.heelTarget-motion.heel)*(1-Math.exp(-1.8*h));
   setWindBearing(motion.bearing);
   state.twaC=Math.abs(motion.bearing);
-  const forces={drive:aero.drive-surgeDrag,side,yaw,main:aero.main,jib:aero.jib,
-    rudder:{side:rudderSide,yaw:rudderYaw},keel:{side:keelSide,yaw:keelYaw},
+  const forces={drive:aero.drive-surgeDrag+rudderDrive,side,yaw,
+    main:{...aero.main,yaw:mainYaw,ce:mainCE},jib:{...aero.jib,yaw:jibYaw,ce:jibCE},
+    rudder:{drive:rudderDrive,side:rudderSide,yaw:rudderYaw},keel:{side:keelSide,yaw:keelYaw},
     hull:{surge:-surgeDrag,side:hullSide,yaw:hullYaw,bowSide:hullBow,aftSide:hullAft}};
   return {motion,result,forces};
 }
@@ -1592,8 +1625,8 @@ function renderDeck(r){
   { const live=typeof SAILING!=="undefined"&&SAILING.active;
     const helmDeg=live?(state.tiller||0):r.helm, sev=live?"var(--teal)":helmDeg>8?"var(--crit)":helmDeg>5.5?"var(--warn)":"var(--good)";
     const ra=rad(live?helmDeg:clamp(helmDeg,-6,15)*2.5);
-    const rx=cx+(live?1:S)*Math.sin(ra)*26, ry=sternY+Math.cos(ra)*26;
-    out += `<line x1="${cx}" y1="${sternY-2}" x2="${rx}" y2="${ry}" stroke="${sev}" stroke-width="4" stroke-linecap="round"/>
+    const rx=cx+(live?-1:S)*Math.sin(ra)*26, ry=sternY+(live?-1:1)*Math.cos(ra)*26;
+    out += `<line id="deckHelm" x1="${cx}" y1="${sternY-2}" x2="${rx}" y2="${ry}" stroke="${sev}" stroke-width="4" stroke-linecap="round"/>
       <text x="${cx+34}" y="${sternY+10}" font-size="12" fill="var(--ink3)">${live?'tiller':'rudder'} ${fmt1(helmDeg)}°${live?'':' (×2.5)'}</text>`; }
   out += `<text x="16" y="318" font-size="12.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° off centerline${reef.level?` · reef ${reef.level}`:""} · ${Math.round(state.twaC??POS[state.posIdx].twa)}° true</text>`;
   $("svg-deck").innerHTML = out;
@@ -1885,7 +1918,7 @@ function renderNext(src,r=lastR){
 /* ---------------- main update ---------------- */
 let lastR=null, PREV_STATE=null;
 const SAILING={active:false,motion:null,last:null,accumulator:0,displayTime:0,forces:null,paused:false};
-function sailingPaused(){return SAILING.paused||!!B3?.paused;}
+function sailingPaused(){return B3?B3.paused:SAILING.paused;}
 function setSailingPaused(paused){
   SAILING.paused=paused;if(B3)B3.paused=paused;
   SAILING.last=null;SAILING.accumulator=0;
@@ -3046,7 +3079,7 @@ function ensure3Dinner(canvas){
       runLines:null,puffs:null,dyeR:null,dyeOn:true,t:0,heelCur:0};
   B3dirty=true;
   initTelltales();
-  B3.paused=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  B3.paused=SAILING.paused||window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const pauseBtn=$("pause3d");
   const syncPause=()=>{
     pauseBtn.textContent=B3.paused?"Resume motion":"Pause motion";
@@ -3992,7 +4025,7 @@ function tick3D(elapsed){
   B3.heelCur += (target-B3.heelCur)*(B3.paused?1:1-Math.exp(-dt*3));
   B3.boat.rotation.x=B3.heelCur;
   const rud=B3.rudder;
-  if(rud) rud.rotation.y += ((SAILING.active?rad(state.tiller||0):S*rad(clamp(r.helm,-6,15))) - rud.rotation.y)*(B3.paused?1:1-Math.exp(-dt*4));
+  if(rud) rud.rotation.y += ((SAILING.active?-rad(state.tiller||0):S*rad(clamp(r.helm,-6,15))) - rud.rotation.y)*(B3.paused?1:1-Math.exp(-dt*4));
   B3.boat.rotation.z=Math.sin(B3.t*.8)*.012 + clamp(r.speed,0,7)*.004; // gentle pitch + bow-up with speed
   // heeled hull rotates about the keel line here, so add the buoyant rise a
   // real hull gets as its leeward volume immerses
