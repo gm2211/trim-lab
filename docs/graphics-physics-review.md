@@ -25,7 +25,7 @@ Running rigging uses three aft mainsheet falls plus a forward return to the cent
 ratchet, two vang falls, at least three clockwise turns around each winch, separate deck lead lanes,
 hanging halyard coils and separate jib sheet coils on the seats. Halyards and outhaul runs inside the
 extrusions are not drawn as loose external diagonals. Rope color has braid and
-tracer detail, with metre-based UV repeats. Wind dye starts off for inspection.
+tracer detail, with metre-based UV repeats. Wind dye starts on to show airflow; its toggle clears the view for inspection.
 
 ## Reference correction
 
