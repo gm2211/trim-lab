@@ -81,7 +81,8 @@ AI provider.
 Regression tests exercise actual optimization across 4, 8, 12, 18, 24 and 30 kt,
 all five sailing points and a near-dead run, plus in-irons, both tacks, and reefs.
 They check objective improvement, feasible controls, coupled sheet behavior,
-condition-aware explanations, and state restoration. The full Node gate passed 123 tests on the rebuilt page. Browser checks passed
+condition-aware explanations, and state restoration. The full Node gate passed 123 tests on the rebuilt page; two additional coach
+context tests also passed against that page. Browser checks passed
 121 WebGL assertions; desktop inspection covered upwind trim application,
 30 kt gust relief, immediate target invalidation, and paired downwind advice. These checks establish internal behavior,
 not agreement with a measured polar or every real sea condition.
