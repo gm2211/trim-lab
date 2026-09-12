@@ -2,6 +2,7 @@
 
 Interactive trainer: approximate steady-state physics (segment aero, two-element vortex panel method,
 heel/leeway force balance), Babylon.js 3D with PBD sail cloth (folding, flogging),
+wind-driven boom yaw with inertia, damping and mainsheet length limits,
 wind-dye streamlines from solved circulation, per-slider trim-optimality indicators,
 and a coordinate-descent "perfect trim" solver. 2D views: sail sections, deck plan,
 twist-from-astern, heel gauge, a hand-written, reviewed static drill list (in `src-app.html`),
@@ -27,6 +28,7 @@ repo root and `docs/index.html`. Both are committed; rebuild and commit them whe
 Run `node --test tests/physics.test.cjs` for physics regressions. Serve locally
 with `python3 -m http.server 8765 --bind 127.0.0.1` and open
 `http://127.0.0.1:8765/tests/scene.html` for WebGL integration checks.
+Use **Inspect luffing boom** on that page to see the head-to-wind motion.
 See [Blender model authoring](assets/boat/README.md), [material authoring](assets/materials/README.md) and the
 [graphics, physics and UI review](docs/graphics-physics-review.md) for details and
 the model's calibration limits.
