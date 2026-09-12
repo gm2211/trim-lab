@@ -9524,8 +9524,10 @@ function ensure3Dinner(canvas){
   }
   const sailM=makeSailMaterial("main",scene),sailJ=makeSailMaterial("jib",scene);
   const sh0={boom:5,clew:9,twist:13,depth:.12,draft:.44};
-  const mainSail=BABYLON.MeshBuilder.CreateRibbon("mainSail",{pathArray:sailPathArray("main",sh0),sideOrientation:BABYLON.Mesh.DOUBLESIDE,updatable:true},scene);
-  const jibSail=BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:sailPathArray("jib",sh0),sideOrientation:BABYLON.Mesh.DOUBLESIDE,updatable:true},scene);
+  // One cloth surface. The material shades both faces; DOUBLESIDE geometry
+  // would draw coincident triangles twice, causing dark patches and edge flicker.
+  const mainSail=BABYLON.MeshBuilder.CreateRibbon("mainSail",{pathArray:sailPathArray("main",sh0),sideOrientation:BABYLON.Mesh.FRONTSIDE,updatable:true},scene);
+  const jibSail=BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:sailPathArray("jib",sh0),sideOrientation:BABYLON.Mesh.FRONTSIDE,updatable:true},scene);
   mainSail.material=sailM;jibSail.material=sailJ;mainSail.parent=boat;jibSail.parent=boat;
   [...model.getChildMeshes(),...mast.getChildMeshes(),...boom.getChildMeshes(),mainSail,jibSail].forEach(m=>wm.addToRenderList(m));
 
