@@ -9,6 +9,7 @@
 <p><button onclick="inspectSails(1)">Inspect starboard tack slot</button> <button onclick="inspectSails(-1)">Inspect port tack slot</button></p>
 <p><button onclick="inspectGrazing(1)">Inspect grazing jib</button> <button onclick="inspectGrazing(-1)">Inspect opposite grazing jib</button></p>
 <p><button onclick="inspectStreamingJib()">Inspect solved-trim streaming</button> <button onclick="inspectTelltales(1)">Inspect red port yarn</button> <button onclick="inspectTelltales(-1)">Inspect green starboard yarn</button></p>
+<p><button onclick="inspectVang()">Inspect boom vang</button></p>
 <iframe title="Simulator under test"></iframe>
 <script>
 const frame=document.querySelector('iframe'), results=document.querySelector('#results');
@@ -54,6 +55,12 @@ function inspectJibLuff(){
   frame.style.height='1050px';
   frame.contentWindow.eval('state.twaSide=1;state.twaC=5;state.sheet=1;state.trav=0;state.jsheet=.3;state.jsheetw=0;state.jhal=.9;update("jsheet");if(B3.paused)document.querySelector("#pause3d").click();');
   frame.contentWindow.eval('B3.cam.setTarget(V3(.85,1.35,0));B3.cam.radius=3.4;B3.cam.alpha=.55;B3.cam.beta=1;B3.engine.resize();');
+  frame.scrollIntoView();
+}
+function inspectVang(){
+  frame.style.height='1000px';
+  frame.contentWindow.eval(`Object.assign(state,{twaSide:1,twaC:80,sheet:.5,vang:.05});B3.paused=true;update('vang');tick3D();
+    B3.cam.lowerRadiusLimit=.4;B3.cam.setTarget(V3(.9,1.5,0));B3.cam.radius=2.8;B3.cam.alpha=-1.5;B3.cam.beta=1.25;B3.engine.resize();B3.scene.render();`);
   frame.scrollIntoView();
 }
 function inspectTiller(){
@@ -151,6 +158,30 @@ frame.onload=async()=>{
       })));
     })()`));
     check('All rope paths remain finite',w.eval('Object.values(B3.ropePaths).flat(2).every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z))'));
+    const vangMotion=w.eval(`(()=>{
+      const saved={...state},paused=B3.paused;
+      const ok={visible:true,tension:true,animated:true,pause:true,attached:true};
+      try{
+        for(const side of [-1,1]){
+          Object.assign(state,{twaSide:side,twaC:80,sheet:.5,vang:0});B3.paused=true;update('vang');tick3D();
+          const sag=()=>B3.vangFalls.reduce((sum,fall)=>sum+fall.slice(1).reduce((n,p,i)=>n+BABYLON.Vector3.Distance(p,fall[i]),0)-BABYLON.Vector3.Distance(fall[0],fall.at(-1)),0);
+          const eased=sag();
+          ok.visible&&=B3.tubes.vang[0].isEnabled()&&B3.tubes.vang[0].getTotalVertices()>0;
+          const tube=B3.tubes.vang[0];
+          state.vang=1;B3.paused=false;update('vang');tick3D(1/60);
+          ok.animated&&=B3.vangShow>0&&B3.vangShow<1;
+          for(let i=0;i<60;i++)tick3D(1/60);
+          ok.tension&&=sag()<eased*.1&&B3.vangShow>.99;
+          ok.animated&&=B3.tubes.vang[0]===tube;
+          const d=rad(B3.boomShow),bottom=V3(RIG.mastX-.08,1.12,0),top=V3(RIG.mastX-Math.cos(d)*1.15,RIG.boomY-.05,Math.sin(d)*1.15);
+          ok.attached&&=Math.abs(BABYLON.Vector3.Distance(B3.vangBlock.position,top)-.135)<1e-8&&Math.abs(BABYLON.Vector3.Distance(B3.vangBase.position,bottom)-.135)<1e-8;
+          B3.paused=true;const before=JSON.stringify([B3.vangShow,B3.ropePaths.vang]);tick3D();tick3D();
+          ok.pause&&=JSON.stringify([B3.vangShow,B3.ropePaths.vang])===before;
+        }
+        return ok;
+      }finally{Object.assign(state,saved);B3.paused=true;update('sheet');tick3D();B3.paused=paused;}
+    })()`);
+    for(const [key,label] of Object.entries({visible:'Vang has rendered rope geometry on both tacks',tension:'Vang slider pulls eased purchase falls straight',animated:'Vang hauling interpolates while reusing its mesh',pause:'Pause freezes vang line animation',attached:'Vang blocks track attachments clear of rigid support'}))check(label,vangMotion[key]);
     if(w.document.querySelector('#pause3d').getAttribute('aria-pressed')!=='true') w.document.querySelector('#pause3d').click();
     const routing=w.eval(`(()=>{
       const saved={...state},ok={single:true,entry:true,exit:true,wrap:true,fairlead:true,lazy:true,finite:true,clearance:true};
