@@ -40,6 +40,8 @@ Use **Inspect red port yarn** and **Inspect green starboard yarn** for close-ups
 of the jib faces. Pixel checks verify the cloth hides the far-side yarn on both tacks.
 Use **Inspect luffing boom** on that page to see the head-to-wind motion.
 Use **Inspect luffing jib sheets** to inspect both sheets following the clew.
+Use **Inspect boom vang** for a close-up of the purchase beside the rigid support;
+change Boom vang and resume motion to see the line tighten or ease.
 Use the two **Inspect … tack slot** buttons to inspect sail contact with an
 eased main and tightly sheeted jib on either tack.
 Use **Mast bend** in the simulator, then change **Mainsail → Backstay** to see

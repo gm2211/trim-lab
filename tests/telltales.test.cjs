@@ -14,6 +14,10 @@ const sailStart = src.indexOf('function sailPathArray');
 const sailEnd = src.indexOf('async function ensure3D', sailStart);
 const telltaleStart = src.indexOf('const TT_SEG=');
 const telltaleEnd = src.indexOf('/* ---- position-based-dynamics sail cloth', telltaleStart);
+const optimizerStart = src.indexOf('function computeWith(params)');
+const optimizerEnd = src.indexOf('$("perfect")', optimizerStart);
+const rowAoaStart = src.indexOf('function rowAoaAt(');
+const rowAoaEnd = src.indexOf('function clothStep', rowAoaStart);
 assert.ok(modelStart >= 0 && modelEnd > modelStart, 'trim model source not found');
 assert.ok(sailStart >= 0 && sailEnd > sailStart, 'sail geometry source not found');
 assert.ok(telltaleStart >= 0 && telltaleEnd > telltaleStart, 'telltale source not found');
@@ -25,10 +29,12 @@ vm.runInContext(
   '\nconst V3=(x,y,z)=>new BABYLON.Vector3(x,y,z);\n' +
   'function tackSign(){return (state.twaSide||1)<0?-1:1;}\n' +
   src.slice(sailStart, sailEnd) +
-  '\nlet B3=globalThis.B3, testAoa=0;\n' +
-  'function rowAoaAt(){return testAoa;}\n' +
+  src.slice(optimizerStart, optimizerEnd) +
+  '\nlet B3=globalThis.B3, testAoa=null;\n' +
+  src.slice(rowAoaStart, rowAoaEnd).replace('function rowAoaAt(', 'function productionRowAoaAt(') +
+  '\nfunction rowAoaAt(...args){return testAoa===null?productionRowAoaAt(...args):testAoa;}\n' +
   src.slice(telltaleStart, telltaleEnd) +
-  '\nglobalThis.api={state,compute,sailPathArray,stepTelltales,yarn,yarnClearCloth,' +
+  '\nglobalThis.api={state,compute,computeWith,solvePerfectTrim,TRIM_KEYS,sailPathArray,stepTelltales,yarn,yarnClearCloth,' +
     'TT_SEG,TT_SIDES,TT_JIB_ROWS,TT_JIB_IX,TT_RADIUS,TT_OFF,' +
     'setTestAoa:value=>{testAoa=value;}};',
   ctx,
@@ -89,6 +95,18 @@ function stepCase(side, aoaError, dt=1) {
   const tt=freshTelltales();
   api.setTestAoa(r.idl.aoa-4+aoaError);
   api.stepTelltales(main,jib,r,dt);
+  return {r,main,jib,tt};
+}
+
+function solvedCase(side) {
+  run({tws:12,posIdx:0,twaC:null,twaSide:side,mainhal:.9,jhal:.9});
+  const trim=api.solvePerfectTrim(true);
+  for(const key of api.TRIM_KEYS || []) api.state[key]=trim[key];
+  const r=api.compute();
+  const main=sailRows(r,side,'main'),jib=sailRows(r,side,'jib');
+  const tt=freshTelltales();
+  api.setTestAoa(null);
+  api.stepTelltales(main,jib,r,1);
   return {r,main,jib,tt};
 }
 
@@ -210,7 +228,7 @@ test('centerline follows a bent sail without penetrating the cloth', () => {
   const yarnBank=bank(1);
   runtime.B3.t=2;
   api.yarn(yarnBank,0,A,T,N,U,new BABYLON.Vector3(0,-1,0),.24,api.TT_OFF,
-    {lift:0,stall:0,seed:0},rows,iy,ix);
+    {lift:0,stall:0,seed:0},6,rows,iy,ix);
   for(let ring=0;ring<api.TT_SEG;ring++) {
     const center=ringCenter(yarnBank,0,ring);
     const candidates=tris.map(tri=>clearanceAlong(center,N,tri)).filter(v=>v!==null);
@@ -218,4 +236,66 @@ test('centerline follows a bent sail without penetrating the cloth', () => {
     assert.ok(Math.min(...candidates)>=api.TT_OFF-2e-6,
       `ring ${ring} is only ${Math.min(...candidates)} m outside the cloth`);
   }
+});
+
+
+test('attached yarn streams aft in breeze and hangs in calm air', () => {
+  freshTelltales();
+  const A=new BABYLON.Vector3(0,0,0),T=new BABYLON.Vector3(1,0,0);
+  const U=new BABYLON.Vector3(0,1,0),N=new BABYLON.Vector3(0,0,1);
+  const gravity=new BABYLON.Vector3(0,-1,0),L=.24;
+  for(const speed of [4,8,0]){
+    const b=bank(1);
+    api.yarn(b,0,A,T,N,U,gravity,L,api.TT_OFF,{lift:0,stall:0,seed:0},speed);
+    const delta=ringCenter(b,0,api.TT_SEG-1).subtract(ringCenter(b,0,0));
+    if(speed===0){
+      assert.ok(delta.y < -.95*L,'calm yarn must hang down');
+      assert.ok(Math.abs(delta.x)<.02*L,'calm yarn must not stream without airflow');
+    }else{
+      assert.ok(delta.x>.97*L,`at ${speed} m/s attached yarn must stream aft`);
+      assert.ok(Math.abs(delta.y)<.10*L,`at ${speed} m/s attached yarn droops too far`);
+      assert.ok(Math.abs(delta.z)<.05*L,`at ${speed} m/s attached yarn curls off the sail`);
+    }
+  }
+});
+
+test('solved 12-knot close-hauled jib telltales stream aft on both tacks', () => {
+  for(const side of [1,-1]) {
+    const {r,jib,tt}=solvedCase(side);
+    assert.ok(r.aws>4,'fixture must have enough apparent wind to stream yarn');
+    for(const st of tt.st.slice(0,6))
+      assert.deepEqual([st.lift,st.stall],[0,0],`tack ${side}: solved jib is not attached`);
+    for(let slot=0;slot<api.TT_JIB_ROWS.length;slot++) {
+      const iy=api.TT_JIB_ROWS[slot],ix=api.TT_JIB_IX;
+      const T=jib[iy][ix+1].subtract(jib[iy][ix-1]).normalize();
+      for(const [name,yarnBank] of [['red',tt.red],['green',tt.grn]]) {
+        const delta=ringCenter(yarnBank,slot,api.TT_SEG-1).subtract(ringCenter(yarnBank,slot,0));
+        const aft=BABYLON.Vector3.Dot(delta,T);
+        assert.ok(aft>.9*.24,
+          `tack ${side} ${name} row ${slot}: attached yarn does not project aft`);
+        const vertical=Math.abs(delta.y-T.y*aft);
+        assert.ok(vertical<.1*.24,
+          `tack ${side} ${name} row ${slot}: attached yarn deviates vertically by ${vertical}`);
+      }
+    }
+  }
+});
+
+test('forced lift and stall produce distinct off-trim yarn shapes', () => {
+  const activeYarn=(result,kind)=>{
+    const slot=1,states=result.tt.st.slice(slot*2,slot*2+2);
+    const index=states.findIndex(st=>st[kind]>.99);
+    assert.notEqual(index,-1,`${kind} fixture has no active yarn`);
+    const N=localNormal(result.jib,api.TT_JIB_ROWS[slot],api.TT_JIB_IX);
+    const portSign=N.z>=0?1:-1,sgn=index===0?1:-1;
+    return {bank:sgn===portSign?result.tt.red:result.tt.grn,slot};
+  };
+  const lift=stepCase(1,-8),stall=stepCase(1,13);
+  const lifted=activeYarn(lift,'lift'),stalled=activeYarn(stall,'stall');
+  const liftDelta=ringCenter(lifted.bank,lifted.slot,api.TT_SEG-1)
+    .subtract(ringCenter(lifted.bank,lifted.slot,0));
+  const stallDelta=ringCenter(stalled.bank,stalled.slot,api.TT_SEG-1)
+    .subtract(ringCenter(stalled.bank,stalled.slot,0));
+  assert.ok(BABYLON.Vector3.Distance(liftDelta,stallDelta)>.08*.24,
+    'forced lift and stall collapse to the same yarn shape');
 });

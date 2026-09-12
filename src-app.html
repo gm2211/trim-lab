@@ -2804,7 +2804,7 @@ function stepTelltales(rowsM, rowsJ, r, dt){
       const nrm=N.scale(sgn), isLee=(sgn===leeSign), st=tt.st[k*2+(sgn>0?0:1)];
       st.lift +=((isLee?0:liftT )-st.lift )*K;
       st.stall+=((isLee?stallT:0)-st.stall)*K;
-      yarn(sgn===portSign?tt.red:tt.grn, k, A,T,nrm,U,gDown,TT_LEN_J,TT_OFF,st,rowsJ,iy,ix);
+      yarn(sgn===portSign?tt.red:tt.grn, k, A,T,nrm,U,gDown,TT_LEN_J,TT_OFF,st,r.aws*KT,rowsJ,iy,ix);
     }
   }
   if(showM) for(let k=0;k<TT_LEECH_ROWS.length;k++){
@@ -2819,7 +2819,7 @@ function stepTelltales(rowsM, rowsJ, r, dt){
     // leech and the top one dies first, even when the mid-sail angle looks fine
     const st=tt.st[6+k], stallT=clamp(Math.max((m-4)/8,(r.main.leech-.88)/.22*hf),0,1);
     st.lift=0; st.stall+=(stallT-st.stall)*K;
-    yarn(tt.lch,k,A,T,N,U,gDown,TT_LEN_L,TT_OFF,st);
+    yarn(tt.lch,k,A,T,N,U,gDown,TT_LEN_L,TT_OFF,st,r.aws*KT);
   }
   for(const bank of [tt.red,tt.grn,tt.lch]) if(bank.mesh.isEnabled()){
     bank.mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind,bank.pos);
@@ -2852,16 +2852,22 @@ function yarnClearCloth(p,N,rows,iy,ix){
 }
 // Smooth centerline streams aft, lifts when starved, and curls when stalled.
 // Fixed metre-scale tube geometry stays round as the camera moves or zooms.
-function yarn(bank,slot,A,T,N,U,gDown,L,off,st,rows,iy,ix){
-  const seg=L/(TT_SEG-1), flut=clamp(Math.max(st.lift,st.stall)*1.15+.07,0,1.2);
+function yarn(bank,slot,A,T,N,U,gDown,L,off,st,airSpeed,rows,iy,ix){
+  // Aerodynamic tension grows with speed squared. The previous constant
+  // gravity increment curled even fully attached yarn in a strong breeze.
+  // This reduced-order balance blends calm-air hanging into aft streaming.
+  const pressure=Math.max(0,airSpeed)**2, airflow=pressure/(pressure+1);
+  const lift=st.lift*airflow, stall=st.stall*airflow;
+  const seg=L/(TT_SEG-1), flut=clamp(Math.max(lift,stall)*1.15+.07*airflow,0,1.2);
   const bend=5/(TT_SEG-1); // preserve curvature when increasing tessellation
-  let p=yarnClearCloth(A.add(N.scale(off)),N,rows,iy,ix), d=T.clone(); const pts=[p.clone()];
+  let p=yarnClearCloth(A.add(N.scale(off)),N,rows,iy,ix), d=T.scale(airflow).add(gDown.scale(1-airflow)).normalize(); const pts=[p.clone()];
   for(let k=1;k<TT_SEG;k++){
     const wob=Math.sin(B3.t*(9+11*flut)-k*bend*1.15+st.seed)*flut;
-    d=d.add(U.scale((st.lift*.42+wob*.16)*bend))
-       .add(N.scale((st.lift*.18+st.stall*.34+wob*.26)*bend))
-       .add(T.scale(-st.stall*.42*bend))
-       .add(gDown.scale((.10+.14*(1-Math.max(st.lift,st.stall)))*bend)).normalize();
+    d=d.add(T.subtract(d).scale(airflow*(1-Math.max(lift,stall))*bend))
+       .add(U.scale((lift*.42+wob*.16)*bend))
+       .add(N.scale((lift*.18+stall*.34+wob*.26)*bend))
+       .add(T.scale(-stall*.42*bend))
+       .add(gDown.scale((.10+.14*(1-Math.max(lift,stall)))*(1-airflow)*bend)).normalize();
     p=p.add(d.scale(seg));
     const clearance=BABYLON.Vector3.Dot(p.subtract(A),N);
     if(clearance<off) p.addInPlace(N.scale(off-clearance));
@@ -3068,6 +3074,32 @@ function clothResolveContacts(){
     }
   }
 }
+// Display purchase beside the rigid support, with both sheaves in the rope plane.
+// Boom pitch remains supported; this animates the exposed control line, not a
+// second boom-height solver. Easing adds sag; hauling removes it continuously.
+function vangTackle(bottom,top,tension,t,aws){
+  const axis=top.subtract(bottom).normalize();
+  const normal=BABYLON.Vector3.Cross(V3(0,1,0),axis).normalize();
+  const across=BABYLON.Vector3.Cross(axis,normal).normalize();
+  const low=bottom.subtract(normal.scale(.135)),high=top.subtract(normal.scale(.135));
+  const radius=.039,groove=-.0275*.65;
+  const point=(center,x,y)=>center.add(across.scale(x)).add(axis.scale(y-.005*.65)).add(normal.scale(groove));
+  const ease=1-clamp(tension,0,1),sag=.15*ease*ease;
+  const fall=(a,b,phase)=>Array.from({length:17},(_,i)=>{
+    const u=i/16,envelope=Math.sin(Math.PI*u)**2;
+    const flutter=.014*ease*clamp(aws/18,0,1)*Math.sin(t*3.1+phase+u*2.4);
+    return BABYLON.Vector3.Lerp(a,b,u).add(V3(0,-sag*envelope,0))
+      .subtract(normal.scale((sag*.35+flutter)*envelope));
+  });
+  const arc=(center,start,end)=>Array.from({length:15},(_,i)=>{
+    const a=lerp(start,end,i/14);return point(center,radius*Math.cos(a),radius*Math.sin(a));
+  });
+  const falls=[fall(point(low,-radius,0),point(high,-radius,0),0),
+    fall(point(high,radius,0),point(low,radius,0),1.7)];
+  return {low,high,axis,across,normal,falls,
+    rotation:BABYLON.Vector3.RotationFromAxis(across,axis,normal),
+    path:[...falls[0],...arc(high,Math.PI,0).slice(1),...falls[1].slice(1),...arc(low,0,-Math.PI).slice(1)]};
+}
 function tick3D(elapsed){
   if(!B3||!lastR) return;
   const r=lastR, dt=B3.paused?0:clamp(elapsed??B3.engine.getDeltaTime()/1000,0,.05);
@@ -3076,6 +3108,8 @@ function tick3D(elapsed){
   B3.rigShow=stepRigDisplay(B3.rigShow,rigTarget,dt,stillUpdate);
   updateStandingRig(B3.rigShow,tackSign());
   B3.t+=dt;
+  if(B3.vangShow===undefined||stillUpdate) B3.vangShow=state.vang;
+  else B3.vangShow+=(state.vang-B3.vangShow)*(1-Math.exp(-dt*8));
   // Display angles are signed by tack (+ = set to port). Both sails respond
   // to wind moments, with their moving anchors restrained by sheet length.
   const S=tackSign();
@@ -3134,7 +3168,6 @@ function tick3D(elapsed){
     B3.tubes={};
     const boomDir=V3(-Math.cos(d),0,Math.sin(d));
     const boomEnd=V3(RIG.mastX,RIG.boomY,0).add(boomDir.scale(RIG.boomLength));
-    const boomVangPt=V3(RIG.mastX,RIG.boomY,0).add(boomDir.scale(1.15));
     // main clew actually slides along the boom with the outhaul
     const footLen=RIG.mainFoot*(1-(1-state.outhaul)*.09);
     const mClew=V3(RIG.mastX,RIG.boomY+.045,0).add(boomDir.scale(footLen));
@@ -3266,16 +3299,19 @@ function tick3D(elapsed){
       ...arc(cb.add(V3(0,0,-.0275)),R,0,-Math.PI).slice(1),...fall(cb.add(V3(-R,0,-.0275)),bb.add(V3(-R,0,.0275))).slice(1),
       ...arc(bb.add(V3(0,0,.0275)),R,Math.PI,Math.PI*1.5).slice(1),front.add(V3(0,-R,0)),...arc(front,R,Math.PI*1.5,Math.PI*2).slice(1),...fall(front.add(V3(R,0,0)),ratchet.add(V3(R,0,0)))];
     const mainTail=coil(V3(RIG.pedestalX-.18,.23,.26));
-    const vangTop=B3.vangBlock.position,vangLow=V3(RIG.mastX-.08,1.12,0);
+    const vang=vangTackle(vangBottom,vangUpper,B3.vangShow,B3.t,r.aws);
+    B3.vangBase.position=vang.low;B3.vangBlock.position=vang.high;
+    B3.vangBase.rotation.copyFrom(vang.rotation);B3.vangBlock.rotation.copyFrom(vang.rotation);
+    B3.vangFalls=vang.falls;
+    const vangLane=lane(-.14,V3(RIG.mastX-.10,1.15,-.14));
+    const vangLead=sagLine(vang.path.at(-1),vangLane[0],0,p=>trunkTopY(p.x,p.z)+.018,14);
     B3.mainSheetFalls=[[cb,bb],[bb,cb],[cb,bb],[front,ratchet]];
     const ropes={
       sheet:[mainSheet.concat(sagLine(mainSheet.at(-1),mainTail[0],.05,.23,14).slice(1),mainTail.slice(1))],
       jsheet:[working.path],
       jsheetw:[lazy.path],
       jcar:[],
-      vang:[[vangLow.add(V3(-.035,0,-.017)),vangTop.add(V3(-.035,0,-.017)),
-        ...arc(vangTop.add(V3(0,0,-.017)),.037,Math.PI,0).slice(1),vangLow.add(V3(.035,0,-.017)),
-        ...lane(-.14,V3(RIG.mastX-.10,1.15,-.14))]],
+      vang:[[...vang.path,...vangLead.slice(1),...vangLane.slice(1)]],
       // Outhaul and halyards run inside the extrusions. Only exposed ends show.
       outhaul:[[mClew,boomEnd.add(V3(0,.025,0))],lane(-.21,V3(RIG.mastX-.07,RIG.boomY-.06,-.07))],
       cunn:[[V3(RIG.mastX-.04,RIG.boomY+.24,.07),V3(RIG.mastX-.12,1.14,.14),...lane(.14,V3(RIG.mastX-.12,1.14,.14)).slice(1)]],
