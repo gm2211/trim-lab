@@ -7,6 +7,7 @@
 <ol id="results"></ol>
 <p><button onclick="inspectJib(1)">Inspect port jib gear</button> <button onclick="inspectJib(-1)">Inspect starboard jib gear</button> <button onclick="inspectLuff()">Inspect luffing boom</button> <button onclick="inspectJibLuff()">Inspect luffing jib sheets</button> <button onclick="inspectTiller()">Inspect tiller clearance</button> <button onclick="inspectSail(1)">Inspect port sail face</button> <button onclick="inspectSail(-1)">Inspect starboard sail face</button></p>
 <p><button onclick="inspectSails(1)">Inspect starboard tack slot</button> <button onclick="inspectSails(-1)">Inspect port tack slot</button></p>
+<p><button onclick="inspectGrazing(1)">Inspect grazing jib</button> <button onclick="inspectGrazing(-1)">Inspect opposite grazing jib</button></p>
 <iframe title="Simulator under test"></iframe>
 <script>
 const frame=document.querySelector('iframe'), results=document.querySelector('#results');
@@ -17,6 +18,11 @@ function inspectJib(side){
 function inspectSail(side){
   frame.style.height='950px';
   frame.contentWindow.eval(`state.twaSide=1;state.twaC=45;state.sheet=.85;state.trav=0;state.jsheet=.75;state.jsheetw=0;update("sheet");B3.paused=true;tick3D();B3.cam.setTarget(V3(-.4,3.6,0));B3.cam.radius=5.2;B3.cam.alpha=${side>0?2.7:-2.7};B3.cam.beta=1.25;B3.engine.resize();B3.scene.render();`);
+  frame.scrollIntoView();
+}
+function inspectGrazing(side){
+  frame.style.height='1050px';
+  frame.contentWindow.eval(`Object.assign(state,{twaSide:${side},twaC:45,sheet:.85,trav:0,jsheet:.75,jsheetw:0,jhal:.9});B3.paused=true;update('sheet');tick3D();B3.cam.setTarget(V3(.7,5.3,0));B3.cam.radius=5;B3.cam.alpha=${side*2.7};B3.cam.beta=1.45;B3.engine.resize();B3.scene.render();`);
   frame.scrollIntoView();
 }
 function inspectLuff(){
@@ -229,6 +235,57 @@ frame.onload=async()=>{
     for(const [key,label] of Object.entries({clew:'Moving jib stays inside active sheet limits on both tacks',ends:'Both jib sheets remain attached to the moving cloth clew',length:'Free sheet spans stay within paid length',finite:'Dynamic sheets remain finite when luffing, backed and wing-on-wing',wrap:'Moving jib sheets preserve winch wraps',pause:'Pause freezes jib clew and free-sheet motion',slackMoves:'Lazy jib sheet moves under wind and gravity'}))check(label,jibDynamics[key]);
     check('Jib luffing excursion: '+jibDynamics.excursion.toFixed(2)+' degrees; max line overrun '+jibDynamics.overrun.toFixed(4)+' m',jibDynamics.excursion>.5&&jibDynamics.overrun<.003);
     if(!jibDynamics.length)check('Overlength span '+JSON.stringify(jibDynamics.worst),false);
+    check('Vinyl windows share deforming sail geometry and keep transparent materials',w.eval(`
+      [[B3.mainSail,B3.mainWindow],[B3.jibSail,B3.jibWindow]].every(([cloth,window])=>
+        window.geometry===cloth.geometry && window.parent===cloth.parent && !window.isPickable &&
+        cloth.material.needAlphaTesting() && !cloth.material.needAlphaBlending() &&
+        window.material.needAlphaBlending() && !window.material.forceDepthWrite)
+    `));
+    check('Window texture masks exclude opaque cloth and retain clear vinyl',w.eval(`
+      [B3.mainWindow,B3.jibWindow].every(mesh=>{
+        const tex=mesh.material.albedoTexture,size=tex.getSize(),data=tex.getContext().getImageData(0,0,size.width,size.height).data;
+        let clear=0,vinyl=0;
+        for(let i=3;i<data.length;i+=4){if(data[i]>=128)return false;if(data[i]===0)clear++;else vinyl++;}
+        return clear>0 && vinyl>0;
+      })
+    `));
+    // Opaque curved fabric must render the same regardless of triangle submission order.
+    // The former blended material changed thousands of pixels at these grazing angles.
+    const sailPixels=w.eval(`(()=>{
+      const saved={...state},paused=B3.paused,cam=B3.cam;
+      const camera={target:cam.target.clone(),alpha:cam.alpha,beta:cam.beta,radius:cam.radius};
+      const visible=B3.scene.meshes.map(mesh=>[mesh,mesh.isVisible]);
+      const gl=B3.engine._gl,width=B3.engine.getRenderWidth(),height=B3.engine.getRenderHeight();
+      const snap=()=>{B3.scene.render();const pixels=new Uint8Array(width*height*4);gl.readPixels(0,0,width,height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);return pixels;};
+      const difference=(a,b)=>{let changed=0;for(let i=0;i<a.length;i+=4)if(Math.max(...[0,1,2].map(c=>Math.abs(a[i+c]-b[i+c])))>2)changed++;return changed;};
+      const samples=[];
+      try{
+        B3.paused=true;
+        for(const side of [1,-1]){
+          Object.assign(state,{twaSide:side,twaC:45,sheet:.85,trav:0,jsheet:.75,jsheetw:0,jhal:.9});update('sheet');tick3D();
+          cam.setTarget(V3(.7,5.3,0));cam.radius=5;cam.beta=1.45;
+          for(const [mesh,angle] of [[B3.jibSail,2.7],[B3.mainSail,2.9]]){
+            cam.alpha=side*angle;
+            for(const [m] of visible)m.isVisible=false;
+            const empty=snap(),indices=Array.from(mesh.getIndices());
+            try{
+              mesh.isVisible=true;const before=snap(),reverse=[];
+              for(let i=indices.length-3;i>=0;i-=3)reverse.push(indices[i],indices[i+1],indices[i+2]);
+              mesh.setIndices(reverse);const after=snap();
+              samples.push({sail:mesh.name,side,coverage:difference(empty,before),changed:difference(before,after)});
+            }finally{mesh.setIndices(indices);}
+          }
+        }
+        return samples;
+      }finally{
+        for(const [mesh,isVisible] of visible)mesh.isVisible=isVisible;
+        Object.assign(state,saved);update('sheet');tick3D();B3.paused=paused;
+        cam.setTarget(camera.target);cam.alpha=camera.alpha;cam.beta=camera.beta;cam.radius=camera.radius;B3.scene.render();
+      }
+    })()`);
+    for(const sample of sailPixels)check(
+      sample.sail+' grazing depth order, tack '+sample.side+': '+sample.changed+' changed / '+sample.coverage+' visible pixels',
+      sample.coverage>100 && sample.changed<=Math.max(8,sample.coverage*.0005));
     w.document.querySelector('[data-view="rigging"]').click();
     document.title=results.querySelector('.fail')?'FAIL: Trim Lab scene checks':'PASS: Trim Lab scene checks';
   }catch(error){check(error.message,false); document.title='FAIL: Trim Lab scene checks';}
