@@ -2841,7 +2841,14 @@ function tick3D(){
     B3.jibRoutes=[working,lazy];
     const lane=(z,top)=>{
       const lz=Math.sign(z)*(.43+Math.abs(z)-.14);
-      return [top,V3(1.25,1.14,lz),V3(.95,1.16,lz),V3(.72,1.16,lz),V3(.36,1.16,lz),V3(.20,1.08,lz),
+      // Loose tails bow inboard after the clutches, clear of the winch and
+      // its sheet wraps, then return to their separate hanging lanes.
+      const inset=.03+.08*(Math.abs(z)-.14)/.14;
+      const aft=Array.from({length:33},(_,i)=>{
+        const t=i/32,taper=clamp(Math.min(t/.38,(1-t)/.22),0,1);
+        return V3(lerp(.72,.20,t),1.16,lz-Math.sign(z)*inset*taper*taper*(3-2*taper));
+      });
+      return [top,V3(1.25,1.14,lz),V3(.95,1.16,lz),...aft,V3(.20,1.08,lz),
         ...Array.from({length:49},(_,i)=>{const a=i/48*Math.PI*6;return V3(.13-.016*i/48,.83+.19*Math.cos(a),lz+.028*Math.sin(a));})];
     };
     const bb=B3.boomBlock.position,cb=car.add(V3(0,RIG.blockRise,0)),R=.060;
