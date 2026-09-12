@@ -61,6 +61,38 @@ so merging to `main` is the deploy:
 - The artifact pipeline re-bundles inline scripts; debug the *served* page, not the upload.
 - Hidden browser tabs get zero rAF frames — a "frozen" 3D view unfreezes on focus.
 
+## AI coach providers
+
+Open the coach settings, choose a provider, enter its model ID and API key, then
+save. Provider presets cover Anthropic, OpenAI, Google Gemini, OpenRouter, Groq,
+xAI, Mistral and DeepSeek. Model suggestions are editable; OpenRouter accepts any
+chat model slug from its catalog rather than mapping every request to Claude.
+Existing Claude/OpenRouter credentials and saved model choices are restored.
+Changing the model does not require re-entering the current key.
+
+Choose **Other / local (OpenAI-compatible)** for Ollama, LM Studio or another
+service with a chat-completions API. Enter the full endpoint URL (for example,
+`http://localhost:11434/v1/chat/completions`) and its model ID. Keys are optional
+for local services. Remote URLs require HTTPS; localhost also permits HTTP.
+The server must allow this site's origin and request headers through CORS.
+
+Requests go directly from the browser to the selected provider. Keys stay in
+browser local storage; switching providers never reuses another provider's key.
+Browser access and model availability depend on the service and account. For a
+service that blocks browser requests, use a compatible server you control or an
+OpenRouter-hosted model. This does not add every provider's subscription login or
+proprietary API format. **Forget all credentials** clears saved keys and Claude
+subscription tokens. Saving a custom endpoint with a different URL requires
+re-entering its key, so an existing key cannot be forwarded accidentally.
+
+Provider reference docs: [OpenAI](https://developers.openai.com/api/reference/resources/chat),
+[Gemini](https://ai.google.dev/gemini-api/docs/openai),
+[OpenRouter](https://openrouter.ai/docs/quickstart),
+[Groq](https://console.groq.com/docs/openai),
+[xAI](https://docs.x.ai/developers/rest-api-reference/inference/chat-completions),
+[Mistral](https://docs.mistral.ai/api),
+[DeepSeek](https://api-docs.deepseek.com/).
+
 ## One-click Claude subscription sign-in (auth relay)
 
 The coach's "Connect Claude" button runs the whole OAuth flow in the browser except
