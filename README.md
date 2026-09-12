@@ -8,8 +8,8 @@ physical jib sheets that remain cleated through tacks and jibes,
 elastic backstay load, animated mast bend and wind-loaded forestay sag,
 visible Cunningham tackle with a cloth-attached cringle and animated luff tension,
 wind-dye streamlines from solved circulation, depth-tested 3D yarn telltales,
-per-slider trim-optimality indicators,
-and a coordinate-descent "perfect trim" solver. 2D views: sail sections, deck plan,
+per-slider adjustment-benefit indicators,
+and a coordinate-descent guided trim solver. 2D views: sail sections, deck plan,
 twist-from-astern, heel gauge, a hand-written, reviewed static drill list (in `src-app.html`),
 and concept guides.
 
@@ -24,6 +24,9 @@ The [Colgate 26 sail-away package](https://www.colgate26.com/price-packages/sail
 specifies two reef lines. Reef heights here (16% and 30% of the luff) and the
 cloth bundle are training approximations, not measured sailmaker dimensions or
 a simulation of each step of the maneuver.
+
+See [guided trim and explanations](docs/trim-guidance.md) for the objective,
+condition-aware next moves, soft teaching bands, and verification limits.
 
 ## Layout
 - `src-app.html` — the entire app (HTML/CSS/JS) with a `<script id="lib-slot">` placeholder.

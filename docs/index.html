@@ -482,7 +482,7 @@
       </div>
       <div class="btnrow">
         <button class="gustbtn" id="gust">Gust +6 kt</button>
-        <button class="gustbtn solid" id="perfect">Solve perfect trim</button>
+        <button class="gustbtn solid" id="perfect" title="Balance trim for the selected reef. Close-hauled, also compare pointing angles. Reef separately if load stays high.">Balance current sails</button>
       </div>
     </aside>
 
@@ -8352,7 +8352,7 @@ function stepJibSheetSpan(span,a,b,length,wind,dt,t,side){
   pin();
   return span;
 }
-function compute(){
+function compute({flow=true}={}){
   const s = state;
   const reef=mainReef(s);
   const reefedMain={...BOAT.main,area:BOAT.main.area*reef.areaScale,
@@ -8375,7 +8375,7 @@ function compute(){
   heel=clamp(heel,0,40);
   // Report wind, sail shape, and loads at the returned equilibrium estimate.
   const out=finish(step(V, heel, lee), V, heel, lee);
-  updatePanel(out.main, {...out.jib, boom:out.jib.clew}, out.awa);
+  if(flow) updatePanel(out.main, {...out.jib, boom:out.jib.clew}, out.awa);
   return out;
 
   function shapes(awa,awsKt){
@@ -8518,16 +8518,29 @@ function compute(){
 /* ---------------- coach ---------------- */
 // Prerequisites take priority over fine trim now that guidance lives in one place.
 function nextMoveAlert(r){
-  if((state.twaC??POS[state.posIdx].twa)<27)
-    return ["Bear away to fill the sails.", "You're in irons: move the wind to at least the close-hauled mark before trimming."];
+  if(r.tws<.5) return ["Wait for wind before trimming.", "There is no useful wind pressure to judge sail shape or a trim target."];
+  if(r.twa<27)
+    return ["Bear away to fill the sails.", "In irons: if stopped, back the jib to turn the bow, then release it as you bear away. Build speed before pointing up."];
   if(state.mainhal<.35)
-    return ["Hoist the main halyard.", "The main is coming down. Raise the halyard to the top of its range before trimming."];
+    return ["Hoist the main halyard.", "Raise to at least 35: full hoist for the selected reef. Above that, this control adds luff tension; maximum tension is not always needed."];
   if(state.jhal<.35)
-    return ["Hoist the jib halyard.", "The jib is dropping. Hoist first, then set luff tension."];
-  if(state.jsheetw>.25 && !r.jib.wow)
+    return ["Hoist the jib halyard.", "Raise to at least 35 for full hoist, then add luff tension to suit the breeze and draft position."];
+  if(r.jib.backed)
     return [`Ease the ${sideWord("jsheetw")} jib sheet.`, "The windward sheet is backing the jib. Release it to sail normally."];
-  if(r.heel>26)
-    return ["Lower the traveler to reduce heel.", `Overpowered at ${fmt1(r.heel)}° of heel. Then flatten the main and let the top twist open.`];
+  if(r.twa<40 && r.speed<2)
+    return ["Bear away a little and build speed.", "This heading is too close for the current flow. Fill the sails before fine-tuning depth or pointing higher."];
+  if(r.heel>26 || r.helm>8){
+    const relief=[{sheet:Math.max(0,state.sheet-.15)}];
+    if(r.awa<65 && state.trav>-.95) relief.push({trav:Math.max(-1,state.trav-.3)});
+    const load=q=>q.heel+Math.max(0,q.helm-5)*2;
+    relief.sort((a,b)=>load(computeWith(a))-load(computeWith(b)));
+    const best=relief[0], after=computeWith(best);
+    if(load(after)<load(r)-.5) return [Object.hasOwn(best,'trav')?'Lower the traveler to reduce heel.':'Ease the mainsheet to unload the main.',
+      `${fmt1(r.heel)}° heel, ${fmt1(r.helm)}° helm: reduce load now. If it stays excessive, reef and re-trim; a short puff may only need temporary easing.`];
+    const reef=mainReef().level;
+    return [reef<2?`Set reef ${reef+1} and re-trim.`:'Reduce sail further and reassess the course.',
+      'Small trim changes are not relieving the load. Keep the boom controlled; this trainer models only two main reefs.'];
+  }
   return null;
 }
 
@@ -8539,7 +8552,7 @@ function renderTiles(r){
   const heelTxt = r.heel>28?"✕ overpowered":r.heel>22?"! too much":r.heel>=10?"✓ in band":"flat";
   const helmCls = r.helm>8?"crit":r.helm>5.5?"warn":r.helm>=1?"good":"mut";
   const helmTxt = r.helm>8?"✕ heavy":r.helm>5.5?"! building":r.helm>=1?"✓ light":"neutral";
-  const effV = OPT_R ? clamp(r.speed/Math.max(OPT_R.speed,.1),0,1) : r.eff;
+  const effV = OPT_R ? clamp(1-Math.max(0,trimObjective(OPT_R)-trimObjective(r))/Math.max(.5,trimProgress(OPT_R)),0,1) : null;
   const effCls = effV>.92?"good":effV>.75?"warn":"crit";
   const effTxt = effV>.92?"✓ in the groove":effV>.75?"! trim off":"✕ way off";
   const tw=state.twaC??POS[state.posIdx].twa;
@@ -8548,7 +8561,7 @@ function renderTiles(r){
     <div class="tile"><div class="lbl">Boat speed</div><div class="num">${fmt1(r.speed)}<small> kt</small></div>${pill("hull speed ≈ 6.0 kt","mut")}</div>
     <div class="tile"><div class="lbl">Heel</div><div class="num">${fmt1(r.heel)}<small> °</small></div>${pill(heelTxt,heelCls)}</div>
     <div class="tile"><div class="lbl">Weather helm</div><div class="num">${fmt1(r.helm)}<small> ° rud</small></div>${pill(helmTxt,helmCls)}</div>
-    <div class="tile"><div class="lbl">${OPT_R?"% of solved speed":"Trim score"}</div><div class="num ${effV>.92?"goodc":"warnc"}">${Math.round(effV*100)}<small>%</small></div>${pill(effV>.92?"in the groove":"trim is off",effCls)}</div>`;
+    <div class="tile"><div class="lbl">Trim balance</div><div class="num ${effV>.92?"goodc":"warnc"}">${effV==null?'—':Math.round(effV*100)}${effV==null?'':'<small>%</small>'}</div>${pill(effV==null?(r.twa<27?'course first':r.tws<.5?'waiting for wind':'checking trim'):effV>.92?"balanced estimate":"adjust trim",effV==null?'mut':effCls)}</div>`;
 }
 
 function delta(x, ideal, tolGood, tolWarn, fmt){
@@ -8861,7 +8874,7 @@ function renderVals(){
   for(const k of TRIM_KEYS){
     const el=$("v-"+jibSheetSideId(k)); if(!el) continue;
     const cur=Math.round(state[k]*100);
-    if(OPT && Math.abs(OPT[k]-state[k])>(k==="trav"?.08:.04))
+    if(OPT && OPT_MOVE?.effects[k]>.015 && Math.abs(OPT[k]-state[k])>(k==="trav"?.08:.04))
       el.innerHTML = el.textContent+" · "+cur+" → <span class='opt'>"+Math.round(OPT[k]*100)+"</span>";
     else el.textContent += " · " + cur;
   }
@@ -8885,7 +8898,7 @@ const LINEMETA = {
   tws:{name:"True wind",job:"conditions changed"},
   pos:{name:"Point of sail",job:"conditions changed"},
   gust:{name:"Gust",job:"+6 kt on top of true wind"},
-  perfect:{name:"Perfect trim",job:"physics optimum (close-hauled: best VMG)"},
+  perfect:{name:"Suggested trim",job:"balance speed, sail shape and handling; upwind progress close-hauled"},
 };
 let LAST_FX_SRC=null;
 function renderFx(src,a,b){
@@ -8899,79 +8912,116 @@ function renderFx(src,a,b){
     chips.push({mag:Math.abs(nv-ov)/eps, html:`<span class="chip ${cls}">${label} ${f(ov)}\u2192${f(nv)}</span>`});
   };
   const dg=v=>fmt1(v)+"\u00B0", pc=v=>(v*100).toFixed(0)+"%", kt=v=>fmt1(v)+" kt";
-  add("main twist",a.main.twist,b.main.twist,.8,dg,Math.abs(a.main.twist-a.idl.twist),Math.abs(b.main.twist-b.idl.twist));
-  add("main belly",a.main.depth,b.main.depth,.004,pc,Math.abs(a.main.depth-a.idl.depth),Math.abs(b.main.depth-b.idl.depth));
-  add("main draft",a.main.draft,b.main.draft,.007,pc,Math.abs(a.main.draft-a.idl.draftPos),Math.abs(b.main.draft-b.idl.draftPos));
+  add("main twist",a.main.twist,b.main.twist,.8,dg,0,0);
+  add("main belly",a.main.depth,b.main.depth,.004,pc,0,0);
+  add("main draft",a.main.draft,b.main.draft,.007,pc,0,0);
   add("boom angle",a.main.boom,b.main.boom,1.5,dg,0,0);
   add("jib angle",a.jib.clew,b.jib.clew,1.5,dg,0,0);
-  add("jib twist",a.jib.twist,b.jib.twist,.8,dg,Math.abs(a.jib.twist-a.idl.twist),Math.abs(b.jib.twist-b.idl.twist));
-  add("jib belly",a.jib.depth,b.jib.depth,.004,pc,Math.abs(a.jib.depth-a.idl.depth),Math.abs(b.jib.depth-b.idl.depth));
-  add("heel",a.heel,b.heel,.5,dg,distBand(a.heel,12,22),distBand(b.heel,12,22));
-  add("helm",a.helm,b.helm,.5,dg,distBand(a.helm,1,4),distBand(b.helm,1,4));
+  add("jib twist",a.jib.twist,b.jib.twist,.8,dg,0,0);
+  add("jib belly",a.jib.depth,b.jib.depth,.004,pc,0,0);
+  add("heel",a.heel,b.heel,.5,dg,distBand(a.heel,0,22),distBand(b.heel,0,22));
+  add("helm",a.helm,b.helm,.5,dg,distBand(a.helm,-2,5),distBand(b.helm,-2,5));
   add("speed",a.speed,b.speed,.05,kt,-a.speed,-b.speed);
   chips.sort((x,y)=>y.mag-x.mag);
   $("fxLine").textContent=lineName(src);
   $("fxJob").textContent=M.job;
   $("fxChips").innerHTML = chips.length ? chips.slice(0,4).map(c=>c.html).join("")
-    : `<span class="idle">no measurable change \u2014 try a bigger pull</span>`;
+    : `<span class="idle">No measurable change. This line may already be suitable; check flow before adjusting farther.</span>`;
   renderNext(src,b);
 }
 // Explain the selected line, so the reason and action cannot disagree.
-function nextMoveReason(k,d,r){
+function nextMoveReason(k,d,r,after=null){
   const more=d>0;
+  const awa=r.awa??180, twa=r.twa??state.twaC??POS[state.posIdx].twa, aws=r.aws??state.tws;
+  const upwind=twa<=55, deep=awa>=140, light=aws<8, overpowered=r.heel>22||r.helm>5;
+  const changed=(part,key,unit="°",scale=1)=>{
+    if(!after?.[part]||!r[part]) return '';
+    const before=Math.round(r[part][key]*scale),predicted=Math.round(after[part][key]*scale);
+    return before!==predicted ? ` (${before}→${predicted}${unit}${key==='twist'?' twist':''})` : '';
+  };
   switch(k){
-    case "sheet": return more ? "Bring the main in and tighten its leech." : "Let the main out and open its leech.";
-    case "trav": return "Change the main's angle to the wind without changing its shape.";
-    case "vang": return more ? "Reduce twist at the top of the main by holding the boom down." : "Let the boom rise so the top of the main twists open.";
-    case "outhaul": return `The main's belly is ${(r.main.depth*100).toFixed(0)}%; ${more?"flatten it":"add depth for power"}.`;
-    case "backstay": return more ? "Bend the mast and tighten the forestay to flatten both sails." : "Let the mast straighten and forestay sag to add depth for power.";
-    case "cunn": case "mainhal": return `Main draft is ${(r.main.draft*100).toFixed(0)}% back; move it ${more?"forward":"aft"}.`;
-    case "jhal": return `Jib draft is ${(r.jib.draft*100).toFixed(0)}% back; move it ${more?"forward":"aft"}.`;
-    case "jcar": return more ? "Open the jib's upper leech and flatten its foot." : "Tighten the jib's upper leech and add depth to its foot.";
-    case "jsheet": return more ? "Bring the jib in and tighten its leech." : "Let the jib swing out to meet the wind.";
-    case "jsheetw": return more ? "Bring the jib to windward to fly wing-on-wing." : "Release the windward sheet so the jib can fill to leeward.";
+    case "sheet": return more
+      ? deep ? `Trim only enough to steady the main while keeping area exposed to the wind${changed("main","twist")}; watch for a full, stable sail.` : `Trim to increase angle of attack and close the leech${changed("main","twist")}; ${upwind?"the top telltale may flick aft, but should not stay hidden":"stop when the sail just fills without a stalled leeward telltale"}.`
+      : deep ? `Ease the main toward a broad, stable presentation to the wind${changed("main","twist")}; the sail itself, not attached-flow telltales, is the cue.` : `Ease to reduce angle of attack and open the leech${changed("main","twist")}; watch for the leeward telltale to recover from a stall.`;
+    case "trav": return `${more?"Raise":"Lower"} the traveler to change the whole main's angle without changing its depth. ${deep?'Its effect is small with the boom far out; watch sail presentation and boom stability.':`Watch the main telltales${overpowered&&!more?' and whether heel or helm settles':''}.`}`;
+    case "vang": return more
+      ? deep ? `Reduce twist${changed("main","twist")} so the upper main stays presented and does not pump; watch the leech shape and boom stability.` : `Reduce twist${changed("main","twist")}; ${upwind?"keep the top batten near the boom angle without hooking the leech":"watch the upper telltale for persistent stall"}.`
+      : deep ? `Add twist${changed("main","twist")} without letting the upper sail spill or pump; judge the leech shape, not attached-flow telltales.` : `Open the upper leech${changed("main","twist")}${overpowered?" to shed load":""}; stop when the upper telltale streams reliably.`;
+    case "outhaul": {
+      const depth=(r.main.depth*100).toFixed(0), shape=changed("main","depth","%",100);
+      if(more) return `Flatten the lower main from ${depth}% depth${shape}; ${overpowered?"less camber reduces heel and helm":"even with low heel, excess camber adds drag"}.`;
+      if(upwind) return `Add depth from ${depth}%${shape} in a measured step for power; ${light?"very light flow cannot support unlimited camber, so stop before the shape sags":"keep the draft stripes smooth"}.`;
+      return `Add depth from ${depth}%${shape} in a measured step; stop when the foot is smooth and stable, since maximum ease is not automatically fastest.`;
+    }
+    case "backstay": return more
+      ? `Bend the mast and tighten the forestay, flattening the main and jib entry${overpowered?" to unload heel and helm":""}; watch both sails' draft and luff telltales.`
+      : `Straighten the mast and allow more forestay sag for a fuller entry${light?" and more power in this light air":""}; check that the jib luff telltales still break together.`;
+    case "cunn": case "mainhal": return `Move main draft ${more?"forward":"aft"} from ${(r.main.draft*100).toFixed(0)}%${changed("main","draft","%",100)}; use the draft stripes and luff wrinkles to judge the result.`;
+    case "jhal": return `Move jib draft ${more?"forward":"aft"} from ${(r.jib.draft*100).toFixed(0)}%${changed("jib","draft","%",100)}; watch the draft stripes and whether both luff telltales break together.`;
+    case "jcar": return more
+      ? `Move the lead aft to open the upper jib leech${changed("jib","twist")} and flatten the foot; ${deep?"judge a stable leech and foot":"this corrects the lower telltales breaking before the upper ones"}.`
+      : `Move the lead forward to close the upper jib leech${changed("jib","twist")} and deepen the foot; ${deep?"judge a stable leech and foot":"this corrects the upper telltales breaking too early"}.`;
+    case "jsheet": return more
+      ? deep ? `Trim only enough to steady the jib${changed("jib","twist")}; watch that it stays exposed rather than collapsing behind the main.` : `Trim the jib${changed("jib","twist")}; ${upwind?"use steering for whole-luff telltale errors":"a lifting windward telltale should settle and stream"}.`
+      : deep ? `Ease the jib toward its broadest stable presentation${changed("jib","twist")}; judge whether it stays full, not attached-flow telltales.` : `Ease the jib${changed("jib","twist")}; ${upwind?"avoid giving away pointing and use steering for whole-luff stall":"a stalled leeward telltale should recover and stream"}.`;
+    case "jsheetw": return more
+      ? deep ? "Trim the windward sheet to hold the jib wing-on-wing; watch that it stays filled rather than collapsing behind the main." : "Windward-sheet tension backs the jib at this angle; keep it lazy and use the leeward working sheet."
+      : deep ? "Ease only enough windward sheet to keep the wing-on-wing jib full and stable." : "Release the windward sheet so the jib fills normally to leeward; its telltales should stream again.";
+    case "reef1": return more
+      ? `Set the first reef to reduce main area${overpowered?" while heel or helm is high":""}; re-trim the new sail shape and watch whether load settles.`
+      : state.reef2>=.5 ? "Reef 2 still controls the main, so releasing Reef 1 preserves the current sail area; keep it set if you want it ready when Reef 2 comes out." : "Release Reef 1 to restore the full main, then add power gradually and watch heel, helm, and telltales.";
+    case "reef2": return more
+      ? `Set the second reef for a larger reduction in main area${overpowered?" while heel or helm remains high":""}; re-trim and confirm the boat settles.`
+      : state.reef1>=.5 ? "Release Reef 2 to return to the already-set first reef; re-trim for its larger sail area and watch heel and helm." : "Release Reef 2 to restore the full main, then add power gradually and watch heel, helm, and telltales.";
     default: return "Watch the sail shape and telltales as you adjust.";
   }
 }
-// Use the largest remaining control gap. Refresh on load, each adjustment,
-// and again when the debounced solver finishes.
+// A recommendation belongs to one complete state snapshot. Conditions, reefs,
+// heading and controls all invalidate it before any old target can be shown.
 function renderNext(src,r=lastR){
   if(!r) return;
-  const nextEl=$("fxNext");
-  const alert=nextMoveAlert(r);
+  const nextEl=$("fxNext"), alert=nextMoveAlert(r);
+  nextEl.className='fx-zone fx-next';
   if(alert){
-    nextEl.className="fx-zone fx-next bad";
-    $("fxMove").textContent=alert[0];
-    $("fxSub").textContent=alert[1];
+    nextEl.className+=' warn';$("fxMove").textContent=alert[0];$("fxSub").textContent=alert[1];return;
+  }
+  if(!OPT || !OPT_MOVE){
+    $("fxMove").textContent='Finding your next move…';
+    $("fxSub").textContent='Checking small adjustments for this wind, heading and sail plan.';return;
+  }
+  const context=trimContext(r), move=OPT_MOVE;
+  if(!move.changes){
+    nextEl.className+=' good';$("fxMove").textContent='No useful small adjustment found.';
+    $("fxSub").textContent=context.deep
+      ? 'Keep the boom controlled and watch the jib for blanketing. A broad reach and a later jibe may work better than this run.'
+      : `${context.point[0].toUpperCase()+context.point.slice(1)}, ${context.wind}: hold trim and watch the telltales. Recheck after a gust or heading change.`;
     return;
   }
-  if(!OPT){ $("fxMove").textContent="Finding your next move…"; $("fxSub").textContent="Watch the sail shape and telltales while the trim solver runs."; nextEl.className="fx-zone fx-next"; return; }
-  let worst=null, wd=0;
-  for(const k of TRIM_KEYS){
-    const span=k==="trav"?2:1;
-    const d=Math.abs(OPT[k]-state[k])/span;
-    if(d>wd){wd=d; worst=k;}
-  }
-  const wrongWay = (src in OPT) && PREV_STATE &&
-    Math.abs(state[src]-OPT[src]) > Math.abs(PREV_STATE[src]-OPT[src]) + .01;
-  if(wd<=.06){
-    nextEl.className="fx-zone fx-next good";
-    $("fxMove").textContent="You're at the solver's best trim.";
-    $("fxSub").textContent="Hold this and watch the telltales. Try a gust or change heading, then re-trim.";
-  }else{
-    const d=OPT[worst]-state[worst];
-    const verb = worst==="trav" ? (d>0?"Traveler up":"Traveler down")
-               : worst==="jcar" ? (d>0?"Move the fairlead car aft":"Move the fairlead car forward")
-               : (d>0?"Pull the "+lineName(worst).toLowerCase():"Ease the "+lineName(worst).toLowerCase());
-    nextEl.className="fx-zone fx-next "+(wrongWay?"bad":"warn");
-    $("fxMove").textContent=`${verb} — aim for ${Math.round(OPT[worst]*100)}.`;
-    $("fxSub").textContent=(wrongWay?"That last move went away from the target. ":"")+nextMoveReason(worst,d,r);
-  }
+  const keys=Object.keys(move.changes);
+  const actions=keys.map(k=>{
+    if(k==='reef1'||k==='reef2') return `Set reef ${k==='reef1'?1:2}`;
+    const d=move.changes[k]-state[k];
+    const verb=k==='trav'?(d>0?'Raise traveler':'Lower traveler')
+      :k==='jcar'?(d>0?'Move jib car aft':'Move jib car forward')
+      :(d>0?'Trim ':'Ease ')+lineName(k).toLowerCase();
+    return `${verb} — try ${Math.round(move.changes[k]*100)}`;
+  });
+  nextEl.className+=' warn';$("fxMove").textContent=actions.join('; ')+'.';
+  const progress=trimProgress(move.after)-trimProgress(r);
+  const benefit=r.heel>22 && move.after.heel<r.heel-1?`Estimated heel ${fmt1(r.heel)}° → ${fmt1(move.after.heel)}°.`
+    :(r.helm>5||r.helm< -2) && Math.abs(move.after.helm)<Math.abs(r.helm)-.5?`Estimated helm load ${fmt1(Math.abs(r.helm))}° → ${fmt1(Math.abs(move.after.helm))}°.`
+    :progress>=.03?`Estimated ${context.upwind?'upwind progress':'speed'} +${fmt1(progress)} kt.`
+    :'Estimated shape improvement; little speed change.';
+  const reason=keys.length===1 ? nextMoveReason(keys[0],move.changes[keys[0]]-state[keys[0]],r,move.after)
+    :keys.includes('jsheetw')?'Together, these sheets let the jib fill on the other side of the main. Keep a steady deep course; release the windward sheet before heading up.'
+    :'These controls work together on sail angle and shape. Check flow and balance after both adjustments.';
+  $("fxSub").textContent=benefit+' '+reason;
 }
 
 /* ---------------- main update ---------------- */
 let lastR=null, PREV_STATE=null;
 function update(src){
+  if(src){ OPT=null; OPT_R=null; OPT_MOVE=null; renderOptims(); }
   renderVals();
   const r = compute();
   renderTiles(r); renderTable(r);
@@ -9087,7 +9137,7 @@ $("gust").addEventListener("click",()=>{
 });
 
 /* ---------------- per-slider optimality ticks (debounced optimizer) ---------------- */
-let OPT=null, OPT_R=null, optTimer=null;
+let OPT=null, OPT_R=null, OPT_MOVE=null, optTimer=null;
 // targets shown everywhere: the optimizer's solved shape when fresh, textbook rules otherwise
 function tgt(r){
   if(OPT_R) return {mt:OPT_R.main.twist, md:OPT_R.main.depth, mdr:OPT_R.main.draft,
@@ -9096,28 +9146,39 @@ function tgt(r){
   return {mt:i.twist, md:i.depth, mdr:i.draftPos, jt:i.twist, jd:i.depth};
 }
 function renderOptims(){
-  if(!OPT) return;
   for(const k of TRIM_KEYS){
     const input=ctlOf(k); if(!input) return;
     const wrap=input.parentElement;
     let tick=wrap.querySelector(".opt-tick");
+    const val=wrap.parentElement.querySelector(".val");
+    if(!OPT){ if(tick) tick.hidden=true; if(val) delete val.dataset.opt; continue; }
     if(!tick){ tick=document.createElement("div"); tick.className="opt-tick"; wrap.appendChild(tick);
       wrap.style.position="relative"; }
+    tick.hidden=false;
     const lo=+input.min, hi=+input.max;
     const pct=(OPT[k]*100-lo)/(hi-lo)*100;
     tick.style.left=`calc(${clamp(pct,1,99)}% - 1px)`;
-    const span=(hi-lo)/100;
-    const dist=Math.abs(state[k]-OPT[k])/span;
-    const cls=dist<.12?"good":dist<.28?"warn":"crit";
+    const gain=OPT_MOVE?.effects[k]||0;
+    const cls=gain<.015?"good":gain<.15?"warn":"crit";
     tick.dataset.cls=cls;
-    const val=wrap.parentElement.querySelector(".val");
+    tick.title='Suggested combined trim; nearby settings may work equally well.';
     if(val){ val.dataset.opt=cls; }
   }
 }
 function scheduleOptims(){
   clearTimeout(optTimer);
-  optTimer=setTimeout(()=>{ OPT=solvePerfectTrim(true);
-    try{ OPT_R=computeWith(OPT); }catch(e){ OPT_R=null; }
+  optTimer=setTimeout(()=>{
+    if(!lastR || lastR.twa<27 || lastR.tws<.5) return;
+    try{
+      OPT=solvePerfectTrim(true); OPT_R=computeWith(OPT);
+      OPT_MOVE=chooseTrimMove(lastR,OPT);
+    }catch(e){
+      OPT=null;OPT_R=null;OPT_MOVE=null;
+      $("fxMove").textContent='Trim estimate unavailable.';
+      $("fxSub").textContent='Use sail shape and telltales, then change a control to retry.';
+      return;
+    }
+    renderVals();
     renderOptims();
     renderNext(LAST_FX_SRC);
     if(lastR){ renderTiles(lastR); renderTable(lastR); renderSections(lastR); renderTwist(lastR); }
@@ -9126,48 +9187,121 @@ function scheduleOptims(){
 
 /* ---------------- perfect trim: coordinate descent on the real solver ---------------- */
 function computeWith(params){
-  const saved={}; for(const k in params){ saved[k]=state[k]; state[k]=params[k]; }
-  try { return compute(); }
-  finally { for(const k in saved) state[k]=saved[k]; }
+  const saved={...state}, panel={...PANEL};
+  try {
+    for(const k in params) if(!k.startsWith('__')) state[k]=params[k];
+    if(params.__twa!=null) state.twaOv=params.__twa;
+    return compute({flow:false});
+  } finally {
+    for(const k in state) if(!Object.hasOwn(saved,k)) delete state[k];
+    Object.assign(state,saved); Object.assign(PANEL,panel);
+  }
 }
 const TRIM_KEYS=["sheet","trav","vang","outhaul","cunn","backstay","mainhal","jsheet","jsheetw","jcar","jhal"];
+function trimContext(r){
+  const upwind=r.twa>=27 && r.twa<=55, deep=r.awa>=140;
+  const point=r.twa<27?'in irons':upwind?'close-hauled':r.twa<80?'close reach':r.twa<110?'beam reach':r.twa<155?'broad reach':'run';
+  return {point,upwind,deep,light:r.aws<8,overpowered:r.heel>22||r.helm>5,
+    wind:r.aws<8?'light apparent wind':r.aws<18?'moderate apparent wind':'strong apparent wind'};
+}
+// Broad teaching bands, not a measured Colgate polar. A soft cost prevents
+// the reduced-order lift model from treating maximum camber as free power.
+// Apparent wind and heading vary continuously; no slider is pinned to a rule.
+function trimDepthBand(r){
+  const off=clamp((r.awa-55)/85,0,1), strong=clamp((r.aws-16)/12,0,1), light=clamp((8-r.aws)/5,0,1);
+  const hi=.14+.02*off-.04*strong*(1-.65*off)-.015*light*(1-off);
+  return {lo:Math.max(.065,hi-.035),hi};
+}
+function trimProgress(r,upwind=trimContext(r).upwind){
+  return upwind ? r.speed*Math.cos(rad(r.twa+r.leeway)) : r.speed;
+}
+function trimObjective(r,upwind=trimContext(r).upwind){
+  const band=trimDepthBand(r);
+  const outside=v=>Math.max(0,band.lo-v,v-band.hi)/.02;
+  return trimProgress(r,upwind)
+    - .12*Math.pow(Math.max(0,r.heel-22),1.3)
+    - .06*Math.max(0,r.helm-5,-r.helm-2)
+    - .18*(outside(r.main.depth)**2+outside(r.jib.depth)**2);
+}
+function trimBounds(k){
+  // Halyards above .35 adjust luff tension; lowering a sail is not fine trim.
+  return [k==='trav'?-1:k==='mainhal'||k==='jhal'?.35:0,1];
+}
 function solvePerfectTrim(quick){
-  // objective, evaluated by the same physics solver as the simulator:
-  // close-hauled -> true upwind VMG (the solver may also choose how high to
-  // point); other legs -> speed on the set heading. light helm-balance penalty.
-  const upwindMode = state.posIdx===0 && !quick;
-  const obj=r=>{
-    const base = upwindMode ? r.speed*Math.cos(rad((state.twaOv||45)+r.leeway)) : r.speed;
-    return base - Math.max(0,r.helm-5)*.06 - Math.max(0,-r.helm-2)*.06;
-  };
-  const seeds=[
-    Object.fromEntries(TRIM_KEYS.map(k=>[k,state[k]])),
-    {sheet:.85,trav:0,vang:.4,outhaul:.5,cunn:.3,backstay:.4,mainhal:.95,jsheet:.7,jsheetw:0,jcar:.5,jhal:.6},
-  ];
-  let bestP=null, bestS=-1e9, bestTwa=null;
-  const twas = upwindMode ? [40,43,46,49,52] : [null];
-  for(const tw of twas){
-    state.twaOv=tw;
-    for(const seed of seeds){
-      const p={...seed};
-      let cur=obj(computeWith(p));
-      for(let sweep=0;sweep<3;sweep++){
-        for(const k of TRIM_KEYS){
-          const lo=k==="trav"?-1:0;
-          let bv=p[k], bs=cur;
-          for(let n=0;n<=8;n++){ const v=lo+(1-lo)*n/8;
-            p[k]=v; const sc=obj(computeWith(p)); if(sc>bs){bs=sc;bv=v;} }
-          for(const dv of [-.06,-.03,.03,.06]){ const v=clamp(bv+dv,lo,1);
-            p[k]=v; const sc=obj(computeWith(p)); if(sc>bs){bs=sc;bv=v;} }
-          p[k]=bv; cur=bs;
+  const initial=computeWith({}), upwind=trimContext(initial).upwind;
+  const current=Object.fromEntries(TRIM_KEYS.map(k=>[k,state[k]]));
+  if(initial.twa<27 || initial.tws<.5) return {...current,__twa:null};
+  const twas=upwind&&!quick ? [...new Set([initial.twa,40,43,46,49,52])] : [initial.twa];
+  const reaching=initial.twa>80;
+  const seeds=[current,
+    {sheet:reaching?.35:.85,trav:0,vang:.4,outhaul:.5,cunn:.3,backstay:.4,mainhal:.9,jsheet:reaching?.3:.7,jsheetw:0,jcar:.5,jhal:.6}];
+  if(initial.twa>=145) seeds.push({...seeds[1],sheet:.15,jsheet:0,jsheetw:.3,jcar:.4});
+  let bestP={...current},bestS=state.jsheetw>.01&&!initial.jib.wow?-1e6:trimObjective(initial,upwind),bestTwa=initial.twa;
+  for(const tw of twas) for(const seed of seeds){
+    const p={...seed};
+    for(const k of TRIM_KEYS){const [lo,hi]=trimBounds(k);p[k]=clamp(p[k],lo,hi);}
+    const evaluate=()=>{
+      const r=computeWith({...p,twaOv:tw});
+      return p.jsheetw>.01&&!r.jib.wow ? -1e6 : trimObjective(r,upwind);
+    };
+    let cur=evaluate();
+    for(let sweep=0;sweep<(quick?2:3);sweep++){
+      const before=cur;
+      for(const k of TRIM_KEYS){
+        const [lo,hi]=trimBounds(k);let bv=p[k],bs=cur;
+        for(let n=0;n<=8;n++){
+          p[k]=lo+(hi-lo)*n/8;
+          const sc=evaluate();if(sc>bs+1e-5){bs=sc;bv=p[k];}
         }
+        const center=bv;
+        for(const dv of [-.06,-.03,.03,.06]){
+          p[k]=clamp(center+dv,lo,hi);
+          const sc=evaluate();if(sc>bs+1e-5){bs=sc;bv=p[k];}
+        }
+        p[k]=bv;cur=bs;
       }
-      if(cur>bestS){ bestS=cur; bestP={...p}; bestTwa=tw; }
+      if(cur-before<.001) break;
     }
+    if(cur>bestS+1e-5){bestS=cur;bestP={...p};bestTwa=tw;}
   }
-  state.twaOv=null;
-  bestP.__twa=bestTwa;
-  return bestP;
+  return {...bestP,__twa:upwind&&!quick?bestTwa:null};
+}
+// Compare actual one-line trials from the current trim, not distance from a
+// jointly optimized vector. Stop asking for adjustments below useful resolution.
+function chooseTrimMove(r,opt){
+  const base=trimObjective(r), trials=[], effects={};
+  const trial=(changes)=>{
+    const after=computeWith(changes);
+    const lazy=changes.jsheetw??state.jsheetw;
+    const gain=lazy>.01&&!after.jib.wow ? -1e6 : trimObjective(after)-base;
+    return {changes,after,gain};
+  };
+  for(const k of TRIM_KEYS){
+    let best=null;const [lo,hi]=trimBounds(k),step=k==='trav'?.24:.12;
+    for(const direction of [-1,1]){
+      const value=Math.round(clamp(state[k]+direction*step,lo,hi)*100)/100;
+      if(Math.abs(value-state[k])<.005) continue;
+      const q=trial({[k]:value});if(!best||q.gain>best.gain) best=q;
+    }
+    effects[k]=Math.max(0,best?.gain||0);
+    if(best && best.gain>.015) trials.push(best);
+  }
+  if(trimContext(r).overpowered && mainReef().level<2){
+    const key=mainReef().level===0?'reef1':'reef2',q=trial({[key]:1});
+    if(q.gain>.04 && q.after.heel<r.heel-1) trials.push(q);
+  }
+  trials.sort((a,b)=>b.gain-a.gain);
+  if(trials.length) return {...trials[0],effects};
+  // Coupled sheet settings can cross a local plateau, notably wing-on-wing.
+  // Explain the combination explicitly; never promise its benefit for one line.
+  let pair=null;
+  if(opt) for(const keys of [['sheet','trav'],['sheet','vang'],['jsheet','jcar'],['jsheet','jsheetw'],['outhaul','backstay']]){
+    const changes={};
+    for(const k of keys) if(Math.abs(opt[k]-state[k])>.04) changes[k]=Math.round(opt[k]*100)/100;
+    if(Object.keys(changes).length!==2) continue;
+    const q=trial(changes);if(q.gain>.025 && (!pair||q.gain>pair.gain)) pair=q;
+  }
+  return pair?{...pair,effects}:{changes:null,after:r,gain:0,effects};
 }
 $("perfect").addEventListener("click",()=>{
   $("perfect").textContent="Solving…"; $("perfect").disabled=true;
@@ -9181,7 +9315,7 @@ $("perfect").addEventListener("click",()=>{
       ctlOf(k).value=k==="trav"?Math.round(p[k]*100):Math.round(p[k]*100);
     }
     update("perfect");
-    $("perfect").textContent="Solve perfect trim"; $("perfect").disabled=false;
+    $("perfect").textContent="Balance current sails"; $("perfect").disabled=false;
   },30);
 });
 
@@ -11030,20 +11164,23 @@ function coachInstructions(){
     const m=LINEMETA[k];
     return `- ${k} (${lineName(k)}): ${m.job}; range ${k==="trav"?"-1..1":"0..1"}, now ${state[k].toFixed(2)}`;
   }).join("\n");
-  const r=lastR, o=OPT?Object.fromEntries(TRIM_KEYS.map(k=>[k,+OPT[k].toFixed(2)])):null;
+  const r=lastR, o=OPT&&OPT_R?Object.fromEntries(TRIM_KEYS.map(k=>[k,+OPT[k].toFixed(2)])):null;
+  const os=o?{mainTwist:+OPT_R.main.twist.toFixed(1),mainDepth:+(OPT_R.main.depth*100).toFixed(0),mainDraft:+(OPT_R.main.draft*100).toFixed(0),jibTwist:+OPT_R.jib.twist.toFixed(1),jibDepth:+(OPT_R.jib.depth*100).toFixed(0)}:null;
+  const reef=mainReef(), objective=r.twa<=55?"velocity made good to windward":"boat speed on the selected heading";
   return `You are the sail-trim coach inside "Trim Lab", a Colgate 26 sail-trim simulator. The user sails a real Colgate 26 and is learning which line does what.
 
 CONTROLS (slider key: what it does; range; current value):
 ${lines}
 
-CONDITIONS: true wind ${state.tws} kt, ${POS[state.posIdx].name}${state.gust?", gust active":""}.
-CURRENT PHYSICS RESULT: speed ${r.speed.toFixed(2)} kt, heel ${r.heel.toFixed(1)} deg, weather helm ${r.helm.toFixed(1)} deg, main twist ${r.main.twist.toFixed(1)} deg (target ${r.idl.twist}), main depth ${(r.main.depth*100).toFixed(0)}% (target ${(r.idl.depth*100).toFixed(0)}%), jib twist ${r.jib.twist.toFixed(1)} deg, boom ${r.main.boom.toFixed(1)} deg off centerline.
-${o?`OPTIMIZER'S CURRENT BEST TRIM: ${JSON.stringify(o)}`:""}
+CONDITIONS: effective true wind ${r.tws.toFixed(1)} kt${state.gust?" including the active gust":""}, apparent wind ${r.aws.toFixed(1)} kt at ${r.awa.toFixed(0)}°, true-wind angle ${r.twa.toFixed(0)}°, ${trimContext(r).point}; heel ${r.heel.toFixed(1)}°, helm ${r.helm.toFixed(1)}°. Selected main: ${reef.level?`Reef ${reef.level}`:"full sail"}. Optimization objective: ${objective}.
+CURRENT PHYSICS RESULT: speed ${r.speed.toFixed(2)} kt, main twist ${r.main.twist.toFixed(1)}°, main depth ${(r.main.depth*100).toFixed(0)}%, main draft ${(r.main.draft*100).toFixed(0)}%, jib twist ${r.jib.twist.toFixed(1)}°, jib depth ${(r.jib.depth*100).toFixed(0)}%, boom ${r.main.boom.toFixed(1)}° off centerline.
+${o?`SIMULATOR'S CURRENT GUIDED CANDIDATE: controls ${JSON.stringify(o)}; resulting shape ${JSON.stringify(os)}.`:"No fresh simulator candidate is available; coach from observed conditions and sail feedback without inventing a numeric optimum."}
 
 Reply with ONLY a JSON object: {"reply": string, "changes": object|null}.
 - "reply": your coaching answer, plain text, under 110 words. Explain WHY in terms of physics (leech tension, angle of attack, draft). No markdown.
-- "changes": ONLY when the user asks you to demonstrate, show, set, or fix something — slider keys from the list with new numeric values (same units as shown). Small targeted moves beat big ones. null for pure questions.
-- If the user asks for the BEST, PROPER, CORRECT, PERFECT or OPTIMAL trim, do not invent values: copy the OPTIMIZER'S CURRENT BEST TRIM numbers above as your changes and explain why each line sits where it does.
+- "changes": ONLY when the user asks you to demonstrate, show, set, or fix something — slider keys from the list with new numeric values (same units as shown). Small targeted moves beat big ones. Pure questions must be read-only: return null.
+- Treat the optimizer as this simulator model's current fast candidate, not perfect boat-specific truth. For BEST, PROPER, CORRECT, PERFECT or OPTIMAL requests, use it as a reference for small contextual moves; explain which sail shape or telltale response to watch and acknowledge that real sails, sea state, crew weight, and instruments can move the best setting.
+- Do not diagnose trim from low speed or heel alone. Use point of sail, apparent wind, sail shape, telltales, heel, and helm together. Some depth can add power, but very light flow may not support excess camber; a fully eased outhaul is not a universal rule.
 Example: {"reply":"Easing the mainsheet lets the boom rise so the top of the leech opens...","changes":{"sheet":0.55,"vang":0.2}}`;
 }
 function coachParse(text){

@@ -4,81 +4,88 @@ const vm = require('node:vm');
 const {test, beforeEach} = require('node:test');
 
 const src = fs.readFileSync(process.env.TRIM_SOURCE || 'src-app.html', 'utf8');
+const physics = src.slice(src.indexOf('"use strict";'), src.indexOf('/* ---------------- coach ---------------- */'));
 const alertStart = src.indexOf('function nextMoveAlert');
-const alertEnd = src.indexOf('\n\n/* ---------------- render:', alertStart);
+const alert = src.slice(alertStart, src.indexOf('\n\n/* ---------------- render:', alertStart));
 const reasonStart = src.indexOf('function nextMoveReason');
-const reasonEnd = src.indexOf('\n}\n// Use the largest remaining', reasonStart) + 2;
+const reason = src.slice(reasonStart, src.indexOf('\n// A recommendation belongs', reasonStart));
 const renderStart = src.indexOf('function renderNext');
-const renderEnd = src.indexOf('\n}\n\n/* ---------------- main update', renderStart) + 2;
-assert.ok(alertStart >= 0 && alertEnd > alertStart && reasonEnd > reasonStart && renderEnd > renderStart);
+const render = src.slice(renderStart, src.indexOf('\n\n/* ---------------- main update', renderStart));
+const optimizerStart = src.indexOf('function computeWith(params)');
+const optimizer = src.slice(optimizerStart, src.indexOf('$("perfect").addEventListener', optimizerStart));
+assert.ok([physics, alert, reason, render, optimizer].every(Boolean), 'model and guidance source are extractable');
 
-const ctx = vm.createContext({});
-vm.runInContext(`
-  const state={twaC:60, posIdx:0, mainhal:1, jhal:1, jsheetw:0};
-  const POS=[{twa:60}];
-  const TRIM_KEYS=['sheet','trav','vang','outhaul','cunn','backstay','mainhal','jsheet','jsheetw','jcar','jhal'];
-  let OPT=null, PREV_STATE=null, lastR=null;
-  const els={};
-  function $(id){ return els[id] ||= {className:'',textContent:'',innerHTML:''}; }
-  function fmt1(v){return Number(v).toFixed(1);}
-  function sideWord(){return 'windward';}
-  function lineName(k){return k==='sheet'?'Mainsheet':k==='jhal'?'Jib halyard':k;}
-  ${src.slice(alertStart,alertEnd)}
-  ${src.slice(reasonStart,reasonEnd)}
-  ${src.slice(renderStart,renderEnd)}
-  globalThis.api={state,els,setOpt(v){OPT=v;},setPrev(v){PREV_STATE=v;},setLast(v){lastR=v;},nextMoveAlert,renderNext};
-`, ctx);
-const {state, els, setOpt, setPrev, setLast, nextMoveAlert, renderNext} = ctx.api;
-const result = (overrides={}) => ({heel:10, jib:{wow:false}, main:{depth:.12,draft:.45,twist:18}, ...overrides});
-function text(){ return {move:els.fxMove.textContent, sub:els.fxSub.textContent, cls:els.fxNext.className}; }
-const baseline = {twaC:60, posIdx:0, mainhal:1, jhal:1, jsheetw:0,
-  sheet:0, trav:0, vang:0, outhaul:0, cunn:0, backstay:0, jsheet:0, jcar:0};
-beforeEach(()=>{
-  Object.keys(state).forEach(k=>delete state[k]);
-  Object.assign(state, baseline);
-  setOpt(null); setPrev(null); setLast(null);
-  Object.values(els).forEach(el=>{el.className=''; el.textContent=''; el.innerHTML='';});
+function makeHarness() {
+  const els = {};
+  const document = {getElementById(id) { return els[id] ||= {className:'', textContent:'', innerHTML:''}; }};
+  const ctx = vm.createContext({document, console, els});
+  vm.runInContext(`${physics}\nlet OPT=null,OPT_R=null,OPT_MOVE=null,lastR=null,PREV_STATE=null;\nconst lineName=k=>({sheet:'Mainsheet',trav:'Traveler',vang:'Boom vang',outhaul:'Outhaul',cunn:'Cunningham',backstay:'Backstay',mainhal:'Main halyard',jsheet:'Working jib sheet',jsheetw:'Windward jib sheet',jcar:'Jib car',jhal:'Jib halyard'}[k]||k);\nconst sideWord=()=> 'windward';\n${optimizer}\n${alert}\n${reason}\n${render}\nglobalThis.api={state,POS,PANEL,compute,computeWith,solvePerfectTrim,chooseTrimMove,trimObjective,trimProgress,trimContext,nextMoveAlert,nextMoveReason,renderNext,els,setGuidance(opt,move){OPT=opt;OPT_MOVE=move;},setPrevious(v){PREV_STATE=v;}};`, ctx);
+  return ctx.api;
+}
+
+const api = makeHarness();
+const defaults = {...api.state};
+function reset(overrides={}) {
+  Object.keys(api.state).forEach(k=>delete api.state[k]);
+  Object.assign(api.state, defaults, overrides);
+  api.setGuidance(null, null);
+  api.setPrevious(null);
+  Object.values(api.els).forEach(el=>{ el.className=''; el.textContent=''; el.innerHTML=''; });
+  return api.compute({flow:false});
+}
+function shown() { return {move:api.els.fxMove.textContent, sub:api.els.fxSub.textContent, cls:api.els.fxNext.className}; }
+
+beforeEach(()=>reset());
+
+test('urgent guidance prioritizes no wind, in-irons recovery, hoists and a backed jib',()=>{
+  let r=reset({tws:0,twaC:45});
+  assert.match(api.nextMoveAlert(r)[0],/Wait for wind/);
+  r=reset({tws:12,twaC:25});
+  assert.match(api.nextMoveAlert(r)[1],/back the jib.*release it.*Build speed/i);
+  r=reset({twaC:45,mainhal:.2});
+  assert.match(api.nextMoveAlert(r)[0],/Hoist the main/);
+  r=reset({twaC:45,jhal:.2});
+  assert.match(api.nextMoveAlert(r)[0],/Hoist the jib/);
+  r=reset({twaC:60,jsheet:.75,jsheetw:.9});
+  assert.equal(r.jib.backed,true);
+  assert.match(api.nextMoveAlert(r)[0],/Ease the .*jib sheet/);
 });
 
-test('urgent prerequisites take priority: course, hoist, backed jib',()=>{
-  const r=result();
-  state.twaC=10; assert.equal(nextMoveAlert(r)[0], 'Bear away to fill the sails.');
-  assert.equal(nextMoveAlert(r)[1], "You're in irons: move the wind to at least the close-hauled mark before trimming.");
-  state.twaC=60; state.mainhal=.2; assert.equal(nextMoveAlert(r)[0], 'Hoist the main halyard.');
-  state.mainhal=1; state.jhal=.2; assert.equal(nextMoveAlert(r)[0], 'Hoist the jib halyard.');
-  state.jhal=1; state.jsheetw=.5; assert.equal(nextMoveAlert(r)[0], 'Ease the windward jib sheet.');
-  state.twaC=10; setOpt({sheet:0});
-  renderNext(null,result({heel:30}));
-  assert.equal(text().move, 'Bear away to fill the sails.');
-  Object.assign(state,baseline);
-  renderNext(null,result({heel:30}));
-  assert.equal(text().move, 'Lower the traveler to reduce heel.');
+test('excessive load produces an immediate relief or reef instruction',()=>{
+  const r=reset({tws:30,twaC:45,sheet:1,trav:1,vang:1,outhaul:0,backstay:0});
+  assert.ok(r.heel>26 || r.helm>8, `expected excessive load, got ${r.heel} heel / ${r.helm} helm`);
+  assert.match(api.nextMoveAlert(r).join(' '),/Ease the mainsheet|Lower the traveler|reef/i);
 });
 
-test('backed jib alert is suppressed when the passed result says wing-on-wing',()=>{
-  state.twaC=60; state.mainhal=1; state.jhal=1; state.jsheetw=.5;
-  assert.equal(nextMoveAlert(result({jib:{wow:true}})), null);
+test('move selection ranks actual one-control gains rather than target distance',()=>{
+  const r=reset({tws:12,twaC:90,sheet:.9,trav:1,vang:.1,outhaul:.5,jsheet:.9,jcar:1});
+  const move=api.chooseTrimMove(r,{...api.state,trav:-1});
+  assert.ok(move.changes && move.gain>.015);
+  if(Object.keys(move.changes).length===1){
+    const max=Math.max(...Object.values(move.effects));
+    assert.ok(Math.abs(move.gain-max)<1e-9, `${move.gain} was not the best actual trial ${max}`);
+  }
+  assert.ok(api.trimObjective(move.after)>api.trimObjective(r));
 });
 
-test('renderNext shows initial guidance and solved state',()=>{
-  renderNext(null,result());
-  assert.match(text().move,/Finding your next move/);
-  setOpt({...baseline});
-  renderNext(null,result());
-  assert.equal(text().move, "You're at the solver's best trim.");
-  assert.match(text().cls,/good/);
+test('rendered recommendation reports the measured move and its resulting benefit',()=>{
+  const r=reset({tws:12,twaC:90,sheet:.9,trav:1,vang:.1,jsheet:.9,jcar:1});
+  const opt=api.solvePerfectTrim(true), move=api.chooseTrimMove(r,opt);
+  assert.ok(move.changes);
+  api.setGuidance(opt,move);
+  api.renderNext(null,r);
+  const text=shown();
+  for(const key of Object.keys(move.changes)) assert.match(text.move,new RegExp(key==='trav'?'traveler':key==='jcar'?'jib car':key.includes('jsheet')?'jib sheet':key,'i'));
+  assert.match(text.sub,/Estimated|Heel|Helm load|better shape/i);
+  assert.doesNotMatch(text.move,/perfect|best trim/i);
 });
 
-test('recommendation chooses the next remaining line when the last move is on target',()=>{
-  Object.assign(state,{sheet:0,trav:0,vang:0,outhaul:0,cunn:0,backstay:0,mainhal:1,jsheet:0,jsheetw:0,jcar:0,jhal:1});
-  setOpt({sheet:0,trav:1,vang:0,outhaul:0,cunn:0,backstay:0,mainhal:1,jsheet:0,jsheetw:0,jcar:0,jhal:1});
-  setPrev({sheet:0}); renderNext('sheet',result());
-  assert.match(text().move,/Traveler up/);
+test('no useful move is described without claiming a unique perfect trim',()=>{
+  const r=reset();
+  api.setGuidance({...api.state},{changes:null,after:r,gain:0,effects:{}});
+  api.renderNext(null,r);
+  assert.match(shown().move,/No useful small adjustment/);
+  assert.doesNotMatch(shown().move+shown().sub,/perfect|best trim/i);
 });
 
-test('reason uses the current result passed to renderNext',()=>{
-  Object.assign(state,{sheet:0,trav:0,vang:0,outhaul:0,cunn:0,backstay:0,mainhal:1,jsheet:0,jsheetw:0,jcar:0,jhal:1});
-  setOpt({sheet:0,trav:0,vang:0,outhaul:1,cunn:0,backstay:0,mainhal:1,jsheet:0,jsheetw:0,jcar:0,jhal:1});
-  renderNext(null,{...result(),main:{depth:.27,draft:.45,twist:18}});
-  assert.match(text().sub,/main's belly is 27%/);
-});
+module.exports={makeHarness};
