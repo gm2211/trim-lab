@@ -4,6 +4,7 @@ Interactive trainer: approximate steady-state physics (segment aero, two-element
 heel/leeway force balance), Babylon.js 3D with PBD sail cloth (folding, flogging),
 wind-driven boom yaw with inertia, damping and mainsheet length limits,
 wind-driven jib clew motion and constrained free-sheet spans,
+elastic backstay load, animated mast bend and wind-loaded forestay sag,
 wind-dye streamlines from solved circulation, depth-tested 3D yarn telltales,
 per-slider trim-optimality indicators,
 and a coordinate-descent "perfect trim" solver. 2D views: sail sections, deck plan,
@@ -41,6 +42,10 @@ Use **Inspect luffing boom** on that page to see the head-to-wind motion.
 Use **Inspect luffing jib sheets** to inspect both sheets following the clew.
 Use the two **Inspect … tack slot** buttons to inspect sail contact with an
 eased main and tightly sheeted jib on either tack.
+Use **Mast bend** in the simulator, then change **Mainsail → Backstay** to see
+the mast bow, masthead move aft, and sails flatten. The readout gives estimated
+tension and bend relative to the heel–head chord. Easing reverses the response;
+paused mode shows the new shape immediately.
 See [Blender model authoring](assets/boat/README.md), [material authoring](assets/materials/README.md) and the
 [graphics, physics and UI review](docs/graphics-physics-review.md) for details and
 the model's calibration limits.
