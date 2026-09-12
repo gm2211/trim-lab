@@ -9565,6 +9565,18 @@ function sailPathArray(kind, sh, forceFull){
   return rows;
 }
 
+// Bound geometry work on high-refresh displays without slowing simulation time.
+function sceneFrameDelta(clock, now, active){
+  if(!active){ clock.last=null; clock.next=null; return null; }
+  const interval=1000/60;
+  if(clock.last==null){ clock.last=now; clock.next=now+interval; return interval/1000; }
+  if(now<clock.next-.5) return null;
+  const elapsed=(now-clock.last)/1000;
+  clock.last=now;
+  // Skip missed presentation slots instead of trying to render a catch-up burst.
+  clock.next+=Math.max(1,Math.floor((now-clock.next)/interval)+1)*interval;
+  return elapsed;
+}
 async function ensure3D(){
   if(B3||B3loading) return;
   const hud=$("hud3d");
@@ -9708,8 +9720,11 @@ function ensure3Dinner(canvas){
     B3dirty=true;
   });
 
-  engine.runRenderLoop(()=>{ if(document.hidden||!$("pane-sim").classList.contains("active")||helmView!=="3d") return;
-    try{ tick3D(); scene.render(); }catch(err){
+  const frameClock={};
+  engine.runRenderLoop(()=>{
+    const elapsed=sceneFrameDelta(frameClock,performance.now(),!document.hidden&&$("pane-sim").classList.contains("active")&&helmView==="3d");
+    if(elapsed===null) return;
+    try{ tick3D(elapsed); scene.render(); }catch(err){
     if($("hud3d") && !$("hud3d").dataset.err){ $("hud3d").dataset.err="1";
       $("hud3d").innerHTML="3D render error: "+err.message; } } });
   window.addEventListener("resize",()=>engine.resize());
@@ -10138,9 +10153,9 @@ function clothResolveContacts(){
     }
   }
 }
-function tick3D(){
+function tick3D(elapsed){
   if(!B3||!lastR) return;
-  const r=lastR, dt=B3.paused?0:clamp(B3.engine.getDeltaTime()/1000,0,.05);
+  const r=lastR, dt=B3.paused?0:clamp(elapsed??B3.engine.getDeltaTime()/1000,0,.05);
   const stillUpdate=B3.paused&&B3dirty;
   B3.t+=dt;
   // Display angles are signed by tack (+ = set to port). Both sails respond
@@ -10389,18 +10404,39 @@ function tick3D(){
         // 10 mm braid, 6 mm wire; the highlighted line is drawn a touch heavier and glows
         const radius=hot?.008:(steelKeys[key]?.003:.006);
         const old=oldTubes[key]?.[i];
-        const reuse=old&&old.metadata?.pathLength===path.length&&old.metadata?.radius===radius;
+        const material=hot?B3.ropeHi:(steelKeys[key]?B3.steelMat:(B3.ropeMats[key]||B3.ropeMat));
+        const previous=old?.metadata;
+        const sameGeometry=old&&previous?.pathLength===path.length&&previous?.radius===radius&&
+          previous.pathSnapshot&&
+          path.every((p,n)=>p.x===previous.pathSnapshot[n*3]&&p.y===previous.pathSnapshot[n*3+1]&&p.z===previous.pathSnapshot[n*3+2]);
+        // Most frames rebuild the route arrays, but the coordinates are unchanged.
+        // Keep the existing tube and avoid CreateTube, UV work, and material churn.
+        if(sameGeometry){
+          if(previous.material!==material){ old.material=material; previous.material=material; }
+          return old;
+        }
+        const reuse=old&&previous?.pathLength===path.length&&previous?.radius===radius;
         const t2=BABYLON.MeshBuilder.CreateTube("rope_"+key+i,{path,radius,tessellation:10,updatable:true,...(reuse?{instance:old}:{})},B3.scene);
-        t2.metadata={pathLength:path.length,radius};
+        // Keep one numeric snapshot per topology. The route vectors are freshly
+        // allocated each rebuild, so never retain the mutable Vector3 objects.
+        const pathSnapshot=previous?.pathSnapshot?.length===path.length*3
+          ? previous.pathSnapshot : new Float64Array(path.length*3);
+        path.forEach((p,n)=>{pathSnapshot[n*3]=p.x;pathSnapshot[n*3+1]=p.y;pathSnapshot[n*3+2]=p.z;});
+        t2.metadata={pathLength:path.length,radius,material,pathSnapshot};
         // Tube U runs around each ring, V along the path. Physical repeat length
         // keeps a short tackle fall and a long halyard at the same braid scale.
-        const uv=t2.getVerticesData(BABYLON.VertexBuffer.UVKind);
         let length=0; for(let n=1;n<path.length;n++) length+=BABYLON.Vector3.Distance(path[n-1],path[n]);
-        // Instance updates preserve UVs; derive the repeat from ring index so
-        // successive updates do not multiply the previous frame's repeat.
-        for(let n=1;n<uv.length;n+=2) uv[n]=Math.floor((n-1)/2/11)/(path.length-1)*length/.28;
-        t2.setVerticesData(BABYLON.VertexBuffer.UVKind,uv);
-        t2.material=hot?B3.ropeHi:(steelKeys[key]?B3.steelMat:(B3.ropeMats[key]||B3.ropeMat)); t2.parent=B3.boat; return t2;
+        // Instance updates preserve UVs; only refresh them when the route length
+        // changes, since repeated setVerticesData uploads the whole UV buffer.
+        if(!reuse||previous?.uvLength!==length){
+          const uv=t2.getVerticesData(BABYLON.VertexBuffer.UVKind);
+          for(let n=1;n<uv.length;n+=2) uv[n]=Math.floor((n-1)/2/11)/(path.length-1)*length/.28;
+          // CreateTube(... updatable:true) creates an updatable UV buffer too;
+          // update it in place so route changes do not replace the buffer.
+          t2.updateVerticesData(BABYLON.VertexBuffer.UVKind,uv);
+          t2.metadata.uvLength=length;
+        } else t2.metadata.uvLength=previous.uvLength;
+        t2.material=material; t2.parent=B3.boat; return t2;
       });
     }
     for(const key in oldTubes) oldTubes[key].forEach((old,i)=>{

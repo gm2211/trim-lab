@@ -30,6 +30,11 @@ repo root and `docs/index.html`. Both are committed; rebuild and commit them whe
 Run `node --test tests/*.test.cjs` for physics, free-sheet and sail-contact regressions. Serve locally
 with `python3 -m http.server 8765 --bind 127.0.0.1` and open
 `http://127.0.0.1:8765/tests/scene.html` for WebGL integration checks.
+Open `http://127.0.0.1:8765/tests/performance.html` to profile a running scene.
+It warms up for two seconds, measures six seconds of frame/update work with wind dye
+enabled, reports timings and call counts, then pauses. Compare runs in the same browser
+and viewport; rendering is capped at 60 FPS, while simulation uses elapsed time.
+The reported FPS is local and includes the scene and display refresh-rate caps.
 Use **Inspect red port yarn** and **Inspect green starboard yarn** for close-ups
 of the jib faces. Pixel checks verify the cloth hides the far-side yarn on both tacks.
 Use **Inspect luffing boom** on that page to see the head-to-wind motion.
