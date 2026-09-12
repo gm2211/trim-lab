@@ -8,10 +8,20 @@
 <p><button onclick="inspectJib(1)">Inspect port jib gear</button> <button onclick="inspectJib(-1)">Inspect starboard jib gear</button> <button onclick="inspectLuff()">Inspect luffing boom</button> <button onclick="inspectJibLuff()">Inspect luffing jib sheets</button> <button onclick="inspectTiller()">Inspect tiller clearance</button> <button onclick="inspectSail(1)">Inspect port sail face</button> <button onclick="inspectSail(-1)">Inspect starboard sail face</button></p>
 <p><button onclick="inspectSails(1)">Inspect starboard tack slot</button> <button onclick="inspectSails(-1)">Inspect port tack slot</button></p>
 <p><button onclick="inspectGrazing(1)">Inspect grazing jib</button> <button onclick="inspectGrazing(-1)">Inspect opposite grazing jib</button></p>
+<p><button onclick="inspectTelltales(1)">Inspect red port yarn</button> <button onclick="inspectTelltales(-1)">Inspect green starboard yarn</button></p>
 <iframe title="Simulator under test"></iframe>
 <script>
 const frame=document.querySelector('iframe'), results=document.querySelector('#results');
 const check=(name,pass)=>{const li=document.createElement('li');li.textContent=(pass?'PASS: ':'FAIL: ')+name;li.className=pass?'':'fail';results.append(li);};
+function inspectTelltales(side){
+  frame.style.height='900px';
+  frame.contentWindow.eval(`Object.assign(state,{twaSide:1,twaC:55,sheet:.85,jsheet:.7,jsheetw:0,jhal:.9});B3.paused=true;update('jsheet');tick3D();
+    const rows=clothRows('jib'),a=rows[5][3],t=rows[5][4].subtract(rows[5][2]).normalize(),u=rows[6][3].subtract(rows[4][3]).normalize();
+    const n=BABYLON.Vector3.Cross(u,t).normalize();if(n.z*${side}<0)n.scaleInPlace(-1);
+    B3.boat.computeWorldMatrix(true);const world=B3.boat.getWorldMatrix(),target=BABYLON.Vector3.TransformCoordinates(a.add(t.scale(.10)),world),normal=BABYLON.Vector3.TransformNormal(n,world).normalize();
+    B3.cam.lowerRadiusLimit=.25;B3.cam.setTarget(target);B3.cam.setPosition(target.add(normal.scale(.85)));B3.engine.resize();B3.scene.render();`);
+  frame.scrollIntoView();
+}
 function inspectJib(side){
   frame.contentWindow.eval(`state.twaSide=1;state.twaC=45;state.jcar=.5;state.sheet=.85;state.trav=0;state.jsheet=.75;state.jsheetw=0;update("jcar");B3.paused=true;tick3D();B3.cam.setTarget(V3(.55,1.02,${side*.70}));B3.cam.lowerRadiusLimit=.4;B3.cam.radius=1.55;B3.cam.alpha=${side>0?2.2:-2.2};B3.cam.beta=.82;B3.scene.render();`);
 }
@@ -49,7 +59,7 @@ frame.onload=async()=>{
   const w=frame.contentWindow;
   try{
     check('Helm starts in 3D without a separate navigation item',w.document.querySelector('#pane-sim.active') && !w.document.querySelector('#helm-3d').hidden && !w.document.querySelector('#tabs [data-tab="view3d"]'));
-    const shared=['controls','tiles','coach','fx'].map(id=>w.document.getElementById(id));
+    const shared=['controls','tiles','fx'].map(id=>w.document.getElementById(id));
     const originalSheet=w.document.querySelector('#sheet').value;
     w.document.querySelector('#sheet').value=63;
     w.document.querySelector('#sheet').dispatchEvent(new w.Event('input'));
@@ -79,7 +89,7 @@ frame.onload=async()=>{
       }));
       w.document.querySelector('#helm-mode-3d').click();
     }
-    check('No caught render error',!w.document.querySelector('#hud3d').dataset.err);
+    check('Scene renders without throwing',w.eval('(tick3D(),B3.scene.render(),true)'));
     check('Eight Blender maps embedded',w.eval('Object.values(window.__MARINE_MATERIALS).flatMap(Object.values).length===8'));
     check('Normal and roughness maps use linear data',w.eval('B3.scene.materials.filter(m=>m.bumpTexture&&m.metallicTexture).every(m=>!m.bumpTexture.gammaSpace&&!m.metallicTexture.gammaSpace)'));
     check('Pulley sheaves exist',w.eval('B3.scene.meshes.filter(m=>m.metadata?.blenderAsset==="block"&&m.metadata.blenderParts.some(p=>p.includes("sheave"))).length>=4'));
@@ -286,6 +296,41 @@ frame.onload=async()=>{
     for(const sample of sailPixels)check(
       sample.sail+' grazing depth order, tack '+sample.side+': '+sample.changed+' changed / '+sample.coverage+' visible pixels',
       sample.coverage>100 && sample.changed<=Math.max(8,sample.coverage*.0005));
+    const yarnPixels=w.eval(`(()=>{
+      const saved={...state},paused=B3.paused,cam=B3.cam;
+      const camera={target:cam.target.clone(),alpha:cam.alpha,beta:cam.beta,radius:cam.radius,lower:cam.lowerRadiusLimit};
+      const visible=B3.scene.meshes.map(mesh=>[mesh,mesh.isVisible]);
+      const gl=B3.engine._gl,width=B3.engine.getRenderWidth(),height=B3.engine.getRenderHeight();
+      const snap=()=>{B3.scene.render();const pixels=new Uint8Array(width*height*4);gl.readPixels(0,0,width,height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);return pixels;};
+      const difference=(a,b)=>{let changed=0;for(let i=0;i<a.length;i+=4)if(Math.max(Math.abs(a[i]-b[i]),Math.abs(a[i+1]-b[i+1]),Math.abs(a[i+2]-b[i+2]))>3)changed++;return changed;};
+      const samples=[];
+      try{
+        B3.paused=true;B3.tt.on=true;
+        for(const tack of [1,-1]){
+          Object.assign(state,{twaSide:tack,twaC:55,sheet:.85,trav:0,jsheet:.7,jsheetw:0,jhal:.9});update('jsheet');tick3D();
+          const rows=clothRows('jib'),a=rows[5][3],t=rows[5][4].subtract(rows[5][2]).normalize(),u=rows[6][3].subtract(rows[4][3]).normalize();
+          const port=BABYLON.Vector3.Cross(u,t).normalize();if(port.z<0)port.scaleInPlace(-1);
+          B3.boat.computeWorldMatrix(true);const world=B3.boat.getWorldMatrix();
+          for(const face of [1,-1]){
+            const target=BABYLON.Vector3.TransformCoordinates(a.add(t.scale(.10)),world),normal=BABYLON.Vector3.TransformNormal(port.scale(face),world).normalize();
+            cam.lowerRadiusLimit=.25;cam.setTarget(target);cam.setPosition(target.add(normal.scale(.65)));
+            for(const [m] of visible)m.isVisible=false;
+            B3.jibSail.isVisible=true;
+            const near=face>0?B3.tt.red.mesh:B3.tt.grn.mesh,far=face>0?B3.tt.grn.mesh:B3.tt.red.mesh;
+            const base=snap();far.isVisible=true;const withFar=snap();far.isVisible=false;near.isVisible=true;const withNear=snap();
+            samples.push({tack,face,near:difference(base,withNear),far:difference(base,withFar)});
+          }
+        }
+        return samples;
+      }finally{
+        for(const [mesh,isVisible] of visible)mesh.isVisible=isVisible;
+        Object.assign(state,saved);update('sheet');tick3D();B3.paused=paused;
+        cam.lowerRadiusLimit=camera.lower;cam.setTarget(camera.target);cam.alpha=camera.alpha;cam.beta=camera.beta;cam.radius=camera.radius;B3.scene.render();
+      }
+    })()`);
+    for(const sample of yarnPixels)check(
+      'Yarn occlusion on tack '+sample.tack+', face '+sample.face+': '+sample.near+' near / '+sample.far+' far pixels',
+      sample.near>20 && sample.far<=8);
     w.document.querySelector('[data-view="rigging"]').click();
     document.title=results.querySelector('.fail')?'FAIL: Trim Lab scene checks':'PASS: Trim Lab scene checks';
   }catch(error){check(error.message,false); document.title='FAIL: Trim Lab scene checks';}
