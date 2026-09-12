@@ -300,10 +300,12 @@
   .was-tick{position:absolute;top:-4px;width:3px;height:16px;border-radius:1px;background:var(--ink3);
     pointer-events:none;transition:opacity 1s;box-shadow:0 0 3px rgba(0,0,0,.5)}
 
-  .helm-modes{display:flex;gap:4px;margin-bottom:8px;flex:none}
-  .helm-modes button{min-width:52px;min-height:36px;padding:6px 14px;border:1px solid var(--line);border-radius:3px;background:var(--panel);color:var(--ink2);font:700 12px var(--body);cursor:pointer}
-  .helm-modes button:hover{border-color:var(--ink2)}
-  .helm-modes button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .helm-nav{display:flex;align-items:center;gap:6px}
+  .helm-modes{display:flex;gap:2px;flex:none}
+  .helm-modes[hidden]{display:none}
+  nav.tabs .helm-modes button{min-width:40px;min-height:34px;padding:6px 9px;border:1px solid var(--line);border-radius:3px;background:var(--panel);color:var(--ink2);font:700 12px var(--body);cursor:pointer}
+  nav.tabs .helm-modes button:hover{border-color:var(--ink2)}
+  nav.tabs .helm-modes button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
   #pane-sim .helm-view[hidden]{display:none}
 
   /* ===== desktop: whole Helm tab fits one viewport, no page scroll ===== */
@@ -370,6 +372,12 @@
   .threed-hud:empty{display:none}
   .threed-tip{position:static;grid-row:4;padding:0 12px 8px;background:var(--panel);color:var(--ink2);text-shadow:none;font-size:11px}
   .ctl .sub,.twa-hint,.endcaps{color:var(--ink2)}
+  @media(min-width:760px) and (max-width:1000px){
+    header.masthead{gap:8px}
+    .brand{font-size:14px}
+    .brand small{font-size:8px}
+    nav.tabs button{font-size:11px;padding:7px 8px}
+  }
   @media(max-width:759px){
     header.masthead{position:static;gap:10px;padding:12px}
     nav.tabs{width:100%;margin-left:0;gap:4px}
@@ -379,7 +387,7 @@
     #pane-sim .stage{order:-1;width:100%;min-width:0}
     #pane-sim .threed-wrap{height:65svh;min-height:420px}
     #pane-sim .controls{width:100%;box-sizing:border-box}
-    .helm-modes button,.rail-tabs button,.gustbtn{min-height:44px}
+    nav.tabs .helm-modes button,.rail-tabs button,.gustbtn{min-height:44px}
     input[type=range]{height:28px}
     .tiles{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
     .tile{min-width:0;padding:7px}
@@ -394,7 +402,13 @@
 <header class="masthead">
   <div class="brand"><span class="flag">▲</span> Trim Lab<small>Colgate 26 · sail-trim trainer</small></div>
   <nav class="tabs" id="tabs">
-    <button data-tab="sim" class="active" aria-current="page">Helm</button>
+    <div class="helm-nav">
+      <button data-tab="sim" class="active" aria-current="page">Helm</button>
+      <div class="helm-modes" role="tablist" aria-label="Helm view">
+        <button id="helm-mode-3d" role="tab" aria-selected="true" aria-controls="helm-3d" data-helm-view="3d">3D</button>
+        <button id="helm-mode-2d" role="tab" aria-selected="false" aria-controls="helm-2d" data-helm-view="2d" tabindex="-1">2D</button>
+      </div>
+    </div>
     <button data-tab="lines">The Lines</button>
     <button data-tab="concepts">Concepts</button>
     <button data-tab="drills">Drills</button>
@@ -458,10 +472,6 @@
 
     <div class="stage">
       <div class="tiles" id="tiles"></div>
-      <div class="helm-modes" role="tablist" aria-label="Helm view">
-        <button id="helm-mode-3d" role="tab" aria-selected="true" aria-controls="helm-3d" data-helm-view="3d">3D</button>
-        <button id="helm-mode-2d" role="tab" aria-selected="false" aria-controls="helm-2d" data-helm-view="2d" tabindex="-1">2D</button>
-      </div>
       <div class="threed-wrap helm-view" id="helm-3d" role="tabpanel" aria-labelledby="helm-mode-3d">
         <canvas id="bab" tabindex="0" aria-label="Interactive sailboat: drag to orbit, scroll to zoom. Use camera buttons for preset views."></canvas>
         <div class="threed-hud" id="hud3d"></div>
@@ -9011,7 +9021,8 @@ function setHelmView(view){
 function showTab(name){
   // Retain the old 3D entry point for demos and existing scene checks.
   if(name==="view3d"){name="sim";helmView="3d";}
-  [...$("tabs").children].forEach(c=>c.classList.toggle("active",c.dataset.tab===name));
+  document.querySelectorAll("#tabs [data-tab]").forEach(c=>c.classList.toggle("active",c.dataset.tab===name));
+  document.querySelector(".helm-modes").hidden=name!=="sim";
   document.querySelectorAll("#tabs [data-tab]").forEach(c=>c.setAttribute("aria-current",c.dataset.tab===name?"page":"false"));
   document.querySelectorAll(".tabpane").forEach(p=>p.classList.toggle("active",p.id==="pane-"+name));
   document.querySelector("main").classList.add("lock");
@@ -9020,7 +9031,7 @@ function showTab(name){
 }
 document.querySelector("main").classList.add("lock");
 $("tabs").addEventListener("click",e=>{
-  const b=e.target.closest("button"); if(!b||b.dataset.notab)return;
+  const b=e.target.closest("button[data-tab]"); if(!b)return;
   showTab(b.dataset.tab);
 });
 document.querySelector(".helm-modes").addEventListener("click",e=>{
