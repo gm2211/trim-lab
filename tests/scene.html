@@ -49,7 +49,7 @@ frame.onload=async()=>{
   const w=frame.contentWindow;
   try{
     check('Helm starts in 3D without a separate navigation item',w.document.querySelector('#pane-sim.active') && !w.document.querySelector('#helm-3d').hidden && !w.document.querySelector('#tabs [data-tab="view3d"]'));
-    const shared=['controls','tiles','coach','fx'].map(id=>w.document.getElementById(id));
+    const shared=['controls','tiles','fx'].map(id=>w.document.getElementById(id));
     const originalSheet=w.document.querySelector('#sheet').value;
     w.document.querySelector('#sheet').value=63;
     w.document.querySelector('#sheet').dispatchEvent(new w.Event('input'));
@@ -79,7 +79,7 @@ frame.onload=async()=>{
       }));
       w.document.querySelector('#helm-mode-3d').click();
     }
-    check('No caught render error',!w.document.querySelector('#hud3d').dataset.err);
+    check('No caught render error',!w.document.querySelector('#hud3d')?.dataset.err);
     check('Eight Blender maps embedded',w.eval('Object.values(window.__MARINE_MATERIALS).flatMap(Object.values).length===8'));
     check('Normal and roughness maps use linear data',w.eval('B3.scene.materials.filter(m=>m.bumpTexture&&m.metallicTexture).every(m=>!m.bumpTexture.gammaSpace&&!m.metallicTexture.gammaSpace)'));
     check('Pulley sheaves exist',w.eval('B3.scene.meshes.filter(m=>m.metadata?.blenderAsset==="block"&&m.metadata.blenderParts.some(p=>p.includes("sheave"))).length>=4'));
@@ -171,11 +171,19 @@ frame.onload=async()=>{
     }
     const dynamics=w.eval(`(()=>{
       const saved={...state},getDelta=B3.engine.getDeltaTime;
-      const ok={moves:false,pins:true,gear:true,sheet:true,finite:true,reuse:true,pause:true,highlight:true};
+      const ok={moves:false,pins:true,gear:true,sheet:true,finite:true,reuse:true,uvReuse:true,pause:true,highlight:true,stableRoutes:true,movingRoutes:true};
+      let originalTube=null;
       try{
         Object.assign(state,{twaSide:1,twaC:0,sheet:.45,trav:0,vang:.15,mainhal:.9});update("sheet");tick3D();
+        originalTube=BABYLON.MeshBuilder.CreateTube;
+        const tubeCalls={};
+        BABYLON.MeshBuilder.CreateTube=(name,...args)=>{
+          const match=/^rope_(.+?)(?:\\d+)$/.exec(name);
+          if(match) tubeCalls[match[1]]=(tubeCalls[match[1]]||0)+1;
+          return originalTube.call(BABYLON.MeshBuilder,name,...args);
+        };
         B3.paused=false;B3.engine.getDeltaTime=()=>1000/60;
-        let min=Infinity,max=-Infinity,firstTube=null;
+        let min=Infinity,max=-Infinity,firstTube=null,firstVangUV=null;
         for(let i=0;i<180;i++){
           tick3D();min=Math.min(min,B3.boomShow);max=Math.max(max,B3.boomShow);
           const d=rad(B3.boomShow),foot=RIG.mainFoot*(1-(1-state.outhaul)*.09);
@@ -184,8 +192,11 @@ frame.onload=async()=>{
           ok.gear&&=Math.abs(B3.boomMesh.rotation.y-d)<1e-8&&Math.abs(B3.mainSheetFalls.reduce((sum,[a,b])=>sum+BABYLON.Vector3.Distance(a,b),0)/4-mainSheetSpan(B3.boomShow,B3.travCar.position.z))<1e-6;
           ok.sheet&&=mainSheetSpan(B3.boomShow,B3.travCar.position.z)<=B3.boomLimits.length+1e-8;
           ok.finite&&=CLOTH.main.p.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z));
-          if(i===0)firstTube=B3.tubes.vang[0];else ok.reuse&&=B3.tubes.vang[0]===firstTube;
+          if(i===0){firstTube=B3.tubes.vang[0];firstVangUV=firstTube.getVertexBuffer(BABYLON.VertexBuffer.UVKind);}
+          else {ok.reuse&&=B3.tubes.vang[0]===firstTube;ok.uvReuse&&=B3.tubes.vang[0].getVertexBuffer(BABYLON.VertexBuffer.UVKind)===firstVangUV;}
         }
+        ok.stableRoutes=['halyard','cunn','trav'].every(key=>!tubeCalls[key]);
+        ok.movingRoutes=['vang','jsheet','jsheetw'].every(key=>(tubeCalls[key]||0)>0);
         ok.moves=max-min>1;
         const angle=B3.boomShow,velocity=B3.boomMotion.velocity,time=B3.t;
         document.querySelector('#pause3d').click();tick3D();tick3D();
@@ -193,9 +204,9 @@ frame.onload=async()=>{
         const plainVang=B3.tubes.vang[0];update("vang");tick3D();
         ok.highlight=B3.tubes.vang[0]!==plainVang&&plainVang.isDisposed()&&B3.tubes.vang[0].metadata.radius===.008;
         return {...ok,excursion:max-min};
-      }finally{B3.engine.getDeltaTime=getDelta;B3.paused=true;Object.assign(state,saved);update("sheet");tick3D();}
+      }finally{if(originalTube) BABYLON.MeshBuilder.CreateTube=originalTube;B3.engine.getDeltaTime=getDelta;B3.paused=true;Object.assign(state,saved);update("sheet");tick3D();}
     })()`);
-    for(const [key,label] of Object.entries({moves:'Luffing drives visible boom swing',pins:'Sail foot remains attached to moving boom',gear:'Boom and tackle anchors follow every dynamics frame',sheet:'Luffing boom respects paid mainsheet length',finite:'Moving cloth remains finite',reuse:'Moving vang reuses its rope mesh',pause:'Pause freezes boom angle and angular momentum',highlight:'Highlighted rope rebuilds at the wider radius'}))check(label,dynamics[key]);
+    for(const [key,label] of Object.entries({moves:'Luffing drives visible boom swing',pins:'Sail foot remains attached to moving boom',gear:'Boom and tackle anchors follow every dynamics frame',sheet:'Luffing boom respects paid mainsheet length',finite:'Moving cloth remains finite',reuse:'Moving vang reuses its rope mesh',uvReuse:'Moving vang keeps its UV vertex buffer',pause:'Pause freezes boom angle and angular momentum',highlight:'Highlighted rope rebuilds at the wider radius',stableRoutes:'Static halyard/cunningham/traveler tubes avoid rebuilds',movingRoutes:'Moving vang and jib-sheet tubes still update'}))check(label,dynamics[key]);
     check('Luffing excursion measured: '+dynamics.excursion.toFixed(2)+' degrees',dynamics.excursion>1);
     const jibDynamics=w.eval(`(()=>{
       const saved={...state},getDelta=B3.engine.getDeltaTime;

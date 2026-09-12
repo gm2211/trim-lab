@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Trim Lab frame profile</title>
+<style>body{font:14px system-ui}iframe{width:100%;height:780px}pre{white-space:pre-wrap}</style>
+<h1>Frame profile</h1><pre id="results">Loading scene…</pre><iframe title="Profiled simulator"></iframe>
+<script>
+const frame=document.querySelector('iframe');
+frame.onload=async()=>{
+ const w=frame.contentWindow;
+ for(let i=0;i<200;i++){
+  if(w.eval('B3 && B3.scene.isReady() && B3.puffs')) break;
+  await new Promise(r=>setTimeout(r,100));
+ }
+ if(!w.eval('B3 && B3.scene.isReady() && B3.puffs')){
+  document.querySelector('#results').textContent='FAIL: Scene did not become ready.';return;
+ }
+ w.eval(`
+ window.profile={};
+ for(const name of ['tick3D','stepPuffs','clothResolveContacts','clothStep','sailPathArray','stepJibSheetSpan']){
+  if(typeof window[name]!=='function')continue;
+  const original=window[name];
+  window[name]=function(...args){const start=performance.now();try{return original.apply(this,args)}finally{const m=window.profile[name]||(window.profile[name]={ms:0,calls:0});m.ms+=performance.now()-start;m.calls++}};
+ }
+ for(const name of ['CreateTube','CreateRibbon']){
+  const original=BABYLON.MeshBuilder[name];
+  BABYLON.MeshBuilder[name]=function(...args){const start=performance.now();try{return original.apply(this,args)}finally{const m=window.profile[name]||(window.profile[name]={ms:0,calls:0});m.ms+=performance.now()-start;m.calls++}};
+ }
+ const render=B3.scene.render.bind(B3.scene);
+ B3.scene.render=function(...args){const start=performance.now();try{return render(...args)}finally{const m=window.profile.render||(window.profile.render={ms:0,calls:0});m.ms+=performance.now()-start;m.calls++}};
+ `);
+ await new Promise(r=>setTimeout(r,2000));
+ w.eval('window.profile={}');
+ const start=performance.now();
+ await new Promise(r=>setTimeout(r,6000));
+ const profile=w.profile,elapsed=performance.now()-start;
+ document.querySelector('#results').textContent=JSON.stringify({elapsed,profile,fps:profile.render?.calls*1000/elapsed},null,2);
+ w.document.querySelector('#pause3d').click();
+};
+frame.src='../app.html?profile='+Date.now();
+</script>
