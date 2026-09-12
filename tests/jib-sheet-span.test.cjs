@@ -7,7 +7,7 @@ const src = fs.readFileSync(process.env.TRIM_SOURCE || 'src-app.html', 'utf8');
 const clamp = src.match(/const clamp =[^;]+;/)?.[0];
 const rad = src.match(/const rad =[^;]+;/)?.[0];
 const kt = src.match(/const KT=[^;]+;/)?.[0];
-const helper = src.match(/function stepJibSheetSpan[\s\S]+?\n}\n(?=function compute\(\))/)?.[0];
+const helper = src.match(/function stepJibSheetSpan[\s\S]+?\n}\n(?=function compute\()/)?.[0];
 assert.ok(clamp && rad && kt && helper, 'jib sheet dynamics source is extractable');
 const ctx = vm.createContext({});
 vm.runInContext(`${clamp}\n${rad}\n${kt}\n${helper}\nglobalThis.stepJibSheetSpan=stepJibSheetSpan;`, ctx);
