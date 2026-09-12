@@ -5,13 +5,18 @@
 <h1>Trim Lab scene checks</h1>
 <p>Local WebGL integration checks. No external dependencies.</p>
 <ol id="results"></ol>
-<p><button onclick="inspectJib(1)">Inspect port jib gear</button> <button onclick="inspectJib(-1)">Inspect starboard jib gear</button> <button onclick="inspectLuff()">Inspect luffing boom</button> <button onclick="inspectTiller()">Inspect tiller clearance</button></p>
-<iframe src="../app.html" title="Simulator under test"></iframe>
+<p><button onclick="inspectJib(1)">Inspect port jib gear</button> <button onclick="inspectJib(-1)">Inspect starboard jib gear</button> <button onclick="inspectLuff()">Inspect luffing boom</button> <button onclick="inspectTiller()">Inspect tiller clearance</button> <button onclick="inspectSail(1)">Inspect port sail face</button> <button onclick="inspectSail(-1)">Inspect starboard sail face</button></p>
+<iframe title="Simulator under test"></iframe>
 <script>
 const frame=document.querySelector('iframe'), results=document.querySelector('#results');
 const check=(name,pass)=>{const li=document.createElement('li');li.textContent=(pass?'PASS: ':'FAIL: ')+name;li.className=pass?'':'fail';results.append(li);};
 function inspectJib(side){
   frame.contentWindow.eval(`state.twaSide=1;state.twaC=45;state.jcar=.5;state.sheet=.85;state.trav=0;state.jsheet=.75;state.jsheetw=0;update("jcar");B3.paused=true;tick3D();B3.cam.setTarget(V3(.55,1.02,${side*.70}));B3.cam.lowerRadiusLimit=.4;B3.cam.radius=1.55;B3.cam.alpha=${side>0?2.2:-2.2};B3.cam.beta=.82;B3.scene.render();`);
+}
+function inspectSail(side){
+  frame.style.height='950px';
+  frame.contentWindow.eval(`state.twaSide=1;state.twaC=45;state.sheet=.85;state.trav=0;state.jsheet=.75;state.jsheetw=0;update("sheet");B3.paused=true;tick3D();B3.cam.setTarget(V3(-.4,3.6,0));B3.cam.radius=5.2;B3.cam.alpha=${side>0?2.7:-2.7};B3.cam.beta=1.25;B3.engine.resize();B3.scene.render();`);
+  frame.scrollIntoView();
 }
 function inspectLuff(){
   frame.contentWindow.eval('state.twaSide=1;state.twaC=0;state.sheet=.45;state.trav=0;state.vang=.15;state.mainhal=.9;update("sheet");if(B3.paused)document.querySelector("#pause3d").click();');
@@ -62,6 +67,17 @@ frame.onload=async()=>{
     check('Pulley sheaves exist',w.eval('B3.scene.meshes.filter(m=>m.metadata?.blenderAsset==="block"&&m.metadata.blenderParts.some(p=>p.includes("sheave"))).length>=4'));
     check('Scene imports Blender model geometry',w.eval('BOAT_ASSETS.generator.startsWith("Blender") && B3.scene.meshes.filter(m=>m.metadata?.blenderAsset==="boat").length===BOAT_ASSETS.assets.boat.length'));
     check('Model includes manufactured winches and clutches',w.eval('BOAT_ASSETS.assets.boat.flatMap(a=>a.parts).some(p=>p.includes("Self tailer")) && BOAT_ASSETS.assets.boat.flatMap(a=>a.parts).some(p=>p.includes("Clutch lever"))'));
+    check('Deforming sails contain no coincident triangles',w.eval(`(()=>{
+      return [B3.mainSail,B3.jibSail].every(mesh=>{
+        const positions=mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind),indices=mesh.getIndices(),seen=new Set();
+        for(let i=0;i<indices.length;i+=3){
+          const triangle=[0,1,2].map(k=>Array.from(positions.slice(indices[i+k]*3,indices[i+k]*3+3)).map(v=>v.toFixed(5)).join(',')).sort().join('|');
+          if(seen.has(triangle)) return false;
+          seen.add(triangle);
+        }
+        return true;
+      });
+    })()`));
     check('Wind dye starts enabled with visible finite streak geometry',w.eval('B3.dyeOn && B3.puffs?.isEnabled() && B3.puffPos.every(Number.isFinite) && B3.puffPos.some(v=>v!==0)') && w.document.querySelector('#dyeBtn').getAttribute('aria-pressed')==='true');
     const dyeMesh=w.eval('B3.puffs');
     w.document.querySelector('#dyeBtn').click();
@@ -160,4 +176,6 @@ frame.onload=async()=>{
     document.title=results.querySelector('.fail')?'FAIL: Trim Lab scene checks':'PASS: Trim Lab scene checks';
   }catch(error){check(error.message,false); document.title='FAIL: Trim Lab scene checks';}
 };
+// Always test the current build, not a cached iframe from the previous run.
+frame.src="../app.html?scene-check="+Date.now();
 </script>
