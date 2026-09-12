@@ -9577,7 +9577,7 @@ function sailPathArray(kind, sh, forceFull){
       chord=RIG.mainFoot*(1-.90*Math.pow(hf,1.05))*(1-(1-state.outhaul)*.09*(1-hf)); }
     else { const bow=V3(3.72,1.05,0), hd=V3(RIG.mastX+.03,10.05,0);
            luff=BABYLON.Vector3.Lerp(bow,hd,hf*Math.max(hoistJ3,.12)); chord=2.90*(1-.94*Math.pow(hf,1.05)); }
-    const delta=rad((kind==="main"?sh.boom:sh.clew) + sh.twist*Math.pow(hf,1.15));
+    const delta=rad((kind==="main"?sh.boom:sh.clew) + (sh.flip?-1:1)*sh.twist*Math.pow(hf,1.15));
     const cdir=V3(-Math.cos(delta),0,Math.sin(delta));      // aft, swung to port
     const ndir=V3(Math.sin(delta),0,Math.cos(delta));       // leeward normal
     if(sh.flip) ndir.scaleInPlace(-1);                        // wind on the other face (port tack, or a windward-set jib)
@@ -10057,6 +10057,76 @@ function clothRows(kind){
     rows.push(row); }
   return rows;
 }
+function clothResolveContacts(){
+  const main=CLOTH.main, jib=CLOTH.jib;
+  if(!main||!jib) return;
+  const gap=.02; // Small contact envelope, in metres, not an artificial slot.
+  // The jib is forward of the main. Preserve that ordering only where their
+  // actual triangles share a height and lateral position; overlap in a camera
+  // view or in the deck plan is fine. Projected triangle intersections include
+  // edge crossings, which particle-only contact misses on this coarse mesh.
+  // Corrections are fore/aft, so the projection remains valid during the solve.
+  const triangles=c=>{
+    const out=[];
+    for(let y=0;y<c.NR-1;y++)for(let x=0;x<c.NC-1;x++){
+      const i=y*c.NC+x;
+      // Same diagonal as Babylon's ribbon, including its deformed quads.
+      for(const ids of [[i,i+c.NC,i+1],[i+c.NC+1,i+1,i+c.NC]]){
+        const p=ids.map(i=>c.p[i]), [a,b,d]=p;
+        const det=(b.y-a.y)*(d.z-a.z)-(b.z-a.z)*(d.y-a.y);
+        if(Math.abs(det)<1e-10) continue;
+        out.push({ids,p,det,minX:Math.min(...p.map(v=>v.x)),maxX:Math.max(...p.map(v=>v.x)),
+          minY:Math.min(...p.map(v=>v.y)),maxY:Math.max(...p.map(v=>v.y)),
+          minZ:Math.min(...p.map(v=>v.z)),maxZ:Math.max(...p.map(v=>v.z))});
+      }
+    }
+    return out;
+  };
+  const bary=(t,p)=>{
+    const [a,b,c]=t.p,dy=p.y-a.y,dz=p.z-a.z;
+    const v=(dy*(c.z-a.z)-dz*(c.y-a.y))/t.det;
+    const w=((b.y-a.y)*dz-(b.z-a.z)*dy)/t.det;
+    return [1-v-w,v,w];
+  };
+  const inside=b=>b.every(v=>v>=-1e-8&&v<=1+1e-8);
+  const contacts=[], mt=triangles(main), jt=triangles(jib);
+  for(const m of mt)for(const j of jt){
+    if(j.minX-m.maxX>=gap||m.maxY<j.minY||j.maxY<m.minY||m.maxZ<j.minZ||j.maxZ<m.minZ) continue;
+    const add=(bm,bj)=>{
+      // Clamp numerical edge noise to keep inverse-mass weights nonnegative.
+      bm=bm.map(v=>clamp(v,0,1));bj=bj.map(v=>clamp(v,0,1));
+      const ms=bm.reduce((a,b)=>a+b),js=bj.reduce((a,b)=>a+b);
+      bm=bm.map(v=>v/ms);bj=bj.map(v=>v/js);
+      const mass=bm.reduce((s,v,k)=>s+v*v*main.w[m.ids[k]],0)+bj.reduce((s,v,k)=>s+v*v*jib.w[j.ids[k]],0);
+      if(mass>1e-10) contacts.push({m:m.ids,j:j.ids,bm,bj,mass});
+    };
+    for(let k=0;k<3;k++){
+      const b=bary(j,m.p[k]);if(inside(b)) add([0,1,2].map(n=>n===k?1:0),b);
+      const a=bary(m,j.p[k]);if(inside(a)) add(a,[0,1,2].map(n=>n===k?1:0));
+      const a0=m.p[k],a1=m.p[(k+1)%3],ay=a1.y-a0.y,az=a1.z-a0.z;
+      for(let l=0;l<3;l++){
+        const b0=j.p[l],b1=j.p[(l+1)%3],by=b1.y-b0.y,bz=b1.z-b0.z;
+        const det=ay*bz-az*by;if(Math.abs(det)<1e-12) continue;
+        const dy=b0.y-a0.y,dz=b0.z-a0.z,u=(dy*bz-dz*by)/det,v=(dy*az-dz*ay)/det;
+        if(u<0||u>1||v<0||v>1) continue;
+        const bm=[0,0,0],bj=[0,0,0];bm[k]=1-u;bm[(k+1)%3]=u;bj[l]=1-v;bj[(l+1)%3]=v;add(bm,bj);
+      }
+    }
+  }
+  // Every correction moves jib vertices forward and main vertices aft. With
+  // nonnegative barycentric weights no later contact can undo an earlier one.
+  for(const c of contacts){
+    let distance=0;
+    for(let k=0;k<3;k++) distance+=c.bj[k]*jib.p[c.j[k]].x-c.bm[k]*main.p[c.m[k]].x;
+    const penetration=gap-distance;if(penetration<=0) continue;
+    const lambda=penetration/c.mass;
+    for(let k=0;k<3;k++){
+      const mi=c.m[k],ji=c.j[k],dm=-lambda*c.bm[k]*main.w[mi],dj=lambda*c.bj[k]*jib.w[ji];
+      main.p[mi].x+=dm;main.pp[mi].x+=dm;
+      jib.p[ji].x+=dj;jib.pp[ji].x+=dj;
+    }
+  }
+}
 function tick3D(){
   if(!B3||!lastR) return;
   const r=lastR, dt=B3.paused?0:clamp(B3.engine.getDeltaTime()/1000,0,.05);
@@ -10360,6 +10430,7 @@ function tick3D(){
       B3.clothAcc-=CDT;
       rowsM=clothStep("main", rT, CDT, B3.t-B3.clothAcc);
       rowsJ=clothStep("jib", rT, CDT, B3.t-B3.clothAcc);
+      clothResolveContacts();
     }
     if(rowsM) B3.mainSail=BABYLON.MeshBuilder.CreateRibbon("mainSail",{pathArray:rowsM,instance:B3.mainSail});
     if(rowsJ) B3.jibSail =BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:rowsJ,instance:B3.jibSail});
