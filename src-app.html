@@ -382,6 +382,7 @@
   .scene-toolbar button:hover{border-color:var(--ink2)}
   .scene-toolbar button.on{background:var(--teal);border-color:var(--teal);color:#f5faf8}
   .threed-hud{position:static;grid-row:3;max-width:none;padding:9px 12px;border-radius:0;background:var(--panel);color:var(--ink);font-size:11.5px;backdrop-filter:none;border-top:1px solid var(--line)}
+  .threed-hud:empty{display:none}
   .threed-tip{position:static;grid-row:4;padding:0 12px 8px;background:var(--panel);color:var(--ink2);text-shadow:none;font-size:11px}
   .ctl .sub,.twa-hint,.endcaps{color:var(--ink2)}
   .coach{border-left:1px solid var(--line)}
@@ -1144,15 +1145,6 @@ function compute(){
 }
 
 /* ---------------- coach ---------------- */
-function ttReadout(r){
-  if(r.off || r.jib.wow) return "telltales: off the wind";
-  const mj=rowAoaAt("jib",r,.5)-(r.idl.aoa-4);
-  const j = mj<-2 ? "windward lifting — sheet on or bear away"
-          : mj> 6 ? "leeward stalling — ease" : "both streaming";
-  const top=rowAoaAt("main",r,.8)-r.idl.aoa;
-  const m = top>4 ? "top leech stalled — ease sheet / vang" : "leech flying";
-  return `jib telltales: ${j} &nbsp;·&nbsp; main: ${m}`;
-}
 function coachAdvice(r){
   const tips=[]; const idl=r.idl; const off=r.off;
   const push=(sev,html)=>tips.push({sev,html});
@@ -3212,10 +3204,6 @@ function tick3D(){
       B3.puffs.setEnabled(true);
       B3.dyeR={aws:r.aws, awa:r.awa, S};     // flow field inputs for advection (S mirrors the field on port tack)
     } else if(B3.puffs){ B3.puffs.setEnabled(false); B3.dyeR=null; }
-    if($("hud3d")) $("hud3d").innerHTML=
-      `${fmt1(r.speed)} kt &nbsp;·&nbsp; heel ${fmt1(r.heel)}° &nbsp;·&nbsp; leeway ${fmt1(r.leeway)}°<br>`+
-      `main twist ${fmt1(r.main.twist)}° · belly ${(r.main.depth*100).toFixed(0)}% &nbsp;·&nbsp; jib twist ${fmt1(r.jib.twist)}°`+
-      `<br><span style="opacity:.8">${ttReadout(r)}</span>`;
     B3dirty=false;
   }
   // dye particles: each puff is carried through the solved flow field at the
