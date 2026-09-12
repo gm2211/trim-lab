@@ -121,3 +121,25 @@ test('sail luffs follow explicit displayed rig across hoists, Cunningham, tacks 
       }
   }finally{Object.assign(state,defaults);}
 });
+test('reefed main stays on curved mast under backstay and Cunningham tension',()=>{
+  try{
+    for(const backstay of [0,1]) for(const cunn of [0,1]){
+      const rig=backstayRig(backstay,16),heads=[];
+      for(const reef of [0,1,2]){
+        Object.assign(state,defaults,{backstay,cunn,mainhal:1,reef1:reef>=1?1:0,reef2:reef===2?1:0});
+        const rows=sailPathArray('main',{rig,cunn,boom:20,twist:15,depth:.12,draft:.43},false);
+        const foot=rows[0][0];
+        close(foot.x,RIG.mastX);close(foot.y,RIG.boomY+.045);close(foot.z,0);
+        for(const row of rows){
+          const luff=row[0];
+          close(luff.x,RIG.mastX+mastOffsetAt(luff.y,rig));
+          close(luff.z,0);
+          assert.ok(luff.y>=foot.y,'reefed luff fell below its secured tack');
+        }
+        heads.push(rows.at(-1)[0].y);
+      }
+      assert.ok(heads[0]>heads[1]&&heads[1]>heads[2],
+        `reef heads must shorten at backstay ${backstay}, Cunningham ${cunn}: ${heads}`);
+    }
+  }finally{Object.assign(state,defaults);}
+});
