@@ -61,7 +61,7 @@ stacking, keyboard wind control and accessible selection states.
 
 - Twenty-one physics tests pass, covering equilibrium extremes, boom excitation,
   damping, zero wind, lowered sails, timestep consistency and sheet constraints.
-- 45 browser WebGL checks cover imported Blender geometry, material readiness,
+- 52 browser WebGL checks cover imported Blender geometry, material readiness,
   map color spaces, manufactured hardware, shared layout anchors, matching tackle spans, hanging tails,
   finite rope paths, winch entry/exit tangencies, cylinder clearance, swiveling
   jib fairlead grooves, tack mirroring, pause, physical rope UVs, camera distances,
