@@ -487,7 +487,7 @@
             <button data-view="rig">Full rig</button><button data-view="deck">Deck detail</button><button data-view="sails">Sail detail</button><button data-view="rigging">Rigging</button>
           </div>
           <div class="scene-toggles" role="group" aria-label="Visual aids">
-            <button id="dyeBtn" class="dye-btn" aria-pressed="false">wind dye: off</button>
+            <button id="dyeBtn" class="dye-btn on" aria-pressed="true">wind dye: on</button>
             <button id="ttBtn" class="dye-btn on" aria-pressed="true">telltales: on</button>
             <button id="pause3d" aria-pressed="false">Pause motion</button>
           </div>
@@ -2320,7 +2320,7 @@ function ensure3Dinner(canvas){
   [...model.getChildMeshes(),...mast.getChildMeshes(),...boom.getChildMeshes(),mainSail,jibSail].forEach(m=>wm.addToRenderList(m));
 
   B3={engine,scene,cam,boat,wm,mainSail,jibSail,boomMesh:boom,travCar,jibCar,lazyCar,boomBlock,jibBlock,lazyBlock,vangBlock,vangBase,lowerBlock,sheetLead,ratchet,rigidVang,rudder,materials,
-      runLines:null,puffs:null,dyeR:null,dyeOn:false,t:0,heelCur:0};
+      runLines:null,puffs:null,dyeR:null,dyeOn:true,t:0,heelCur:0};
   B3dirty=true;
   initTelltales();
   B3.paused=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
