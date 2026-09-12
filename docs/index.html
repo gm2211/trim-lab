@@ -7933,19 +7933,62 @@ function updatePanelFactors(shM, shJ, awa){
 }
 function updatePanel(shM, shJ, awa){
   if(!updatePanelFactors(shM, shJ, awa)) return;
-  // per-height solutions for the dye field (geometry matches the drawn sail)
+  // Reduced-order visualization field. Keep the performance panel solve above
+  // unchanged; these per-height strengths are bounded by the lift a finite,
+  // possibly separated sail section can actually carry.
   PANEL.H=[];
-  for(const y of [2.2,5,7.8]){
-    const reef=mainReef();
-    const hfM=clamp((y-RIG.boomY-.045)/(9*reef.height),0,.98), hfJ=clamp((y-1.05)/9,0,.98);
-    const cM=RIG.mainFoot*(1-.90*Math.pow(reef.fraction+reef.height*hfM,1.05)), cJ=2.9*(1-.94*Math.pow(hfJ,1.05));
-    const aM=shM.boom+shM.twist*Math.pow(hfM,1.15), aJ=shJ.boom+shJ.twist*Math.pow(hfJ,1.15);
-    const eM=panelElement(RIG.mastX+mastOffsetAt(y,shM.rig), cM, aM, shM.depth*(1-.25*hfM), shM.draft, 16);
+  for(const y of [1.8,4,6.2,8.4]){
+    const reef=mainReef(),topM=RIG.boomY+.045+9*reef.height;
+    const hfM=clamp((y-RIG.boomY-.045)/(9*reef.height),0,.98),hfJ=clamp((y-1.05)/9,0,.98);
+    const cM=RIG.mainFoot*(1-.90*Math.pow(reef.fraction+reef.height*hfM,1.05)),cJ=2.9*(1-.94*Math.pow(hfJ,1.05));
+    const wow=!!shJ.wow,aM=shM.boom+shM.twist*Math.pow(hfM,1.15);
+    const aJ=shJ.boom+(wow?-1:1)*shJ.twist*Math.pow(hfJ,1.15);
+    const camM=shM.depth*(1-.25*hfM),camJ=shJ.depth*(1-.25*hfJ);
+    const eM=panelElement(RIG.mastX+mastOffsetAt(y,shM.rig),cM,aM,camM,shM.draft,16);
     const luffJ=forestayPointAt(hfJ,shJ.rig);
-    const eJ=panelElement(luffJ.x, cJ, aJ, shJ.depth*(1-.25*hfJ), shJ.draft, 16).map(p=>[p[0],p[1]+luffJ.z]);
-    const elements=y>RIG.boomY+.045+9*reef.height?[eJ]:[eM,eJ];
-    const sol=panelSolve(elements,awa);
-    if(sol) PANEL.H.push({y, vor:sol.vor, g:[...sol.g], polys:elements});
+    const eJ=panelElement(luffJ.x,cJ,aJ,wow?-camJ:camJ,shJ.draft,16).map(p=>[p[0],p[1]+luffJ.z]);
+    const hasMain=y<=topM;
+    const entries=hasMain?
+      [{poly:eM,chord:cM,cam:camM,aoa:awa-aM,hoist:state.mainhal,span:[RIG.boomY+.045,topM],jib:false},
+       {poly:eJ,chord:cJ,cam:camJ,aoa:wow?awa+Math.abs(aJ)-180:awa-aJ,hoist:state.jhal,span:[1.05,10.05],jib:true}]:
+      [{poly:eJ,chord:cJ,cam:camJ,aoa:wow?awa+Math.abs(aJ)-180:awa-aJ,hoist:state.jhal,span:[1.05,10.05],jib:true}];
+    const sol=panelSolve(entries.map(entry=>entry.poly),awa);
+    if(sol){
+      const liftGamma=(aoa,cam,chord)=>{
+        const incidence=Math.abs(aoa),stallA=11+55*Math.abs(cam),clmax=.95+2.5*Math.abs(cam);
+        let cl;
+        if(incidence<1) cl=0;
+        else if(incidence<=stallA) cl=Math.min(clmax,.078*incidence*(1+1.8*Math.abs(cam)));
+        else {
+          const separated=clamp((incidence-stallA)/28,0,1);
+          cl=clmax*(1-.72*separated);
+          const deep=clamp((incidence-stallA-28)/40,0,1);
+          if(deep>0) cl*=1-deep;
+        }
+        return .5*cl*chord;
+      };
+      const scales=entries.map((entry,i)=>(entry.jib&&shJ.backed?0:
+        Math.min(1,liftGamma(entry.aoa,entry.cam,entry.chord)/Math.max(Math.abs(sol.sums[i]),1e-9)))
+        *Math.pow(clamp(entry.hoist/.35,0,1),1.6));
+      // Four stations per element retain the chordwise shape and slot while
+      // keeping the per-puff field cheap enough for a full smoke rake.
+      const vor=[],g=[],element=[];let rawStart=0;
+      for(let ei=0;ei<entries.length;ei++){
+        const rawEnd=rawStart+entries[ei].poly.length-1;
+        for(let bin=0;bin<4;bin++){
+        const lo=Math.round(rawStart+(rawEnd-rawStart)*bin/4),hi=Math.round(rawStart+(rawEnd-rawStart)*(bin+1)/4);
+        let sx=0,sz=0,sg=0;
+        for(let i=lo;i<hi;i++){ sx+=sol.vor[i][0];sz+=sol.vor[i][1];sg+=sol.g[i]*scales[ei]; }
+        vor.push([sx/(hi-lo),sz/(hi-lo)]);g.push(sg);element.push(ei);
+        }
+        rawStart=rawEnd;
+      }
+      const center=entries.map((entry,ei)=>vor.filter((_,i)=>element[i]===ei)).map(points=>[
+        points.reduce((sum,p)=>sum+p[0],0)/points.length,
+        points.reduce((sum,p)=>sum+p[1],0)/points.length]);
+      const split=hasMain?4:0;
+      PANEL.H.push({y,vor,g,polys:entries.map(entry=>entry.poly),span:entries.map(entry=>entry.span),center,element,split});
+    }
   }
 }
 
@@ -8018,6 +8061,17 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror)
     const aws = Math.hypot(awx,awy);
     const awa = clamp(deg(Math.atan2(awy,awx)), 0, 180);
     const delta = (mirror?Math.abs(sh.boom):sh.boom) + sh.twist*Math.pow(hf,1.15);   // local chord angle
+    const q = .5*RHO_A*aws*aws*(geom.area/5)*heelEff*blanket*.80*(aScale===undefined?1:aScale);
+    if(sh.backed){
+      // A backed sail is pressure-dominated. Its force remains leeward, but
+      // the windward-set plane points that pressure partly aft.
+      const incidence=Math.sin(rad(awa-delta));
+      const normal=q*1.3*incidence*Math.abs(incidence);
+      drive+=normal*Math.sin(rad(delta));
+      side+=normal*Math.cos(rad(delta));
+      hm+=normal*Math.cos(rad(delta))*z;
+      continue;
+    }
     // a sail set to windward (wing-on-wing) is filled from astern on its inner
     // face: incidence is how far the flow has swung past the sail's plane
     const aoa = mirror ? awa + delta - 180 : awa - delta;
@@ -8034,7 +8088,6 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror)
            if(p2>0){ cl = cl*(1-p2) + p2*Math.max(0, .9*Math.sin(2*rad(aoa))); cd += .3*p2; } }
     cl *= slotF;                                             // solved slot interaction
     cd += cl*cl/(Math.PI*geom.ar*.8);                        // induced
-    const q = .5*RHO_A*aws*aws*(geom.area/5)*heelEff*blanket*.80*(aScale===undefined?1:aScale);
     const L=q*cl, D=q*cd, sA=Math.sin(rad(awa)), cA=Math.cos(rad(awa));
     drive += L*sA - D*cA;
     side  += L*cA + D*sA;
@@ -8087,16 +8140,35 @@ function jibLead(jcar){
   const angFor=L=>d0+deg(Math.acos(clamp((K-L*L)/(2*foot*reach),-1,1)));
   return {xCar,d0,dist,angFor};
 }
+function jibSheetLength(trim,jcar){
+  const leadRef=jibLead(.5),lead=jibLead(jcar);
+  const ease=Math.pow(1-trim,3);
+  const angle=leadRef.d0+ease*(78-leadRef.d0);
+  const sameSide=lead.dist(lead.d0)+leadRef.dist(angle)-leadRef.dist(leadRef.d0);
+  // A completely released lazy sheet must reach the clew across the foredeck.
+  // Add that cross-boat tail only at the eased end, leaving normal trim intact.
+  const releasedSameSide=lead.dist(lead.d0)+leadRef.dist(78)-leadRef.dist(leadRef.d0);
+  const crossExtra=Math.max(0,lead.dist(-78)-releasedSameSide)*ease*ease;
+  return sameSide+crossExtra;
+}
 function jibClewLimits(jib,controls,side){
   const lead=jibLead(controls.jcar);
-  const windward=jib.wow||(jib.clew<0&&controls.jsheetw>0);
+  const windward=jib.wow||jib.backed;
   const loadedSide=side*(windward?-1:1);
-  // The working slider pays out metres; the existing backing/wing control
-  // specifies an angle. Infer that windward sheet's length from its trim pose.
-  const length=windward?lead.dist(-jib.clew):jib.sheetLen;
-  const half=lead.angFor(length)-lead.d0;
-  const a=loadedSide*(lead.d0-half),b=loadedSide*(lead.d0+half);
-  return {min:Math.max(-80,Math.min(a,b)),max:Math.min(80,Math.max(a,b)),length,loadedSide};
+  const leeLength=jib.sheetLen??jibSheetLength(controls.jsheet,controls.jcar);
+  const windLength=jib.windSheetLen??jibSheetLength(controls.jsheetw,controls.jcar);
+  const leeHalf=lead.angFor(leeLength)-lead.d0;
+  const windHalf=lead.angFor(windLength)-lead.d0;
+  const lee={min:lead.d0-leeHalf,max:lead.d0+leeHalf};
+  const wind={min:-lead.d0-windHalf,max:-lead.d0+windHalf};
+  let min=Math.max(-80,lee.min,wind.min),max=Math.min(80,lee.max,wind.max);
+  const constraintConflict=min>max;
+  // The reduced-order clew has one active constraint. If two inextensible
+  // sheets demand disjoint positions, retain the sheet holding its current side
+  // and report the unresolved opposing-sheet conflict to callers.
+  if(constraintConflict){const active=windward?wind:lee;min=Math.max(-80,active.min);max=Math.min(80,active.max);}
+  return {min:side>0?min:-max,max:side>0?max:-min,
+    length:windward?windLength:leeLength,loadedSide,leeLength,windLength,constraintConflict};
 }
 function stepJibClew(motion,r,controls,side,dt,t,limits){
   if(dt<=0) return motion;
@@ -8322,7 +8394,10 @@ function compute(){
     const boomWind = clamp(awa-5, -5, 88);                 // weathervane limit
     const boomM = clamp(boomWind, mainLimits.min, mainLimits.max);
     const sheetSlack = Math.max(0, mainLimits.length-mainSheetSpan(boomM,-s.trav*RIG.travelerHalfWidth));
-    const leechJ = clamp(s.jsheet*(1-.5*s.jcar)*1.05 + .05*(1-s.jcar), 0, 1.1);
+    // Either physical sheet can carry the clew after a turn. Shape follows the
+    // most hauled line, independent of its current working/lazy role name.
+    const activeJibTrim=Math.max(s.jsheet,s.jsheetw);
+    const leechJ = clamp(activeJibTrim*(1-.5*s.jcar)*1.05 + .05*(1-s.jcar), 0, 1.1);
     const twistJ = clamp(34 - 30*leechJ, 5, 40);
     const depthJ = clamp(.1431875-.030*s.jcar+.25*(rig.forestaySag-referenceRig.forestaySag),.065,.18);
     const jTension = clamp((s.jhal-.35)/.65, 0, 1);
@@ -8335,12 +8410,12 @@ function compute(){
     // it shifts the clew angle a degree or two for the same ease and moves
     // the load between leech and foot. The wind can luff the jib (weathervane
     // at awa-4) but never trims it — only the sheet.
-    const leadRef=jibLead(.5), lead=jibLead(s.jcar);
-    const clewStar=leadRef.d0 + Math.pow(1-s.jsheet,3)*(78-leadRef.d0);
-    const eased=leadRef.dist(clewStar)-leadRef.dist(leadRef.d0);
-    const Ljib=lead.dist(lead.d0)+eased;
+    const lead=jibLead(s.jcar),Ljib=jibSheetLength(s.jsheet,s.jcar);
+    const Lwind=jibSheetLength(s.jsheetw,s.jcar);
+    const eased=Ljib-lead.dist(lead.d0);
     const clewSheet=lead.angFor(Ljib);            // sheet-limited clew angle at the actual car
-    const clewLee = clamp(Math.min(awa-4, clewSheet) - s.jsheetw*30, -25, 80);
+    const windwardLimit=lead.angFor(Lwind)-2*lead.d0;
+    const clewLee = clamp(Math.min(awa-4, clewSheet, windwardLimit), -80, 80);
     // wing-on-wing: deep downwind, with the leeward sheet eased right off and the
     // windward (lazy) sheet taken up, the jib flies out on the windward side in
     // clear air. The windward sheet's paid-out length sets how far it squares out.
@@ -8348,11 +8423,12 @@ function compute(){
     const clewWind = -(4 + (1-s.jsheetw)*72);
     let clewJ = clewLee*(1-wowF) + clewWind*wowF;
     const wow = wowF>.5;
-    const bounds=jibClewLimits({clew:clewJ,wow,sheetLen:Ljib},s,1);
+    const backed=!wow&&awa<135&&windwardLimit<0&&s.jsheetw>0;
+    const bounds=jibClewLimits({clew:clewJ,wow,backed,sheetLen:Ljib,windSheetLen:Lwind},s,1);
     clewJ=clamp(clewJ,bounds.min,bounds.max);
     return {upwind, wowF,rig,
       m:{rig,leech:leechM,twist:twistM,depth:depthM,draft:draftM,boom:boomM,slack:sheetSlack},
-      j:{rig,leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ,wow,sheetLen:Ljib,clewSheet,eased}};
+      j:{rig,leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ,wow,backed,sheetLen:Ljib,windSheetLen:Lwind,clewSheet,eased}};
   }
 
   function step(V, heel, lee){
@@ -8501,6 +8577,15 @@ function renderTable(r){
 // boat view draws signed display angles instead: tackSign() * model angle, so
 // on port tack the sails set to starboard and the wind arrows come from port.
 function tackSign(){ return (state.twaSide||1)<0?-1:1; }
+function setWindBearing(a){
+  const old=tackSign(),next=a<0?-1:1;
+  if(old!==next) [state.jsheet,state.jsheetw]=[state.jsheetw,state.jsheet];
+  state.twaSide=next;
+  state.twaC=clamp(Math.abs(a),2,178);
+  let best=0,bd=1e9;
+  POS.forEach((p,i)=>{const d=Math.abs(p.twa-state.twaC);if(d<bd){bd=d;best=i;}});
+  state.posIdx=best;
+}
 // The physics state keeps the jib sheets by ROLE (jsheet = working/leeward,
 // jsheetw = lazy/windward); the rail shows them by SIDE so the labels never
 // move. On starboard tack the working sheet is the port one.
@@ -8959,11 +9044,7 @@ function renderDial(){
   el.setAttribute("tabindex","0");
   el.setAttribute("aria-valuemin","-178"); el.setAttribute("aria-valuemax","178");
   const setBearing=a=>{
-    state.twaSide=a<0?-1:1;
-    state.twaC=clamp(Math.abs(a),2,178);
-    let best=0,bd=1e9;
-    POS.forEach((p,i)=>{const d=Math.abs(p.twa-state.twaC); if(d<bd){bd=d;best=i;}});
-    state.posIdx=best; update("pos");
+    setWindBearing(a);update("pos");
   };
   const setFromEvent=e=>{
     const rct=el.getBoundingClientRect();
@@ -9945,26 +10026,37 @@ function ensure3Dinner(canvas){
   new ResizeObserver(()=>engine.resize()).observe(canvas);
 }
 
-// horizontal air velocity in the boat frame at (x,z), height y — freestream +
-// one bound vortex per sail (strength from that sail's local lift), so the
-// slot, upwash and stall all show up in the dye for real physical reasons
+// Horizontal air velocity in the boat frame at (x,z), height y: freestream
+// plus a bounded, per-height reduced-order field for local slot flow/upwash.
 function flowVel(x,z,y,r){
   // the panel solution lives in the starboard-tack frame; on port tack the
   // query is mirrored in and the cross-flow component mirrored back out
   const S=r.S||1; z*=S;
   const aws=r.aws*KT*Math.pow(Math.max(y,1)/10,.11);
   const awaR=rad(r.awa);
-  let vx=-Math.cos(awaR)*aws, vz=Math.sin(awaR)*aws;
+  let vx=-Math.cos(awaR)*aws, vz=Math.sin(awaR)*aws,ivx=0,ivz=0;
   if(PANEL.ok&&PANEL.H&&PANEL.H.length){
     let H=PANEL.H[0];
     for(const h of PANEL.H) if(Math.abs(h.y-y)<Math.abs(H.y-y)) H=h;
+    const finite=H.span.map((span,i)=>{
+      const dx=x-H.center[i][0],dz=z-H.center[i][1],r2=dx*dx+dz*dz+.12;
+      return .5*((y-span[0])/Math.sqrt(r2+(y-span[0])**2)
+        +(span[1]-y)/Math.sqrt(r2+(span[1]-y)**2));
+    });
     for(let j=0;j<H.vor.length;j++){
       const gj=H.g[j]*aws;
       const dx=x-H.vor[j][0], dz=z-H.vor[j][1];
-      const r2=Math.max(dx*dx+dz*dz,.12);
-      vx += -gj/(2*Math.PI*r2)*dz;
-      vz +=  gj/(2*Math.PI*r2)*dx;
+      const r2=dx*dx+dz*dz,coreR2=r2+.12;
+      // A bounded vertical vortex segment approaches the 2-D panel result
+      // nearby, but its influence falls as 1/r² outside the finite sail span.
+      const spanFactor=finite[H.element[j]];
+      ivx += -gj/(2*Math.PI*coreR2)*dz*spanFactor;
+      ivz +=  gj/(2*Math.PI*coreR2)*dx*spanFactor;
     }
+    // Last-resort bound for overlapping panels and coarse reduced-order cores.
+    const induced=Math.hypot(ivx,ivz),limit=.6*aws;
+    if(induced>limit&&induced>0){ const k=limit/induced;ivx*=k;ivz*=k; }
+    vx+=ivx;vz+=ivz;
   }
   return [vx,S*vz];
 }

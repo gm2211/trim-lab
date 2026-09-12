@@ -6,7 +6,7 @@
 <p>Local WebGL integration checks. No external dependencies.</p>
 <ol id="results"></ol>
 <p><button onclick="inspectJib(1)">Inspect port jib gear</button> <button onclick="inspectJib(-1)">Inspect starboard jib gear</button> <button onclick="inspectLuff()">Inspect luffing boom</button> <button onclick="inspectJibLuff()">Inspect luffing jib sheets</button> <button onclick="inspectCunningham()">Inspect Cunningham</button> <button onclick="inspectTiller()">Inspect tiller clearance</button> <button onclick="inspectSail(1)">Inspect port sail face</button> <button onclick="inspectSail(-1)">Inspect starboard sail face</button></p>
-<p><button onclick="inspectSails(1)">Inspect starboard tack slot</button> <button onclick="inspectSails(-1)">Inspect port tack slot</button></p>
+<p><button onclick="inspectHeldJib()">Inspect retained jib after tack</button> <button onclick="inspectSails(1)">Inspect starboard tack slot</button> <button onclick="inspectSails(-1)">Inspect port tack slot</button></p>
 <p><button onclick="inspectGrazing(1)">Inspect grazing jib</button> <button onclick="inspectGrazing(-1)">Inspect opposite grazing jib</button></p>
 <p><button onclick="inspectStreamingJib()">Inspect solved-trim streaming</button> <button onclick="inspectTelltales(1)">Inspect red port yarn</button> <button onclick="inspectTelltales(-1)">Inspect green starboard yarn</button></p>
 <p><button onclick="inspectVang()">Inspect boom vang</button></p>
@@ -15,6 +15,13 @@
 <script>
 const frame=document.querySelector('iframe'), results=document.querySelector('#results');
 const check=(name,pass)=>{const li=document.createElement('li');li.textContent=(pass?'PASS: ':'FAIL: ')+name;li.className=pass?'':'fail';results.append(li);};
+function inspectHeldJib(){
+  frame.style.height='900px';
+  frame.contentWindow.eval(`Object.assign(state,{tws:12,twaSide:1,twaC:45,sheet:.5,trav:0,jsheet:.75,jsheetw:0,jcar:.5,mainhal:.9,jhal:.9});
+    B3.paused=true;update('jsheet');tick3D();setWindBearing(-45);update('pos');tick3D();
+    B3.cam.setTarget(V3(.5,4.2,0));B3.cam.radius=12;B3.cam.alpha=2.55;B3.cam.beta=1.10;B3.engine.resize();B3.scene.render();`);
+  frame.scrollIntoView();
+}
 function inspectStreamingJib(){
   frame.style.height='900px';
   frame.contentWindow.eval(`Object.assign(state,{tws:12,twaSide:1,twaC:45,posIdx:0,gust:false,jsheetw:0,mainhal:.9,jhal:.9});
@@ -261,6 +268,37 @@ frame.onload=async()=>{
       const expected={rig:19,bend:13,deck:8,sails:12,rigging:4.7,cunningham:2.5}[name];
       check(name+' camera applies the requested distance',Math.abs(w.eval('B3.cam.radius')-expected*Math.max(1,1/w.eval('B3.engine.getAspectRatio(B3.cam)')))<1e-6);
     }
+    const tackSheets=w.eval(`(()=>{
+      const saved={...state},paused=B3.paused;
+      const dial=document.querySelector('#windDial');
+      const press=(key,shiftKey=false)=>dial.dispatchEvent(new KeyboardEvent('keydown',{key,shiftKey,bubbles:true}));
+      const physical=()=>['jsheetP','jsheetS'].map(id=>document.getElementById(id).value).join(',');
+      const setup=heading=>{
+        Object.assign(state,{tws:12,twaSide:1,twaC:heading,sheet:.85,trav:0,jsheet:.75,jsheetw:0,jcar:.5,mainhal:.9,jhal:.9});
+        B3.paused=true;update('jsheet');
+        for(const k of ['jsheet','jsheetw'])ctlOf(k).value=Math.round(state[k]*100);
+        tick3D();
+      };
+      try{
+        setup(45);
+        const before=physical(),length=B3.jibLimits.length,side=B3.jibLimits.loadedSide;
+        for(let i=0;i<9;i++)press('ArrowLeft',true);
+        tick3D();
+        const backed=lastR.jib.backed && lastR.jib.clew<0;
+        const held=physical()===before&&B3.jibLimits.loadedSide===side&&Math.abs(B3.jibLimits.length-length)<1e-8;
+        for(let i=0;i<9;i++)press('ArrowRight',true);
+        tick3D();
+        const restored=physical()===before&&state.jsheet===.75&&state.jsheetw===0&&!lastR.jib.backed;
+        setup(165);const gybeBefore=physical(),gybeLength=B3.jibLimits.length,gybeSide=B3.jibLimits.loadedSide;
+        press('Home');tick3D();
+        const gybe=physical()===gybeBefore&&B3.jibLimits.loadedSide===gybeSide&&Math.abs(B3.jibLimits.length-gybeLength)<1e-8&&lastR.jib.wow&&!lastR.jib.backed;
+        return {backed,held,restored,gybe};
+      }finally{Object.assign(state,saved);B3.paused=true;update('jsheet');tick3D();B3.paused=paused;}
+    })()`);
+    check('Tacking without releasing the jib backs it',tackSheets.backed);
+    check('Tack preserves physical jib slider settings, loaded side and paid length',tackSheets.held);
+    check('Tacking back restores sheet roles without moving either cleat',tackSheets.restored);
+    check('Stern crossing keeps the jib on its held side as wing-on-wing',tackSheets.gybe);
     const dynamics=w.eval(`(()=>{
       const saved={...state},getDelta=B3.engine.getDeltaTime;
       const ok={moves:false,pins:true,gear:true,sheet:true,finite:true,reuse:true,uvReuse:true,pause:true,highlight:true,stableRoutes:true,movingRoutes:true};
