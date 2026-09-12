@@ -446,6 +446,14 @@
         <div class="twa-big" id="twaBig"></div>
         <div class="twa-hint" id="twaHint">drag the dial to change heading</div>
         <div class="aw-card" id="awCard"></div>
+        <div class="ctl" id="steeringControls">
+          <div class="btnrow"><button id="sailingToggle" class="gustbtn" aria-pressed="false">Free sailing</button><button id="centerTiller" class="gustbtn">Center tiller</button></div>
+          <button id="sailingPause" class="gustbtn" aria-pressed="false" hidden>Pause sailing</button>
+          <div class="row1"><label for="tiller">Tiller</label><span class="val" id="v-tiller">centered</span></div>
+          <input type="range" id="tiller" min="-35" max="35" step="1" value="0" aria-describedby="sailingStatus">
+          <div class="endcaps"><span>starboard</span><span>port</span></div>
+          <p class="sub" id="sailingStatus">Course held for trim comparison. Move the tiller to sail freely.</p>
+        </div>
         <button id="dyeBtn" class="dye-btn on" aria-pressed="true">wind dye: on</button>
       </div>
       <div class="ctl-group" data-g="main">
@@ -626,7 +634,7 @@ const POS = [
 const state = {
   tws:12, posIdx:0, twaC:null, gust:false,
   sheet:.85, trav:0, vang:.40, outhaul:.50, cunn:.25, backstay:.35,
-  jsheet:.75, jsheetw:0, jcar:.50, jhal:.55, mainhal:.90, reef1:0, reef2:0,
+  jsheet:.75, jsheetw:0, jcar:.50, jhal:.55, mainhal:.90, reef1:0, reef2:0, tiller:0,
 };
 
 // Two slab reefs. Heights are training estimates, not sailmaker measurements.
@@ -836,7 +844,7 @@ function mainSheetSpan(angle,carZ){
   const lead=Math.hypot(RIG.mastX-Math.cos(a)*RIG.sheetLeadRadius-RIG.pedestalX,RIG.boomY-RIG.blockDrop-RIG.pedestalY,Math.sin(a)*RIG.sheetLeadRadius);
   return (3*aft+lead)/4; // Three aft falls and the forward return to the cockpit ratchet.
 }
-function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror){
+function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror, lateral=0){
   // sh: {twist,depth,draft,boom}  geom: BOAT.main/jib  → {drive, side, hm}
   let drive=0, side=0, hm=0;
   const heelEff = Math.pow(Math.cos(heelR), 1.3);
@@ -847,20 +855,21 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror)
     const z = geom.z0 + geom.span*hf;
     const Vt = tws*Math.pow(Math.max(z,1)/10, .11);          // gradient aloft
     const awx = Vt*Math.cos(rad(twa)) + V;
-    const awy = Vt*Math.sin(rad(twa))*Math.cos(heelR);
+    const awy = Vt*Math.sin(rad(twa))*Math.cos(heelR)-lateral;
     const aws = Math.hypot(awx,awy);
     const awa = clamp(deg(Math.atan2(awy,awx)), 0, 180);
     const delta = (mirror?Math.abs(sh.boom):sh.boom) + sh.twist*Math.pow(hf,1.15);   // local chord angle
     const q = .5*RHO_A*aws*aws*(geom.area/5)*heelEff*blanket*.80*(aScale===undefined?1:aScale);
-    if(sh.backed){
+    const backedF=clamp(sh.backedF||0,0,1);
+    let backedDrive=0,backedSide=0,backedHm=0;
+    if(backedF>0){
       // A backed sail is pressure-dominated. Its force remains leeward, but
       // the windward-set plane points that pressure partly aft.
       const incidence=Math.sin(rad(awa-delta));
       const normal=q*1.3*incidence*Math.abs(incidence);
-      drive+=normal*Math.sin(rad(delta));
-      side+=normal*Math.cos(rad(delta));
-      hm+=normal*Math.cos(rad(delta))*z;
-      continue;
+      backedDrive=normal*Math.sin(rad(delta));
+      backedSide=normal*Math.cos(rad(delta));
+      backedHm=backedSide*z;
     }
     // a sail set to windward (wing-on-wing) is filled from astern on its inner
     // face: incidence is how far the flow has swung past the sail's plane
@@ -879,9 +888,10 @@ function segForces(sh, geom, tws, twa, V, heelR, blanket, slotF, aScale, mirror)
     cl *= slotF;                                             // solved slot interaction
     cd += cl*cl/(Math.PI*geom.ar*.8);                        // induced
     const L=q*cl, D=q*cd, sA=Math.sin(rad(awa)), cA=Math.cos(rad(awa));
-    drive += L*sA - D*cA;
-    side  += L*cA + D*sA;
-    hm    += (L*cA + D*sA)*z;
+    const normalDrive=L*sA-D*cA,normalSide=L*cA+D*sA;
+    drive += normalDrive*(1-backedF)+backedDrive*backedF;
+    side  += normalSide*(1-backedF)+backedSide*backedF;
+    hm    += normalSide*z*(1-backedF)+backedHm*backedF;
   }
   return {drive, side, hm};
 }
@@ -1142,7 +1152,7 @@ function stepJibSheetSpan(span,a,b,length,wind,dt,t,side){
   pin();
   return span;
 }
-function compute({flow=true}={}){
+function compute({flow=true,motion=null}={}){
   const s = state;
   const reef=mainReef(s);
   const reefedMain={...BOAT.main,area:BOAT.main.area*reef.areaScale,
@@ -1153,9 +1163,9 @@ function compute({flow=true}={}){
   const twa = s.twaOv ?? s.twaC ?? POS[s.posIdx].twa;
   const mainLimits=mainBoomLimits(s.sheet,-s.trav*RIG.travelerHalfWidth);
 
-  let V=2.0, heel=8, lee=3, r=null;
+  let V=motion?motion.surge:2.0, heel=motion?motion.heel:8, lee=3, r=null;
   PANEL.ok=false;                              // it 0 uses factor 1; deterministic per-compute
-  for(let it=0; it<16; it++){
+  for(let it=0; it<(motion?0:16); it++){
     r = step(V, heel, lee);
     if(it===1) updatePanelFactors(r.sh.m, r.sh.j, r.awa);
     V    = clamp(V*.55 + r.Vnew*.45, 0, 4.2);
@@ -1163,8 +1173,15 @@ function compute({flow=true}={}){
     lee  = lee*.55 + r.leeNew*.45;
   }
   heel=clamp(heel,0,40);
+  if(motion){
+    // Instantaneous dynamics skip the equilibrium iterations above, so solve
+    // the slot once from their current sail shapes before evaluating forces.
+    r=step(V,heel,lee);
+    updatePanelFactors(r.sh.m,r.sh.j,r.awa);
+    r=step(V,heel,lee);
+  }
   // Report wind, sail shape, and loads at the returned equilibrium estimate.
-  const out=finish(step(V, heel, lee), V, heel, lee);
+  const out=finish(motion?r:step(V, heel, lee), V, heel, lee);
   if(flow) updatePanel(out.main, {...out.jib, boom:out.jib.clew}, out.awa);
   return out;
 
@@ -1213,27 +1230,35 @@ function compute({flow=true}={}){
     const clewWind = -(4 + (1-s.jsheetw)*72);
     let clewJ = clewLee*(1-wowF) + clewWind*wowF;
     const wow = wowF>.5;
-    const backed=!wow&&awa<135&&windwardLimit<0&&s.jsheetw>0;
+    const backedF=!wow&&awa<135&&s.jsheetw>0?clamp(-windwardLimit/6,0,1):0;
+    const backed=backedF>0;
     const bounds=jibClewLimits({clew:clewJ,wow,backed,sheetLen:Ljib,windSheetLen:Lwind},s,1);
     clewJ=clamp(clewJ,bounds.min,bounds.max);
     return {upwind, wowF,rig,
       m:{rig,leech:leechM,twist:twistM,depth:depthM,draft:draftM,boom:boomM,slack:sheetSlack},
-      j:{rig,leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ,wow,backed,sheetLen:Ljib,windSheetLen:Lwind,clewSheet,eased}};
+      j:{rig,leech:leechJ,twist:twistJ,depth:depthJ,draft:draftJ,boom:clewJ,wow,backed,backedF,sheetLen:Ljib,windSheetLen:Lwind,clewSheet,eased}};
   }
 
   function step(V, heel, lee){
     const heelR = rad(clamp(heel,0,45));
     // deck-level apparent wind (for shapes, coach, display)
     const awx = tws*Math.cos(rad(twa)) + V;
-    const awy = tws*Math.sin(rad(twa))*Math.cos(heelR);
+    const awy = tws*Math.sin(rad(twa))*Math.cos(heelR)-(motion?.swayLee||0);
     const aws = Math.hypot(awx,awy);
     const awa = clamp(deg(Math.atan2(awy,awx)), 0, 180);
     const sh = shapes(awa,aws/KT);
     const shadowJ = awa>140 ? clamp(1-(awa-140)/40*.65, .35, 1) : 1;  // jib in main's shadow on a run
     const blanketJ = shadowJ*(1-sh.wowF) + 1*sh.wowF;                  // wing-on-wing flies in clear air
     const hoistM = clamp(s.mainhal/.35, 0, 1), hoistJ = clamp(s.jhal/.35, 0, 1);
-    const FM = segForces(sh.m, reefedMain, tws, twa, V, heelR, 1, PANEL.ok?PANEL.fM:1, Math.pow(hoistM,1.6));
-    const FJ = segForces(sh.j, BOAT.jib,  tws, twa, V, heelR, blanketJ, PANEL.ok?PANEL.fJ:1, Math.pow(hoistJ,1.6), sh.j.wow);
+    const lateral=motion?.swayLee||0;
+    // A backed jib no longer forms a lifting slot with the main. Fade the
+    // coupled-flow correction out with backing instead of letting the panel
+    // solver's irrelevant backed-sail circulation perturb the main force.
+    const slotBlend=(1-sh.j.backedF)**2;
+    const slotM=PANEL.ok?1+(PANEL.fM-1)*slotBlend:1;
+    const slotJ=PANEL.ok?1+(PANEL.fJ-1)*slotBlend:1;
+    const FM = segForces(sh.m, reefedMain, tws, twa, V, heelR, 1, slotM, Math.pow(hoistM,1.6),false,lateral);
+    const FJ = segForces(sh.j, BOAT.jib,  tws, twa, V, heelR, blanketJ, slotJ, Math.pow(hoistJ,1.6), sh.j.wow,lateral);
     const drive = FM.drive + FJ.drive;
     const side  = FM.side + FJ.side;
     const hm    = FM.hm + FJ.hm;
@@ -1252,11 +1277,11 @@ function compute({flow=true}={}){
     const Rheel = (Rf+Rr)*.3*Math.pow(Math.sin(heelR),1.5);
     const Rtot = Rf+Rr+Rheel+Di+2;
     const Vnew = clamp(V*Math.pow(Math.max(drive,0)/Rtot, .28), 0, 4.2);
-    return {aws,awa,sh,heelNew,leeNew,Vnew,drive,side,FJ};
+    return {aws,awa,sh,heelNew,leeNew,Vnew,drive,side,FM,FJ};
   }
 
   function finish(rr, V, heel, lee){
-    const {aws,awa,sh,FJ} = rr;
+    const {aws,awa,sh,FM,FJ} = rr;
     const off = awa>90;
     const aoaM = awa - sh.m.boom - sh.m.twist*.5;
     const aoaJ = sh.j.wow ? awa + Math.abs(sh.j.boom) + sh.j.twist*.5 - 180 : awa - sh.j.boom - sh.j.twist*.5;
@@ -1301,8 +1326,80 @@ function compute({flow=true}={}){
         aoa:aoaM, eff:M.eff, luff:M.luff, stall:M.stall},
       jib:{...sh.j, clew:sh.j.boom, aoa:aoaJ, eff:J.eff, luff:J.luff, stall:J.stall,
         sheetT, sheetSlack:sheetSlackJ, sheetLen:sh.j.sheetLen, eased:sh.j.eased, taut},
-      idl, eff, heel:clamp(heel,0,40), helm, leeway:lee, sheetSlack:sh.m.slack, speed:V/KT};
+      idl, eff, heel:clamp(heel,0,40), helm, leeway:lee, sheetSlack:sh.m.slack, speed:V/KT,
+      forces:{main:FM,jib:FJ,drive:rr.drive,side:rr.side},heelTarget:rr.heelNew};
   }
+}
+
+/* ---- coupled free-sailing maneuver dynamics ----
+   Body x is forward and world z is port. Tiller is physical degrees: positive
+   moves it to port; the rudder turns oppositely. Its force vanishes with water
+   speed, so the helm cannot rotate a stopped boat. */
+function initManeuver(result=compute({flow:false})){
+  const bearing=(state.twaC??POS[state.posIdx].twa)*((state.twaSide||1)<0?-1:1);
+  return {bearing,surge:result.speed*KT,sway:0,yawRate:0,heel:result.heel};
+}
+function computeInstantaneous(motion){
+  const S=motion.bearing<0?-1:1;
+  const saved={twaC:state.twaC,twaSide:state.twaSide,twaOv:state.twaOv};
+  state.twaSide=S;state.twaC=clamp(Math.abs(motion.bearing),0,180);delete state.twaOv;
+  const result=compute({flow:false,motion:{...motion,swayLee:S*motion.sway}});
+  state.twaC=saved.twaC;state.twaSide=saved.twaSide;
+  if(saved.twaOv===undefined)delete state.twaOv;else state.twaOv=saved.twaOv;
+  return result;
+}
+function stepManeuver(motion,dt){
+  const result=computeInstantaneous(motion);
+  if(!(dt>0)) return {motion,result,forces:null};
+  const h=clamp(dt,0,.05),S=motion.bearing<0?-1:1,u=motion.surge,v=motion.sway;
+  const aero=result.forces,tiller=clamp(Number(state.tiller)||0,-35,35);
+  const omega=rad(motion.yawRate);
+  const surgeDrag=70*u*Math.abs(u);
+  // Moment arms share this estimated yaw reference in the model's boat-x frame.
+  // Hydrodynamic stations are teaching calibrations relative to that reference.
+  const YAW_REF_X=1.0;
+  const bowV=v+2.1*omega,aftV=v-2.1*omega;
+  const hullBow=-410*bowV*Math.abs(bowV),hullAft=-410*aftV*Math.abs(aftV);
+  const hullSide=hullBow+hullAft,hullYaw=2.1*(hullBow-hullAft);
+  const keelV=v-1.2*omega,keelSide=-260*keelV*Math.abs(u),keelYaw=-1.2*keelSide;
+  const rudderX=RIG.rudderX-YAW_REF_X;
+  const rudderV=v+rudderX*omega,rudderFlow=Math.hypot(u,rudderV);
+  const rudderBeta=Math.atan2(rudderV,u),rudderIncidence=rad(tiller)-rudderBeta;
+  const rudderQ=.5*RHO_W*.45*rudderFlow*rudderFlow;
+  const rudderLift=rudderQ*Math.sin(2*rudderIncidence);
+  const rudderDrag=rudderQ*(.02+1.1*Math.sin(rudderIncidence)**2);
+  const rudderDrive=-rudderLift*Math.sin(rudderBeta)-rudderDrag*Math.cos(rudderBeta);
+  const rudderSide=rudderLift*Math.cos(rudderBeta)-rudderDrag*Math.sin(rudderBeta);
+  const rudderYaw=rudderX*rudderSide;
+  const side=S*aero.side+hullSide+keelSide+rudderSide;
+  // Area centroids from the same triangular sail plan used by the renderer,
+  // relative to the common yaw reference. Backing changes force, not location.
+  const mainChord=RIG.mainFoot*mainReef(state).foot/3,mainAngle=rad(result.main.boom);
+  const mainCE={x:RIG.mastX-mainChord*Math.cos(mainAngle)-YAW_REF_X,z:mainChord*Math.sin(mainAngle)};
+  const jibLuffX=(2*3.72+(RIG.mastX+.03))/3;
+  const jibCE={x:jibLuffX-2.90/3*Math.cos(rad(result.jib.clew))-YAW_REF_X,z:2.90/3*Math.sin(rad(result.jib.clew))};
+  const jibYaw=S*(jibCE.x*aero.jib.side-jibCE.z*aero.jib.drive);
+  const mainYaw=S*(mainCE.x*aero.main.side-mainCE.z*aero.main.drive);
+  const yawAero=jibYaw+mainYaw;
+  const yawDamping=950*rad(motion.yawRate)*Math.max(.35,Math.abs(u));
+  // Water accelerated sideways with the hull adds substantially to sway
+  // inertia. Keep the associated body-frame and yaw coupling terms together.
+  const massX=BOAT.disp,massY=BOAT.disp*1.1,inertia=BOAT.disp*4.2;
+  const yaw=yawAero+rudderYaw+keelYaw+hullYaw-yawDamping+(massX-massY)*u*v;
+  motion.surge+=((aero.drive-surgeDrag+rudderDrive+massY*v*omega)/massX)*h;
+  motion.sway+=((side-massX*u*omega)/massY)*h;
+  motion.yawRate+=deg(yaw/inertia*h);
+  motion.bearing+=motion.yawRate*h;
+  while(motion.bearing>180)motion.bearing-=360;
+  while(motion.bearing<=-180)motion.bearing+=360;
+  motion.heel+=(result.heelTarget-motion.heel)*(1-Math.exp(-1.8*h));
+  setWindBearing(motion.bearing);
+  state.twaC=Math.abs(motion.bearing);
+  const forces={drive:aero.drive-surgeDrag+rudderDrive,side,yaw,
+    main:{...aero.main,yaw:mainYaw,ce:mainCE},jib:{...aero.jib,yaw:jibYaw,ce:jibCE},
+    rudder:{drive:rudderDrive,side:rudderSide,yaw:rudderYaw},keel:{side:keelSide,yaw:keelYaw},
+    hull:{surge:-surgeDrag,side:hullSide,yaw:hullYaw,bowSide:hullBow,aftSide:hullAft}};
+  return {motion,result,forces};
 }
 
 /* ---------------- coach ---------------- */
@@ -1338,6 +1435,7 @@ function nextMoveAlert(r){
 function pill(txt, cls){ return `<span class="pill ${cls}">${txt}</span>`; }
 
 function renderTiles(r){
+  const live=typeof SAILING!=="undefined"&&SAILING.active,m=live?SAILING.motion:null;
   const heelCls = r.heel>28?"crit":r.heel>22?"warn":r.heel>=10?"good":"mut";
   const heelTxt = r.heel>28?"✕ overpowered":r.heel>22?"! too much":r.heel>=10?"✓ in band":"flat";
   const helmCls = r.helm>8?"crit":r.helm>5.5?"warn":r.helm>=1?"good":"mut";
@@ -1350,8 +1448,8 @@ function renderTiles(r){
     <div class="tile"><div class="lbl">True wind</div><div class="num">${state.tws+(state.gust?6:0)}<small> kt</small></div>${pill(POS[state.posIdx].name.toLowerCase()+" "+Math.round(tw)+"°","mut")}</div>
     <div class="tile"><div class="lbl">Boat speed</div><div class="num">${fmt1(r.speed)}<small> kt</small></div>${pill("hull speed ≈ 6.0 kt","mut")}</div>
     <div class="tile"><div class="lbl">Heel</div><div class="num">${fmt1(r.heel)}<small> °</small></div>${pill(heelTxt,heelCls)}</div>
-    <div class="tile"><div class="lbl">Weather helm</div><div class="num">${fmt1(r.helm)}<small> ° rud</small></div>${pill(helmTxt,helmCls)}</div>
-    <div class="tile"><div class="lbl">Trim balance</div><div class="num ${effV>.92?"goodc":"warnc"}">${effV==null?'—':Math.round(effV*100)}${effV==null?'':'<small>%</small>'}</div>${pill(effV==null?(r.twa<27?'course first':r.tws<.5?'waiting for wind':'checking trim'):effV>.92?"balanced estimate":"adjust trim",effV==null?'mut':effCls)}</div>`;
+    <div class="tile"><div class="lbl">${live?'Turn rate':'Weather helm'}</div><div class="num">${fmt1(live?Math.abs(m.yawRate):r.helm)}<small> ${live?'°/s':'° rud'}</small></div>${live?pill(Math.abs(m.yawRate)<.1?'steady':m.yawRate*tackSign()>0?'bearing away':'rounding up','mut'):pill(helmTxt,helmCls)}</div>
+    ${live?`<div class="tile"><div class="lbl">Sideways drift</div><div class="num">${fmt1(Math.abs(m.sway)/KT)}<small> kt</small></div>${pill(m.sway*tackSign()>=0?'to leeward':'to windward','mut')}</div>`:`<div class="tile"><div class="lbl">Trim balance</div><div class="num ${effV>.92?'goodc':'warnc'}">${effV==null?'—':Math.round(effV*100)}${effV==null?'':'<small>%</small>'}</div>${pill(effV==null?(r.twa<27?'course first':r.tws<.5?'waiting for wind':'checking trim'):effV>.92?'balanced estimate':'adjust trim',effV==null?'mut':effCls)}</div>`}`;
 }
 
 function delta(x, ideal, tolGood, tolWarn, fmt){
@@ -1524,12 +1622,13 @@ function renderDeck(r){
   // wind arrows on the windward side; direction from bow = twa/awa, signed by tack
   out += arrow(cx+108*S, 84, S*r.twa, 60, "var(--ink2)", "true "+fmt1(r.tws)+" kt", true);
   out += arrow(cx+108*S, 168, S*r.awa, 60, "var(--teal)", "apparent "+fmt1(r.aws)+" kt", false);
-  { const helmDeg=r.helm, sev=helmDeg>8?"var(--crit)":helmDeg>5.5?"var(--warn)":"var(--good)";
-    const ra=rad(clamp(helmDeg,-6,15)*2.5);            // deflection exaggerated 2.5x to read
-    const rx=cx+S*Math.sin(ra)*26, ry=sternY+Math.cos(ra)*26;
-    out += `<line x1="${cx}" y1="${sternY-2}" x2="${rx}" y2="${ry}" stroke="${sev}" stroke-width="4" stroke-linecap="round"/>
-      <text x="${cx+34}" y="${sternY+10}" font-size="12" fill="var(--ink3)">rudder ${fmt1(helmDeg)}° (×2.5)</text>`; }
-  out += `<text x="16" y="318" font-size="12.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° off centerline${reef.level?` · reef ${reef.level}`:""} · ${Math.round(state.twaC??POS[state.posIdx].twa)}° true · rudder shows helm you must hold</text>`;
+  { const live=typeof SAILING!=="undefined"&&SAILING.active;
+    const helmDeg=live?(state.tiller||0):r.helm, sev=live?"var(--teal)":helmDeg>8?"var(--crit)":helmDeg>5.5?"var(--warn)":"var(--good)";
+    const ra=rad(live?helmDeg:clamp(helmDeg,-6,15)*2.5);
+    const rx=cx+(live?-1:S)*Math.sin(ra)*26, ry=sternY+(live?-1:1)*Math.cos(ra)*26;
+    out += `<line id="deckHelm" x1="${cx}" y1="${sternY-2}" x2="${rx}" y2="${ry}" stroke="${sev}" stroke-width="4" stroke-linecap="round"/>
+      <text x="${cx+34}" y="${sternY+10}" font-size="12" fill="var(--ink3)">${live?'tiller':'rudder'} ${fmt1(helmDeg)}°${live?'':' (×2.5)'}</text>`; }
+  out += `<text x="16" y="318" font-size="12.5" fill="var(--ink3)">boom ${fmt1(r.main.boom)}° off centerline${reef.level?` · reef ${reef.level}`:""} · ${Math.round(state.twaC??POS[state.posIdx].twa)}° true</text>`;
   $("svg-deck").innerHTML = out;
   if($("deckHint")) $("deckHint").textContent=(S<0?"wind on port":"wind on starboard")+" · dotted = sheets";
 }
@@ -1770,6 +1869,14 @@ function nextMoveReason(k,d,r,after=null){
 // heading and controls all invalidate it before any old target can be shown.
 function renderNext(src,r=lastR){
   if(!r) return;
+  if(typeof SAILING!=="undefined"&&SAILING.active){
+    $("fxNext").className='fx-zone fx-next';
+    $("fxMove").textContent=r.jib.backed?'Jib backed — balance the helm and main.':'Hand steering.';
+    $("fxSub").textContent=r.jib.backed
+      ?'Ease the main and hold the tiller to leeward. Watch heading settle and leeward drift. Release the backed sheet and center the tiller to sail away.'
+      :'Tiller to port turns the bow to starboard with forward way; sternway reverses the response. Hold course to compare steady trim.';
+    return;
+  }
   const nextEl=$("fxNext"), alert=nextMoveAlert(r);
   nextEl.className='fx-zone fx-next';
   if(alert){
@@ -1810,16 +1917,88 @@ function renderNext(src,r=lastR){
 
 /* ---------------- main update ---------------- */
 let lastR=null, PREV_STATE=null;
+const SAILING={active:false,motion:null,last:null,accumulator:0,displayTime:0,forces:null,paused:false};
+function sailingPaused(){return B3?B3.paused:SAILING.paused;}
+function setSailingPaused(paused){
+  SAILING.paused=paused;if(B3)B3.paused=paused;
+  SAILING.last=null;SAILING.accumulator=0;
+  $("pause3d").textContent=paused?'Resume motion':'Pause motion';
+  $("pause3d").setAttribute('aria-pressed',String(paused));
+  renderSailing();
+}
+function renderSailing(){
+  const button=$("sailingToggle"),m=SAILING.motion;
+  button.textContent=SAILING.active?'Hold course':'Free sailing';
+  button.setAttribute('aria-pressed',String(SAILING.active));
+  $("tiller").value=state.tiller||0;
+  $("v-tiller").textContent=Math.abs(state.tiller||0)<.5?'centered':Math.abs(state.tiller)+'° '+(state.tiller>0?'port':'starboard');
+  $("perfect").disabled=SAILING.active;
+  $("sailingPause").hidden=!SAILING.active;
+  $("sailingPause").textContent=sailingPaused()?'Resume sailing':'Pause sailing';
+  $("sailingPause").setAttribute('aria-pressed',String(sailingPaused()));
+  $("sailingStatus").textContent=SAILING.active&&m
+    ?`${sailingPaused()?'Paused · ':''}Free sailing · ${Math.abs(m.bearing).toFixed(0)}° to wind · drift ${(Math.abs(m.sway)/KT).toFixed(1)} kt · turn ${Math.abs(m.yawRate).toFixed(1)}°/s`
+    :'Course held for trim comparison. Move the tiller to sail freely.';
+}
+function setFreeSailing(active){
+  if(active&&!SAILING.active) SAILING.motion=initManeuver(lastR||compute());
+  SAILING.active=active;SAILING.last=null;SAILING.accumulator=0;SAILING.displayTime=0;
+  clearTimeout(optTimer);OPT=null;OPT_R=null;OPT_MOVE=null;
+  update('steering');
+}
+function displaySailing(result){
+  lastR=result;
+  updatePanel(result.main,{...result.jib,boom:result.jib.clew},result.awa);
+  renderVals();renderTiles(result);renderSailing();renderNext(null,result);
+  if(helmView==='2d'){renderSections(result);renderDeck(result);renderHeel(result);renderTwist(result);}
+  B3dirty=true;
+}
+function advanceSailing(elapsed){
+  if(!SAILING.active||!SAILING.motion||sailingPaused()) return;
+  SAILING.accumulator+=clamp(elapsed,0,.1);
+  let latest;
+  while(SAILING.accumulator>=.05-1e-9){
+    latest=stepManeuver(SAILING.motion,.05,state);
+    SAILING.forces=latest.forces;SAILING.accumulator=Math.max(0,SAILING.accumulator-.05);
+    SAILING.displayTime+=.05;
+  }
+  if(latest){
+    lastR=latest.result;
+    if(SAILING.displayTime>=.2-1e-9){SAILING.displayTime=0;displaySailing(lastR);}
+  }
+}
+function sailingFrame(now){
+  const active=SAILING.active&&!document.hidden&&$("pane-sim").classList.contains('active')&&!sailingPaused();
+  if(active&&SAILING.last!==null) advanceSailing((now-SAILING.last)/1000);
+  SAILING.last=active?now:null;
+  requestAnimationFrame(sailingFrame);
+}
+document.addEventListener('visibilitychange',()=>{SAILING.last=null;SAILING.accumulator=0;});
+$("sailingToggle").addEventListener('click',()=>setFreeSailing(!SAILING.active));
+$("sailingPause").addEventListener('click',()=>setSailingPaused(!sailingPaused()));
+$("tiller").addEventListener('input',e=>{
+  state.tiller=Number(e.target.value);
+  if(!SAILING.active) setFreeSailing(true); else update('tiller');
+});
+$("centerTiller").addEventListener('click',()=>{state.tiller=0;update('tiller');});
 function update(src){
   if(src){ OPT=null; OPT_R=null; OPT_MOVE=null; renderOptims(); }
   renderVals();
-  const r = compute();
+  if(SAILING.active&&src==='pos'){
+    SAILING.motion.bearing=(state.twaC??POS[state.posIdx].twa)*tackSign();
+    SAILING.motion.yawRate=0;
+  }
+  const snapshot=SAILING.active?computeInstantaneous(SAILING.motion,state):null;
+  const r = snapshot||compute();
+  if(snapshot){SAILING.forces=snapshot.forces;updatePanel(r.main,{...r.jib,boom:r.jib.clew},r.awa);}
   renderTiles(r); renderTable(r);
   renderSections(r); renderDeck(r); renderHeel(r); renderTwist(r);
   if(src && lastR) renderFx(src,lastR,r);
   else renderNext(src,r);
+  if(SAILING.active||src==='steering'||src==='tiller') renderNext(src,r);
   if(src && B3 && (TRIM_KEYS.includes(src)||src==="reef1"||src==="reef2")) B3.hiKey=src;
   lastR=r;
+  renderSailing();
   $("v-"+jibSheetSideId("jsheet")).textContent = jsheetLabel(r);
   B3dirty=true;
   if($("awCard")) $("awCard").innerHTML = "Apparent wind is what the sails actually feel: <b>"+fmt1(r.aws)+" kt</b> at <b>"+Math.round(r.awa)+"\u00B0</b> off the bow.";
@@ -1867,9 +2046,7 @@ function renderDial(){
     ticks+=`<text x="${tx}" y="${ty+2.5}" font-size="6.5" font-weight="600" fill="var(--ink)" opacity=".85" text-anchor="middle" transform="rotate(${rot} ${tx} ${ty})" style="user-select:none;pointer-events:none">${lab}</text>`;
   }
   const hint=$("twaHint");
-  if(hint) hint.textContent=(state.twaSide||1)<0
-    ? "wind on the port side — sails set to starboard"
-    : "drag or use arrow keys to change heading";
+  if(hint) hint.textContent=SAILING.active?'Tiller steers; drag dial to reposition heading.':'Drag or use arrow keys to set heading.';
   el.innerHTML=`
     <circle cx="${c}" cy="${c}" r="${R}" fill="var(--panel2)" stroke="var(--line)"/>
     ${zones}${seps}
@@ -1957,7 +2134,9 @@ function renderOptims(){
 }
 function scheduleOptims(){
   clearTimeout(optTimer);
+  if(typeof SAILING!=="undefined"&&SAILING.active) return;
   optTimer=setTimeout(()=>{
+    if(typeof SAILING!=="undefined"&&SAILING.active) return;
     if(!lastR || lastR.twa<27 || lastR.tws<.5) return;
     try{
       OPT=solvePerfectTrim(true); OPT_R=computeWith(OPT);
@@ -2900,14 +3079,14 @@ function ensure3Dinner(canvas){
       runLines:null,puffs:null,dyeR:null,dyeOn:true,t:0,heelCur:0};
   B3dirty=true;
   initTelltales();
-  B3.paused=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  B3.paused=SAILING.paused||window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const pauseBtn=$("pause3d");
   const syncPause=()=>{
     pauseBtn.textContent=B3.paused?"Resume motion":"Pause motion";
     pauseBtn.setAttribute("aria-pressed",String(B3.paused));
   };
   syncPause();
-  pauseBtn.addEventListener("click",()=>{ B3.paused=!B3.paused; syncPause(); });
+  pauseBtn.addEventListener("click",()=>setSailingPaused(!sailingPaused()));
   const views={rig:[2.55,1.20,19,.3,5.1,0],bend:[Math.PI/2,Math.PI/2,13,1.4,6.1,0],deck:[2.3,.72,8,-.2,.8,0],sails:[2.2,1.15,12,.5,6,0],rigging:[3.0,1.02,4.7,-1.0,.90,0],cunningham:[-1.8,1.25,2.5,1.25,1.9,0]};
   $("cameraViews").addEventListener("click",e=>{
     const button=e.target.closest("button"); if(!button) return;
@@ -3846,7 +4025,7 @@ function tick3D(elapsed){
   B3.heelCur += (target-B3.heelCur)*(B3.paused?1:1-Math.exp(-dt*3));
   B3.boat.rotation.x=B3.heelCur;
   const rud=B3.rudder;
-  if(rud) rud.rotation.y += ((S*rad(clamp(r.helm,-6,15))) - rud.rotation.y)*(B3.paused?1:1-Math.exp(-dt*4));
+  if(rud) rud.rotation.y += ((SAILING.active?-rad(state.tiller||0):S*rad(clamp(r.helm,-6,15))) - rud.rotation.y)*(B3.paused?1:1-Math.exp(-dt*4));
   B3.boat.rotation.z=Math.sin(B3.t*.8)*.012 + clamp(r.speed,0,7)*.004; // gentle pitch + bow-up with speed
   // heeled hull rotates about the keel line here, so add the buoyant rise a
   // real hull gets as its leeward volume immerses
@@ -4221,6 +4400,7 @@ document.querySelectorAll('.ctl-group[data-g="main"],.ctl-group[data-g="jib"]').
 update();
 scheduleOptims();
 showTab("sim");
+requestAnimationFrame(sailingFrame);
 </script>
 
 

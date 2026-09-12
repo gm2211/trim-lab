@@ -1,0 +1,106 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Trim Lab heave-to browser checks</title>
+<style>body{font:14px system-ui;margin:16px;background:#eef2ef;color:#182e36}iframe{width:100%;height:720px;border:1px solid #aabbbd}li{margin:6px 0}.fail{color:#a32825}</style>
+<h1>Trim Lab heave-to browser checks</h1>
+<p>Real controls, animation lifecycle, and dynamic telemetry.</p>
+<ol id="results"></ol>
+<p><button onclick="inspectHeave()">Inspect settled heave-to</button></p>
+<iframe title="Simulator under test"></iframe>
+<script>
+const frame=document.querySelector('iframe'),results=document.querySelector('#results');
+const check=(name,pass,detail='')=>{const li=document.createElement('li');li.textContent=(pass?'PASS: ':'FAIL: ')+name+(detail?' — '+detail:'');li.className=pass?'':'fail';results.append(li);};
+const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const input=(w,id,value)=>{const el=w.document.getElementById(id);el.value=value;el.dispatchEvent(new w.Event('input',{bubbles:true}));};
+const key=(w,value)=>w.document.getElementById('windDial').dispatchEvent(new w.KeyboardEvent('keydown',{key:value,bubbles:true}));
+const motion=w=>w.eval('JSON.stringify(SAILING.motion)');
+
+async function inspectHeave(){
+  const w=frame.contentWindow;
+  w.eval(`setFreeSailing(false);setSailingPaused(true);
+    Object.assign(state,{tws:12,twaSide:1,twaC:45,gust:false,sheet:.85,trav:0,jsheet:.75,jsheetw:0,jcar:.5,mainhal:.9,jhal:.9,tiller:0,reef1:0,reef2:0});
+    update('pos');setFreeSailing(true);`);
+  input(w,'tiller',35);
+  w.eval('setSailingPaused(false);');
+  let crossed=false;
+  for(let batch=0;batch<24&&!crossed;batch++){
+    crossed=w.eval('(()=>{for(let i=0;i<25;i++){const before=SAILING.motion.bearing;advanceSailing(.05);if(before>0&&before<10&&SAILING.motion.bearing<0&&SAILING.motion.bearing>-10&&SAILING.motion.surge>0)return true;}return false;})()');
+    await wait(0);
+  }
+  check('Tiller-driven tack crosses head to wind with forward momentum',crossed);
+  if(!crossed){w.eval('setSailingPaused(true)');return;}
+  input(w,'sheet',65);input(w,'tiller',-35);
+  for(let batch=0;batch<24;batch++){
+    w.eval('for(let i=0;i<100;i++)advanceSailing(.05);');
+    await wait(0);
+  }
+  check('Completed tack settles with the retained jib backed and leeward drift',w.eval('lastR.jib.backed&&SAILING.motion.bearing<-20&&SAILING.motion.bearing>-90&&SAILING.motion.surge<2&&SAILING.motion.sway<-.1&&Math.abs(SAILING.motion.yawRate)<.1'));
+  w.eval(`setSailingPaused(true);displaySailing(computeInstantaneous(SAILING.motion));setHelmView('3d');
+    B3.cam.setTarget(V3(.3,5.1,0));B3.cam.radius=19;B3.cam.alpha=2.55;B3.cam.beta=1.2;tick3D();B3.scene.render();`);
+  frame.style.height='1000px';frame.scrollIntoView();
+}
+
+frame.onload=async()=>{
+  const w=frame.contentWindow;
+  try{
+    for(let i=0;i<200&&!w.eval('B3&&B3.scene.isReady()');i++)await wait(100);
+    check('WebGL scene is ready',w.eval('B3&&B3.scene.isReady()'));
+    w.eval(`setFreeSailing(false);setSailingPaused(false);Object.assign(state,{tws:14,twaSide:1,twaC:45,posIdx:0,
+      sheet:.75,trav:0,jsheet:.75,jsheetw:0,jcar:.5,mainhal:.9,jhal:.9,tiller:0});update('pos');`);
+    const physicalBefore=[w.document.getElementById('jsheetP').value,w.document.getElementById('jsheetS').value];
+    key(w,'Home');for(let i=0;i<67;i++)key(w,'ArrowRight');
+    const physicalAfter=[w.document.getElementById('jsheetP').value,w.document.getElementById('jsheetS').value];
+    check('Crossing the wind preserves physical sheet sliders',physicalBefore.every((v,i)=>v===physicalAfter[i]));
+    check('Retained old working sheet backs jib on new tack',w.eval('state.twaSide===-1&&lastR.jib.backed&&lastR.jib.clew<0'));
+
+    input(w,'sheet',50);input(w,'tiller',-25);
+    check('Moving tiller starts free sailing',w.eval('SAILING.active')&&w.document.getElementById('sailingToggle').getAttribute('aria-pressed')==='true');
+    const start=w.eval('({motion:{...SAILING.motion},result:lastR,status:document.querySelector("#sailingStatus").textContent})');
+    await wait(2500);
+    const underway=w.eval('({motion:{...SAILING.motion},result:lastR,status:document.querySelector("#sailingStatus").textContent})');
+    check('Backed jib and helm change heading dynamically',Math.abs(underway.motion.bearing-start.motion.bearing)>0.5,`${start.motion.bearing.toFixed(1)}° to ${underway.motion.bearing.toFixed(1)}°`);
+    check('Maneuver telemetry comes from changing motion',Math.abs(underway.motion.sway)>1e-3&&Math.abs(underway.motion.surge-start.motion.surge)>1e-3);
+    check('Status reports live heading, drift, and turn',/Free sailing.*° to wind.*drift .*kt.*turn .*°\/s/.test(underway.status));
+
+    if(!w.eval('sailingPaused()'))w.document.getElementById('sailingPause').click();
+    const paused=motion(w);await wait(350);
+    check('Pause freezes maneuver state',motion(w)===paused);
+    w.document.getElementById('sailingPause').click();await wait(120);
+
+    Object.defineProperty(w.document,'hidden',{configurable:true,get:()=>true});
+    w.document.dispatchEvent(new w.Event('visibilitychange'));
+    const hidden=motion(w);await wait(350);
+    check('Hidden document freezes maneuver state',motion(w)===hidden);
+    Object.defineProperty(w.document,'hidden',{configurable:true,get:()=>false});
+    w.document.dispatchEvent(new w.Event('visibilitychange'));
+    const beforeResume=w.eval('SAILING.motion.bearing');await wait(120);const afterResume=w.eval('SAILING.motion.bearing');
+    check('Visibility resume has no catch-up jump',Math.abs(afterResume-beforeResume)<2);
+
+    w.eval('showTab("lines")');const offTab=motion(w);await wait(350);
+    check('Leaving simulator tab freezes maneuver state',motion(w)===offTab);
+    w.eval('showTab("sim")');await wait(120);
+    const before2d=w.eval('SAILING.motion.bearing');w.document.getElementById('helm-mode-2d').click();await wait(350);
+    check('Free sailing continues in 2D Helm view',Math.abs(w.eval('SAILING.motion.bearing')-before2d)>0.01);
+
+    w.document.getElementById('sailingPause').click();const paused2d=motion(w);await wait(250);
+    check('Sailing pause is visible and freezes motion in 2D',!w.document.getElementById('sailingPause').hidden&&motion(w)===paused2d);
+    w.document.getElementById('sailingPause').click();
+
+    input(w,'tiller',25);w.eval('setSailingPaused(true);tick3D();');
+    const tillerPort=w.eval(`(()=>{const node=B3.rudder;node.computeWorldMatrix(true);const matrix=node.getWorldMatrix();
+      const base=BABYLON.Vector3.TransformCoordinates(V3(0,0,0),matrix),tip=BABYLON.Vector3.TransformCoordinates(V3(1,0,0),matrix);
+      return tip.z>base.z;})()`);
+    check('Port tiller input moves the 3D tiller to port',tillerPort);
+    const drawnTiller=w.document.getElementById('deckHelm');
+    check('Deck-view tiller points forward and to port',Number(drawnTiller.getAttribute('x2'))<Number(drawnTiller.getAttribute('x1'))&&Number(drawnTiller.getAttribute('y2'))<Number(drawnTiller.getAttribute('y1')));
+
+    w.document.getElementById('centerTiller').click();
+    check('Center tiller uses the real control path',w.eval('state.tiller===0')&&w.document.getElementById('tiller').value==='0'&&/centered/.test(w.document.getElementById('v-tiller').textContent));
+    const activeBeforeHold=motion(w);w.document.getElementById('sailingToggle').click();await wait(300);
+    check('Hold course stops maneuver integration',!w.eval('SAILING.active')&&motion(w)===activeBeforeHold&&w.document.getElementById('sailingToggle').getAttribute('aria-pressed')==='false');
+    w.eval('setSailingPaused(true)');
+    document.title=results.querySelector('.fail')?'FAIL: Trim Lab heave-to browser checks':'PASS: Trim Lab heave-to browser checks';
+  }catch(error){check(error.message,false);document.title='FAIL: Trim Lab heave-to browser checks';}
+};
+frame.src='../app.html?heave-to-check='+Date.now();
+</script>

@@ -14,9 +14,10 @@ frame.onload=async()=>{
  if(!w.eval('B3 && B3.scene.isReady() && B3.puffs')){
   document.querySelector('#results').textContent='FAIL: Scene did not become ready.';return;
  }
+ if(new URLSearchParams(location.search).has('sailing')) w.document.querySelector('#sailingToggle').click();
  w.eval(`
  window.profile={};
- for(const name of ['tick3D','stepPuffs','clothResolveContacts','clothStep','sailPathArray','stepJibSheetSpan']){
+ for(const name of ['advanceSailing','stepManeuver','tick3D','stepPuffs','clothResolveContacts','clothStep','sailPathArray','stepJibSheetSpan']){
   if(typeof window[name]!=='function')continue;
   const original=window[name];
   window[name]=function(...args){const start=performance.now();try{return original.apply(this,args)}finally{const m=window.profile[name]||(window.profile[name]={ms:0,calls:0});m.ms+=performance.now()-start;m.calls++}};
