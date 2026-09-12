@@ -11,6 +11,18 @@ and a coordinate-descent "perfect trim" solver. 2D views: sail sections, deck pl
 twist-from-astern, heel gauge, a hand-written, reviewed static drill list (in `src-app.html`),
 and concept guides.
 
+Two reef-line controls select a first or second slab reef. The deeper set line
+takes precedence; releasing both restores the full main. Each setting represents
+the completed maneuver (ease halyard, secure reef tack and clew, re-tension),
+with halyard hoist/tension then relative to the selected reef. The trim optimizer
+preserves this manual sail-area choice. Both pennants and gathered cloth appear
+in 3D; reduced area and span feed the force model and 2D views.
+
+The [Colgate 26 sail-away package](https://www.colgate26.com/price-packages/sail-away-package/)
+specifies two reef lines. Reef heights here (16% and 30% of the luff) and the
+cloth bundle are training approximations, not measured sailmaker dimensions or
+a simulation of each step of the maneuver.
+
 ## Layout
 - `src-app.html` — the entire app (HTML/CSS/JS) with a `<script id="lib-slot">` placeholder.
 - `babylon.lib.js` — committed canonical WebGL-only Babylon bundle and water normals.
