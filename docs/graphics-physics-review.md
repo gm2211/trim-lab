@@ -152,3 +152,35 @@ Cloth and rope collision handling is approximate; sail/rig and cloth self-inters
 are not a fully solved contact system. Water motion and sail breathing are visual
 approximations. Lighting has environment reflections but no new real-time shadow
 pipeline. Browser geometry decompression requires DecompressionStream.
+
+
+### Physical jib sheets through turns
+
+The wind dial preserves the port and starboard sheet settings when crossing
+head-to-wind or dead downwind. Both sheets use the same paid-length geometry;
+changing tack swaps their working/windward roles without moving either cleat.
+An unreleased sheet holds the jib aback after a tack. The backed sail uses a
+normal-pressure force with aft drive and leeward side force. A jibe preserves
+the held side and can enter or leave wing-on-wing instead.
+
+This provides the backed-jib setup for heaving-to. Heading remains prescribed
+by the wind dial, and the helm number is a readout, so the trainer does not solve
+a free-yaw equilibrium between the jib, main, rudder and hull. When both sheets
+are hauled to mutually incompatible lengths, the reduced-order model reports
+`constraintConflict` and prioritizes the held-side constraint; it does not model
+fabric compression or hardware loads for that impossible rigid-clew geometry.
+
+
+### Bounded wind-dye field
+
+The dye uses a reduced-order visualization field, separate from the performance
+panel factors. Each sail's circulation is limited by its local camber and lift
+curve, fades with separation and lowering, and is zero for an aback jib's
+attached-flow component. Eight visualization stations retain the panel solve's
+circulation with a smooth core, finite-span attenuation and an induced-speed
+ceiling. This prevents the former large, distant arcs and local flow reversals
+without removing near-sail deflection. It is not a no-penetration CFD solution.
+
+`tests/wind-flow.test.cjs` checks close-hauled, beam reach, run and backed-jib
+fields, distant deflection, exact tack mirroring, and zero-wind/fully lowered
+limits including both sail endpoints.
