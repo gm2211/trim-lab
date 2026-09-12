@@ -20,13 +20,37 @@ function inspectLuff(){
 frame.onload=async()=>{
   const w=frame.contentWindow;
   try{
-    w.eval('showTab("view3d");');
+    check('Helm starts in 3D without a separate navigation item',w.document.querySelector('#pane-sim.active') && !w.document.querySelector('#helm-3d').hidden && !w.document.querySelector('#tabs [data-tab="view3d"]'));
+    const shared=['controls','tiles','coach','fx'].map(id=>w.document.getElementById(id));
+    const originalSheet=w.document.querySelector('#sheet').value;
+    w.document.querySelector('#sheet').value=63;
+    w.document.querySelector('#sheet').dispatchEvent(new w.Event('input'));
+    const feedback=w.document.querySelector('#fx').textContent;
+    const metrics=w.document.querySelector('#tiles').textContent;
+    w.document.querySelector('#helm-mode-2d').click();
+    check('2D keeps shared controls, metrics and feedback',shared.every(el=>el.getClientRects().length) && w.document.querySelector('#fx').textContent===feedback && w.document.querySelector('#tiles').textContent===metrics && w.document.querySelector('#sheet').value==='63');
+    check('2D hides the canvas and exposes diagrams',w.document.querySelector('#helm-3d').hidden && !w.document.querySelector('#helm-2d').hidden);
+    w.eval('showTab("lines");showTab("sim");');
+    check('Returning to Helm retains selected view',w.document.querySelector('#helm-mode-2d').getAttribute('aria-selected')==='true');
+    w.document.querySelector('#helm-mode-2d').dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));
+    check('Keyboard switches back to 3D with focus and selection',w.document.activeElement.id==='helm-mode-3d' && w.document.querySelector('#helm-mode-3d').getAttribute('aria-selected')==='true' && !w.document.querySelector('#helm-3d').hidden);
+    check('3D retains the same shared rows and trim state',shared.every(el=>el===w.document.getElementById(el.id) && el.getClientRects().length) && w.document.querySelector('#fx').textContent===feedback && w.document.querySelector('#sheet').value==='63');
+    w.document.querySelector('#sheet').value=originalSheet;
+    w.document.querySelector('#sheet').dispatchEvent(new w.Event('input'));
     // Compile the actual bundled shaders and wait for local embedded textures.
     for(let i=0;i<200;i++){
       if(w.eval('B3 && B3.scene.isReady()')) break;
       await new Promise(resolve=>setTimeout(resolve,100));
     }
     check('WebGL scene and all materials ready',w.eval('B3 && B3.scene.isReady()'));
+    if(w.matchMedia('(min-width:760px) and (min-height:520px)').matches){
+      check('Both Helm views fit metrics and feedback inside desktop viewport',['3d','2d'].every(view=>{
+        w.document.querySelector('#helm-mode-'+view).click();
+        const top=w.document.querySelector('#tiles').getBoundingClientRect(),bottom=w.document.querySelector('#fx').getBoundingClientRect();
+        return top.top>=0 && bottom.bottom<=w.innerHeight && w.document.querySelector('#helm-'+view).getBoundingClientRect().height>100;
+      }));
+      w.document.querySelector('#helm-mode-3d').click();
+    }
     check('No caught render error',!w.document.querySelector('#hud3d').dataset.err);
     check('Eight Blender maps embedded',w.eval('Object.values(window.__MARINE_MATERIALS).flatMap(Object.values).length===8'));
     check('Normal and roughness maps use linear data',w.eval('B3.scene.materials.filter(m=>m.bumpTexture&&m.metallicTexture).every(m=>!m.bumpTexture.gammaSpace&&!m.metallicTexture.gammaSpace)'));
