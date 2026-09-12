@@ -56,9 +56,11 @@ test('backed camber points leeward on both tacks',()=>{
 });
 
 test('fully eased opposite sheet permits the intended wide clew angle',()=>{
-  reset({twaC:125,jsheet:0,jsheetw:0,jcar:.5});const r=compute(),q=jibClewLimits(r.jib,state,1);
-  assert.equal(q.constraintConflict,false);assert.ok(q.max>=77.9,`maximum ${q.max}`);
-  assert.ok(r.jib.clew>70,`clew ${r.jib.clew}`);
+  for(const jcar of [0,.5,1]){
+    reset({twaC:125,jsheet:0,jsheetw:0,jcar});const r=compute(),q=jibClewLimits(r.jib,state,1);
+    assert.equal(q.constraintConflict,false);assert.ok(Math.abs(q.max-78)<1e-8,`car ${jcar}: maximum ${q.max}`);
+    assert.ok(r.jib.clew>70,`car ${jcar}: clew ${r.jib.clew}`);
+  }
 });
 
 test('constraint conflicts are explicit while ordinary states remain compatible',()=>{

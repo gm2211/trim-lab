@@ -8063,7 +8063,8 @@ function jibSheetLength(trim,jcar){
   const sameSide=lead.dist(lead.d0)+leadRef.dist(angle)-leadRef.dist(leadRef.d0);
   // A completely released lazy sheet must reach the clew across the foredeck.
   // Add that cross-boat tail only at the eased end, leaving normal trim intact.
-  const crossExtra=Math.max(0,leadRef.dist(-78)-leadRef.dist(78))*ease*ease;
+  const releasedSameSide=lead.dist(lead.d0)+leadRef.dist(78)-leadRef.dist(leadRef.d0);
+  const crossExtra=Math.max(0,lead.dist(-78)-releasedSameSide)*ease*ease;
   return sameSide+crossExtra;
 }
 function jibClewLimits(jib,controls,side){
