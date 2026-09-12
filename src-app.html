@@ -134,19 +134,6 @@
   .pill.crit{background:var(--crit-soft);color:var(--crit)}
   .pill.mut{background:var(--panel2);color:var(--ink2)}
 
-  .coach{
-    background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);
-    border-radius:4px;padding:7px 12px;margin-bottom:8px;display:flex;align-items:baseline;gap:14px;
-  }
-  .coach.groove{border-left-color:var(--good)}
-  .coach h3{margin:0;font-family:var(--disp);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);white-space:nowrap}
-  .coach ul{margin:0;padding:0;list-style:none;display:flex;gap:18px;flex-wrap:wrap;min-width:0}
-  .coach li{margin:0;font-size:12.5px}
-  .coach li::before{content:"●  ";color:var(--accent);font-size:9px}
-  .coach.groove li::before{color:var(--good)}
-  .coach li b{color:var(--accent)}
-  .coach.groove li b{color:var(--good)}
-
   .viz-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   @media(max-width:980px){.viz-grid{grid-template-columns:1fr}}
   figure.viz{background:var(--panel);border:1px solid var(--line);border-radius:4px;margin:0;padding:10px 12px}
@@ -326,8 +313,6 @@
     #pane-sim .sim-grid{height:100%;grid-template-rows:minmax(0,1fr);grid-template-columns:min(340px,28vw) minmax(0,1fr);gap:10px}
     #pane-sim .controls{position:static;height:100%}
     #pane-sim .stage{height:100%;display:flex;flex-direction:column;min-width:0;min-height:0}
-    /* Coach strip: fixed height (fits 3 lines) so a 1- vs 2-tip message never reflows the viz grid */
-    #pane-sim .coach{flex:none;box-sizing:border-box;height:74px;overflow-y:auto;align-items:baseline}
     #pane-sim .viz-grid{flex:1;min-height:0;display:grid;grid-template-columns:1.25fr 1fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:8px}
     #pane-sim .fx{flex:0 0 auto}
     #fig-sections{grid-row:auto}
@@ -385,8 +370,6 @@
   .threed-hud:empty{display:none}
   .threed-tip{position:static;grid-row:4;padding:0 12px 8px;background:var(--panel);color:var(--ink2);text-shadow:none;font-size:11px}
   .ctl .sub,.twa-hint,.endcaps{color:var(--ink2)}
-  .coach{border-left:1px solid var(--line)}
-  .coach.groove{border-left-color:var(--line)}
   @media(max-width:759px){
     header.masthead{position:static;gap:10px;padding:12px}
     nav.tabs{width:100%;margin-left:0;gap:4px}
@@ -475,7 +458,6 @@
 
     <div class="stage">
       <div class="tiles" id="tiles"></div>
-      <div class="coach" id="coach"></div>
       <div class="helm-modes" role="tablist" aria-label="Helm view">
         <button id="helm-mode-3d" role="tab" aria-selected="true" aria-controls="helm-3d" data-helm-view="3d">3D</button>
         <button id="helm-mode-2d" role="tab" aria-selected="false" aria-controls="helm-2d" data-helm-view="2d" tabindex="-1">2D</button>
@@ -1145,58 +1127,22 @@ function compute(){
 }
 
 /* ---------------- coach ---------------- */
-function coachAdvice(r){
-  const tips=[]; const idl=r.idl; const off=r.off;
-  const push=(sev,html)=>tips.push({sev,html});
-
-  if((state.twaC??POS[state.posIdx].twa)<27) push(32, "<b>In irons.</b> The bow is inside the no-sail zone — no sail trim can make lift here; the sails can only flap. Drag the wind back to at least the close-hauled mark to fill them.");
-  if(state.mainhal<.35) push(30, "<b>Main halyard released — the main is coming down.</b> Hoist it back up (halyard to the top of its range) before trimming anything else.");
-  if(state.jhal<.35) push(28, "<b>Jib halyard released — the jib is dropping.</b> Hoist first, then set luff tension.");
-  if(state.jsheetw>.25 && !r.jib.wow) push(26, "<b>The "+sideWord("jsheetw")+" jib sheet is hauled — the jib is backed.</b> That's how you heave-to on purpose; release it to sail normally.");
-  if(r.heel>26) push(10+(r.heel-26), "<b>Overpowered.</b> First move: traveler down. Then flatten — backstay and outhaul on — and let the top twist open (ease mainsheet a touch, keep vang moderate).");
-  if(off){
-    if(OPT && OPT.jsheet < state.jsheet-.15) push(7, "The jib is strapped in for this course — <b>ease the jib sheet</b> toward "+Math.round(OPT.jsheet*100)+" and let it swing out with the wind.");
-    else if(r.jib.wow) push(1.5, "Jib is flying <b>wing-on-wing</b> to windward, in clear air. Hold the course: heading up onto a reach collapses it against the forestay.");
-    else if(r.awa>145) push(3, "Dead downwind the jib is blanketed behind the main. <b>Ease the "+sideWord("jsheet")+" jib sheet right off and take up the "+sideWord("jsheetw")+" sheet</b> to fly it wing-on-wing on the other side.");
-    else if(r.awa>115) push(2.5, "Deep downwind the jib sits in the main's wind shadow — without a whisker pole it can't fly squared-out, so some sheet tension just keeps it from collapsing. Deeper than ~145° apparent you can fly it wing-on-wing instead.");
-    if(r.main.boom < 45) push(6, "Off the wind, <b>ease the mainsheet</b> well out — the sail should hang square to the apparent wind. The boom can go out until it nearly touches the side wires holding the mast.");
-    if(r.main.twist>30) push(4, "Boom lifting and the top of the main spilling? <b>Vang on</b> — off the wind the vang, not the sheet, holds the leech.");
-    if(r.main.twist<12) push(3, "Leech clamped shut for a run — <b>ease the vang</b> a little so the top can breathe.");
-  } else {
-    // twist
-    const T=tgt(r);
-    const dT = r.main.twist - T.mt;
-    if(dT < -6) push(Math.abs(dT)*.6, `Main leech is hooked — too little twist (${fmt1(r.main.twist)}° vs ~${fmt1(T.mt)}°). <b>Ease mainsheet</b> an inch or two${state.vang>.6?" and <b>ease vang</b>":""}. A closed leech drags and heels more than it drives.`);
-    if(dT > 7) push(dT*.5, `Top of the main is spilling — too much twist (${fmt1(r.main.twist)}° vs ~${fmt1(T.mt)}°). <b>Sheet on</b> until the top batten lines up with the boom.`);
-    // depth
-    const dD = r.main.depth - T.md;
-    if(dD > .022) push(dD*220, `Main too full for this breeze (${(r.main.depth*100).toFixed(0)}% vs ~${(T.md*100).toFixed(0)}%). <b>Outhaul on</b>, <b>backstay on</b> — flatten before you fight heel with the rudder.`);
-    if(dD < -.022) push(Math.abs(dD)*200, `Main stretched flat while you need power (${(r.main.depth*100).toFixed(0)}% vs ~${(T.md*100).toFixed(0)}%). <b>Ease outhaul</b> and <b>ease backstay</b> to give it belly.`);
-    // draft position
-    if(r.main.draft > .50) push((r.main.draft-.5)*40, `Draft has blown aft to ${(r.main.draft*100).toFixed(0)}% — the sail gets round-backed and heely. <b>Cunningham on</b> until the luff wrinkles just disappear.`);
-    if(r.main.draft < .36) push(4, "Draft dragged too far forward — <b>ease the cunningham</b>; you only need enough to remove luff wrinkles.");
-    // angle of attack
-    if(r.main.luff) push(9, "Main is luffing — it's pointing into the wind, making no power. <b>Traveler up</b> or sheet in to re-attach flow (or bear away slightly).");
-    else if(r.main.aoa > idl.aoa+9) push((r.main.aoa-idl.aoa)*.45, state.sheet>.85
-      ? "Main is stalled — strapped in past the wind. <b>Ease the mainsheet</b> until flow re-attaches."
-      : "Main is stalled — trimmed past the wind. <b>Drop the traveler</b> to re-align the sail with the apparent wind without changing course.");
-    // jib
-    const dTJ = r.jib.twist - T.jt;
-    if(dTJ > 8) push(dTJ*.4, "Jib top is falling open — <b>car forward</b> (more leech tension) or sheet on a touch.");
-    if(dTJ < -7) push(Math.abs(dTJ)*.4, "Jib leech hooked closed and backwinding the main — <b>car aft</b> or crack the sheet.");
-    const dDJ = r.jib.depth - T.jd;
-    if(dDJ > .02) push(dDJ*180, `Jib too full for this breeze (${(r.jib.depth*100).toFixed(0)}% vs ~${(T.md*100).toFixed(0)}%). <b>Car aft</b> and <b>backstay on</b> (a tight forestay flattens the jib's entry).`);
-    if(dDJ < -.02) push(Math.abs(dDJ)*160, "Jib board-flat while you need power — <b>car forward</b> and <b>ease the backstay</b> to let the forestay sag a touch.");
-    if(r.jib.draft > .50) push(3.5, "Jib draft aft, entry gone round — <b>jib halyard on</b> to pull it forward.");
-    if(r.jib.luff) push(8, "Jib luffing — <b>sheet on</b>.");
-    else if(r.jib.aoa > idl.aoa+9) push(3.5, "Jib stalled — <b>ease the sheet</b> until the leeward telltale flies again.");
-    if(r.helm>7) push(r.helm*.5, `Heavy weather helm (${fmt1(r.helm)}° rudder). That rudder is a brake. Depower the main: traveler down, flatten, twist open.`);
-  }
-  tips.sort((a,b)=>b.sev-a.sev);
-  return tips.slice(0,3);
+// Prerequisites take priority over fine trim now that guidance lives in one place.
+function nextMoveAlert(r){
+  if((state.twaC??POS[state.posIdx].twa)<27)
+    return ["Bear away to fill the sails.", "You're in irons: move the wind to at least the close-hauled mark before trimming."];
+  if(state.mainhal<.35)
+    return ["Hoist the main halyard.", "The main is coming down. Raise the halyard to the top of its range before trimming."];
+  if(state.jhal<.35)
+    return ["Hoist the jib halyard.", "The jib is dropping. Hoist first, then set luff tension."];
+  if(state.jsheetw>.25 && !r.jib.wow)
+    return [`Ease the ${sideWord("jsheetw")} jib sheet.`, "The windward sheet is backing the jib. Release it to sail normally."];
+  if(r.heel>26)
+    return ["Lower the traveler to reduce heel.", `Overpowered at ${fmt1(r.heel)}° of heel. Then flatten the main and let the top twist open.`];
+  return null;
 }
 
-/* ---------------- render: tiles + coach + table ---------------- */
+/* ---------------- render: tiles + table ---------------- */
 function pill(txt, cls){ return `<span class="pill ${cls}">${txt}</span>`; }
 
 function renderTiles(r){
@@ -1214,18 +1160,6 @@ function renderTiles(r){
     <div class="tile"><div class="lbl">Heel</div><div class="num">${fmt1(r.heel)}<small> °</small></div>${pill(heelTxt,heelCls)}</div>
     <div class="tile"><div class="lbl">Weather helm</div><div class="num">${fmt1(r.helm)}<small> ° rud</small></div>${pill(helmTxt,helmCls)}</div>
     <div class="tile"><div class="lbl">${OPT_R?"% of solved speed":"Trim score"}</div><div class="num ${effV>.92?"goodc":"warnc"}">${Math.round(effV*100)}<small>%</small></div>${pill(effV>.92?"in the groove":"trim is off",effCls)}</div>`;
-}
-
-function renderCoach(r){
-  const tips = coachAdvice(r);
-  const el = $("coach");
-  if(tips.length===0){
-    el.className="coach groove";
-    el.innerHTML = `<h3>What now</h3><ul><li><b>In the groove.</b> Shape matches the breeze — hold this and watch the telltales. Try the gust button, or change the wind, and re-trim.</li></ul>`;
-  } else {
-    el.className="coach";
-    el.innerHTML = `<h3>What now</h3><ul>${tips.slice(0,2).map(t=>`<li>${t.html}</li>`).join("")}</ul>`;
-  }
 }
 
 function delta(x, ideal, tolGood, tolWarn, fmt){
@@ -1569,15 +1503,38 @@ function renderFx(src,a,b){
   $("fxJob").textContent=M.job;
   $("fxChips").innerHTML = chips.length ? chips.slice(0,4).map(c=>c.html).join("")
     : `<span class="idle">no measurable change \u2014 try a bigger pull</span>`;
-  renderNext(src);
+  renderNext(src,b);
 }
-// NEXT MOVE: the solver's biggest remaining gain across every line. Split out
-// from renderFx so scheduleOptims() can refresh it once OPT re-solves 500ms
-// later, without needing renderFx's before/after (a,b) snapshot.
-function renderNext(src){
-  const M=LINEMETA[src]; if(!M) return;
+// Explain the selected line, so the reason and action cannot disagree.
+function nextMoveReason(k,d,r){
+  const more=d>0;
+  switch(k){
+    case "sheet": return more ? "Bring the main in and tighten its leech." : "Let the main out and open its leech.";
+    case "trav": return "Change the main's angle to the wind without changing its shape.";
+    case "vang": return more ? "Reduce twist at the top of the main by holding the boom down." : "Let the boom rise so the top of the main twists open.";
+    case "outhaul": return `The main's belly is ${(r.main.depth*100).toFixed(0)}%; ${more?"flatten it":"add depth for power"}.`;
+    case "backstay": return more ? "Bend the mast and tighten the forestay to flatten both sails." : "Let the mast straighten and forestay sag to add depth for power.";
+    case "cunn": case "mainhal": return `Main draft is ${(r.main.draft*100).toFixed(0)}% back; move it ${more?"forward":"aft"}.`;
+    case "jhal": return `Jib draft is ${(r.jib.draft*100).toFixed(0)}% back; move it ${more?"forward":"aft"}.`;
+    case "jcar": return more ? "Open the jib's upper leech and flatten its foot." : "Tighten the jib's upper leech and add depth to its foot.";
+    case "jsheet": return more ? "Bring the jib in and tighten its leech." : "Let the jib swing out to meet the wind.";
+    case "jsheetw": return more ? "Bring the jib to windward to fly wing-on-wing." : "Release the windward sheet so the jib can fill to leeward.";
+    default: return "Watch the sail shape and telltales as you adjust.";
+  }
+}
+// Use the largest remaining control gap. Refresh on load, each adjustment,
+// and again when the debounced solver finishes.
+function renderNext(src,r=lastR){
+  if(!r) return;
   const nextEl=$("fxNext");
-  if(!OPT){ $("fxMove").textContent="\u2026solver warming up"; $("fxSub").textContent=""; nextEl.className="fx-zone fx-next"; return; }
+  const alert=nextMoveAlert(r);
+  if(alert){
+    nextEl.className="fx-zone fx-next bad";
+    $("fxMove").textContent=alert[0];
+    $("fxSub").textContent=alert[1];
+    return;
+  }
+  if(!OPT){ $("fxMove").textContent="Finding your next move…"; $("fxSub").textContent="Watch the sail shape and telltales while the trim solver runs."; nextEl.className="fx-zone fx-next"; return; }
   let worst=null, wd=0;
   for(const k of TRIM_KEYS){
     const span=k==="trav"?2:1;
@@ -1586,24 +1543,18 @@ function renderNext(src){
   }
   const wrongWay = (src in OPT) && PREV_STATE &&
     Math.abs(state[src]-OPT[src]) > Math.abs(PREV_STATE[src]-OPT[src]) + .01;
-  const tw2=Math.round(state.twaC??POS[state.posIdx].twa);
   if(wd<=.06){
     nextEl.className="fx-zone fx-next good";
     $("fxMove").textContent="You're at the solver's best trim.";
-    $("fxSub").textContent="Change the wind or heading and re-trim.";
-  }else if((src in OPT) && Math.abs(state[src]-OPT[src])<=(src==="trav"?.08:.04)){
-    nextEl.className="fx-zone fx-next good";
-    $("fxMove").textContent=`${lineName(src)} is on the money — leave it, fix something else.`;
-    $("fxSub").textContent=`Fast setting at ${state.tws} kt / ${tw2}\u00B0 is about ${Math.round(OPT[src]*100)}. You are within a hair.`;
+    $("fxSub").textContent="Hold this and watch the telltales. Try a gust or change heading, then re-trim.";
   }else{
-    const m2=LINEMETA[worst];
     const d=OPT[worst]-state[worst];
     const verb = worst==="trav" ? (d>0?"Traveler up":"Traveler down")
+               : worst==="jcar" ? (d>0?"Move the fairlead car aft":"Move the fairlead car forward")
                : (d>0?"Pull the "+lineName(worst).toLowerCase():"Ease the "+lineName(worst).toLowerCase());
     nextEl.className="fx-zone fx-next "+(wrongWay?"bad":"warn");
-    $("fxMove").textContent=`${verb} \u2014 roughly ${Math.round(Math.abs(d)*100)}% of range to go.`;
-    $("fxSub").textContent=(wrongWay?"That last move went the wrong way. ":"")+
-      `Fast setting is ~${Math.round(OPT[worst]*100)}; this line owns ${m2.job}.`;
+    $("fxMove").textContent=`${verb} — aim for ${Math.round(OPT[worst]*100)}.`;
+    $("fxSub").textContent=(wrongWay?"That last move went away from the target. ":"")+nextMoveReason(worst,d,r);
   }
 }
 
@@ -1612,9 +1563,10 @@ let lastR=null, PREV_STATE=null;
 function update(src){
   renderVals();
   const r = compute();
-  renderTiles(r); renderCoach(r); renderTable(r);
+  renderTiles(r); renderTable(r);
   renderSections(r); renderDeck(r); renderHeel(r); renderTwist(r);
   if(src && lastR) renderFx(src,lastR,r);
+  else renderNext(src,r);
   if(src && B3 && TRIM_KEYS.includes(src)) B3.hiKey=src;
   lastR=r;
   $("v-"+jibSheetSideId("jsheet")).textContent = jsheetLabel(r);
@@ -1760,7 +1712,7 @@ function scheduleOptims(){
   optTimer=setTimeout(()=>{ OPT=solvePerfectTrim(true);
     try{ OPT_R=computeWith(OPT); }catch(e){ OPT_R=null; }
     renderOptims();
-    if(LAST_FX_SRC) renderNext(LAST_FX_SRC);
+    renderNext(LAST_FX_SRC);
     if(lastR){ renderTiles(lastR); renderTable(lastR); renderSections(lastR); renderTwist(lastR); }
   }, 500);
 }
