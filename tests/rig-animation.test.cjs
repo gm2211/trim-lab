@@ -96,20 +96,22 @@ test('mast mesh subdivision adds bendable rings and preserves finite bounded geo
   }
   assert.ok(total<10000,`mast has ${total} vertices`);
 });
-test('sail luffs follow explicit displayed rig across hoists, tacks and wing modes',()=>{
+test('sail luffs follow explicit displayed rig across hoists, Cunningham, tacks and wing modes',()=>{
   const rig=backstayRig(1,16);
   try{
-    for(const hoist of [0,.15,.35,1]) for(const forceFull of [false,true])
+    for(const hoist of [0,.15,.35,1]) for(const forceFull of [false,true]) for(const cunn of [0,1])
       for(const side of [-1,1]) for(const wow of [false,true]) for(const kind of ['main','jib']){
-        Object.assign(state,defaults,{mainhal:hoist,jhal:hoist,backstay:0});
+        Object.assign(state,defaults,{mainhal:hoist,jhal:hoist,backstay:0,cunn});
         const flip=(side<0)!==(kind==='jib'&&wow);
         const shape={rig,boom:side*20,clew:side*20,twist:15,depth:.12,draft:.43,flip,wow};
         const rows=sailPathArray(kind,shape,forceFull);
-        const heightFraction=forceFull?1:Math.max(.12,Math.min(hoist/.35,1));
+        const hoistFraction=forceFull?1:Math.min(hoist/.35,1);
+        const heightFraction=Math.max(.12,hoistFraction);
         for(let iy=0;iy<rows.length;iy++){
-          const u=iy/(rows.length-1)*heightFraction,p=rows[iy][0];
+          const hf=iy/(rows.length-1),u=hf*heightFraction,p=rows[iy][0];
           if(kind==='main'){
-            close(p.y,RIG.boomY+.045+9*u);
+            const lowerLuffTravel=.20*cunn*hoistFraction*(hf/.1)*Math.exp(1-hf/.1)*(1-hf);
+            close(p.y,RIG.boomY+.045+9*u-lowerLuffTravel);
             close(p.x,RIG.mastX+mastOffsetAt(p.y,rig));close(p.z,0);
           }else{
             const expected=forestayPointAt(u,rig,side);
