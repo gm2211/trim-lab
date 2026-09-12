@@ -9424,7 +9424,7 @@ function boatMaterials(scene){
   texture.update();texture.uScale=texture.vScale=5;out.nonskid.albedoTexture=texture;
   return out;
 }
-function makeSailMaterial(kind,scene){
+function makeSailMaterials(kind,scene){
   const m=new BABYLON.PBRMaterial(kind+"Dacron",scene);
   const N=1024,tex=new BABYLON.DynamicTexture(kind+"SewnPanels",N,scene,true),ctx=tex.getContext(),im=ctx.createImageData(N,N);
   let seed=3461;
@@ -9461,11 +9461,25 @@ function makeSailMaterial(kind,scene){
   ctx.beginPath();ctx.roundRect(wx,wy,ww,wh,12);ctx.save();ctx.clip();ctx.clearRect(wx,wy,ww,wh);ctx.fillStyle="rgba(176,206,208,.22)";ctx.fillRect(wx,wy,ww,wh);ctx.restore();
   ctx.strokeStyle="rgba(151,150,131,.7)";ctx.lineWidth=7;ctx.stroke();
   tex.update();tex.hasAlpha=true;m.albedoTexture=tex;m.useAlphaFromAlbedoTexture=true;
-  m.transparencyMode=BABYLON.PBRMaterial.PBRMATERIAL_ALPHATESTANDBLEND;
-  m.alphaCutOff=.08;m.metallic=0;m.roughness=.88;
+  // Cloth must write depth before transparent objects are drawn. Blending the
+  // whole curved sail lets farther triangles overwrite nearer fabric at grazing
+  // angles. Cut out only the vinyl opening, then blend that region separately.
+  m.transparencyMode=BABYLON.PBRMaterial.PBRMATERIAL_ALPHATEST;
+  m.alphaCutOff=.5;m.metallic=0;m.roughness=.88;
   marineMaterial(m,"sailcloth",8,16,.25);
   m.backFaceCulling=false;m.twoSidedLighting=true;
-  return m;
+  const vinylTex=new BABYLON.DynamicTexture(kind+"VinylWindow",N,scene,true);
+  const pixels=ctx.getImageData(0,0,N,N);
+  for(let i=3;i<pixels.data.length;i+=4){
+    if(pixels.data[i]>=128) pixels.data[i]=0;
+  }
+  vinylTex.getContext().putImageData(pixels,0,0);vinylTex.update();vinylTex.hasAlpha=true;
+  const vinyl=new BABYLON.PBRMaterial(kind+"Vinyl",scene);
+  vinyl.albedoTexture=vinylTex;vinyl.useAlphaFromAlbedoTexture=true;
+  vinyl.transparencyMode=BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND;
+  vinyl.metallic=0;vinyl.roughness=.35;
+  vinyl.backFaceCulling=false;vinyl.twoSidedLighting=true;
+  return {cloth:m,window:vinyl};
 }
 function ropeAlbedo(scene){
   const N=256,t=new BABYLON.DynamicTexture("braidedYachtLine",N,scene,true),ctx=t.getContext(),im=ctx.createImageData(N,N);
@@ -9681,16 +9695,21 @@ function ensure3Dinner(canvas){
     const spreader=BABYLON.MeshBuilder.CreateTube("spreader",{path,radius:.023,tessellation:12},scene);spreader.material=materials.anodized;spreader.parent=boat;
     const lifeline=BABYLON.MeshBuilder.CreateTube("lifeline",{path:[V3(.30,1.22,side*1.15),V3(2.2,1.22,side*.77),V3(3.08,1.22,side*.39)],radius:.003,tessellation:6},scene);lifeline.material=materials.steel;lifeline.parent=boat;
   }
-  const sailM=makeSailMaterial("main",scene),sailJ=makeSailMaterial("jib",scene);
+  const sailM=makeSailMaterials("main",scene),sailJ=makeSailMaterials("jib",scene);
   const sh0={boom:5,clew:9,twist:13,depth:.12,draft:.44};
   // One cloth surface. The material shades both faces; DOUBLESIDE geometry
   // would draw coincident triangles twice, causing dark patches and edge flicker.
   const mainSail=BABYLON.MeshBuilder.CreateRibbon("mainSail",{pathArray:sailPathArray("main",sh0),sideOrientation:BABYLON.Mesh.FRONTSIDE,updatable:true},scene);
   const jibSail=BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:sailPathArray("jib",sh0),sideOrientation:BABYLON.Mesh.FRONTSIDE,updatable:true},scene);
-  mainSail.material=sailM;jibSail.material=sailJ;mainSail.parent=boat;jibSail.parent=boat;
-  [...model.getChildMeshes(),...mast.getChildMeshes(),...boom.getChildMeshes(),mainSail,jibSail].forEach(m=>wm.addToRenderList(m));
+  mainSail.material=sailM.cloth;jibSail.material=sailJ.cloth;mainSail.parent=boat;jibSail.parent=boat;
+  // Clones share the deforming buffers. Their alpha masks contain only vinyl,
+  // so no visible fragment overlaps the depth-writing cloth pass.
+  const mainWindow=mainSail.clone("mainWindow",boat),jibWindow=jibSail.clone("jibWindow",boat);
+  mainWindow.material=sailM.window;jibWindow.material=sailJ.window;
+  mainWindow.isPickable=jibWindow.isPickable=false;
+  [...model.getChildMeshes(),...mast.getChildMeshes(),...boom.getChildMeshes(),mainSail,jibSail,mainWindow,jibWindow].forEach(m=>wm.addToRenderList(m));
 
-  B3={engine,scene,cam,boat,wm,mainSail,jibSail,boomMesh:boom,travCar,jibCar,lazyCar,boomBlock,jibBlock,lazyBlock,vangBlock,vangBase,lowerBlock,sheetLead,ratchet,rigidVang,rudder,materials,
+  B3={engine,scene,cam,boat,wm,mainSail,jibSail,mainWindow,jibWindow,boomMesh:boom,travCar,jibCar,lazyCar,boomBlock,jibBlock,lazyBlock,vangBlock,vangBase,lowerBlock,sheetLead,ratchet,rigidVang,rudder,materials,
       runLines:null,puffs:null,dyeR:null,dyeOn:true,t:0,heelCur:0};
   B3dirty=true;
   initTelltales();
