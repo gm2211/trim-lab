@@ -5,10 +5,11 @@
 <h1>Trim Lab scene checks</h1>
 <p>Local WebGL integration checks. No external dependencies.</p>
 <ol id="results"></ol>
-<p><button onclick="inspectJib(1)">Inspect port jib gear</button> <button onclick="inspectJib(-1)">Inspect starboard jib gear</button> <button onclick="inspectLuff()">Inspect luffing boom</button> <button onclick="inspectJibLuff()">Inspect luffing jib sheets</button> <button onclick="inspectTiller()">Inspect tiller clearance</button> <button onclick="inspectSail(1)">Inspect port sail face</button> <button onclick="inspectSail(-1)">Inspect starboard sail face</button></p>
+<p><button onclick="inspectJib(1)">Inspect port jib gear</button> <button onclick="inspectJib(-1)">Inspect starboard jib gear</button> <button onclick="inspectLuff()">Inspect luffing boom</button> <button onclick="inspectJibLuff()">Inspect luffing jib sheets</button> <button onclick="inspectCunningham()">Inspect Cunningham</button> <button onclick="inspectTiller()">Inspect tiller clearance</button> <button onclick="inspectSail(1)">Inspect port sail face</button> <button onclick="inspectSail(-1)">Inspect starboard sail face</button></p>
 <p><button onclick="inspectSails(1)">Inspect starboard tack slot</button> <button onclick="inspectSails(-1)">Inspect port tack slot</button></p>
 <p><button onclick="inspectGrazing(1)">Inspect grazing jib</button> <button onclick="inspectGrazing(-1)">Inspect opposite grazing jib</button></p>
 <p><button onclick="inspectStreamingJib()">Inspect solved-trim streaming</button> <button onclick="inspectTelltales(1)">Inspect red port yarn</button> <button onclick="inspectTelltales(-1)">Inspect green starboard yarn</button></p>
+<p><button onclick="inspectVang()">Inspect boom vang</button></p>
 <iframe title="Simulator under test"></iframe>
 <script>
 const frame=document.querySelector('iframe'), results=document.querySelector('#results');
@@ -54,6 +55,17 @@ function inspectJibLuff(){
   frame.style.height='1050px';
   frame.contentWindow.eval('state.twaSide=1;state.twaC=5;state.sheet=1;state.trav=0;state.jsheet=.3;state.jsheetw=0;state.jhal=.9;update("jsheet");if(B3.paused)document.querySelector("#pause3d").click();');
   frame.contentWindow.eval('B3.cam.setTarget(V3(.85,1.35,0));B3.cam.radius=3.4;B3.cam.alpha=.55;B3.cam.beta=1;B3.engine.resize();');
+  frame.scrollIntoView();
+}
+function inspectVang(){
+  frame.style.height='1000px';
+  frame.contentWindow.eval(`Object.assign(state,{twaSide:1,twaC:80,sheet:.5,vang:.05});B3.paused=true;update('vang');tick3D();
+    B3.cam.lowerRadiusLimit=.4;B3.cam.setTarget(V3(.9,1.5,0));B3.cam.radius=2.8;B3.cam.alpha=-1.5;B3.cam.beta=1.25;B3.engine.resize();B3.scene.render();`);
+  frame.scrollIntoView();
+}
+function inspectCunningham(){
+  frame.style.height='1000px';
+  frame.contentWindow.eval('Object.assign(state,{twaSide:1,twaC:45,cunn:.15,sheet:.85,trav:0,mainhal:.9});update("cunn");B3.paused=true;tick3D();document.querySelector("[data-view=cunningham]").click();B3.scene.render();');
   frame.scrollIntoView();
 }
 function inspectTiller(){
@@ -151,6 +163,30 @@ frame.onload=async()=>{
       })));
     })()`));
     check('All rope paths remain finite',w.eval('Object.values(B3.ropePaths).flat(2).every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z))'));
+    const vangMotion=w.eval(`(()=>{
+      const saved={...state},paused=B3.paused;
+      const ok={visible:true,tension:true,animated:true,pause:true,attached:true};
+      try{
+        for(const side of [-1,1]){
+          Object.assign(state,{twaSide:side,twaC:80,sheet:.5,vang:0});B3.paused=true;update('vang');tick3D();
+          const sag=()=>B3.vangFalls.reduce((sum,fall)=>sum+fall.slice(1).reduce((n,p,i)=>n+BABYLON.Vector3.Distance(p,fall[i]),0)-BABYLON.Vector3.Distance(fall[0],fall.at(-1)),0);
+          const eased=sag();
+          ok.visible&&=B3.tubes.vang[0].isEnabled()&&B3.tubes.vang[0].getTotalVertices()>0;
+          const tube=B3.tubes.vang[0];
+          state.vang=1;B3.paused=false;update('vang');tick3D(1/60);
+          ok.animated&&=B3.vangShow>0&&B3.vangShow<1;
+          for(let i=0;i<60;i++)tick3D(1/60);
+          ok.tension&&=sag()<eased*.1&&B3.vangShow>.99;
+          ok.animated&&=B3.tubes.vang[0]===tube;
+          const d=rad(B3.boomShow),bottom=V3(RIG.mastX-.08,1.12,0),top=V3(RIG.mastX-Math.cos(d)*1.15,RIG.boomY-.05,Math.sin(d)*1.15);
+          ok.attached&&=Math.abs(BABYLON.Vector3.Distance(B3.vangBlock.position,top)-.135)<1e-8&&Math.abs(BABYLON.Vector3.Distance(B3.vangBase.position,bottom)-.135)<1e-8;
+          B3.paused=true;const before=JSON.stringify([B3.vangShow,B3.ropePaths.vang]);tick3D();tick3D();
+          ok.pause&&=JSON.stringify([B3.vangShow,B3.ropePaths.vang])===before;
+        }
+        return ok;
+      }finally{Object.assign(state,saved);B3.paused=true;update('sheet');tick3D();B3.paused=paused;}
+    })()`);
+    for(const [key,label] of Object.entries({visible:'Vang has rendered rope geometry on both tacks',tension:'Vang slider pulls eased purchase falls straight',animated:'Vang hauling interpolates while reusing its mesh',pause:'Pause freezes vang line animation',attached:'Vang blocks track attachments clear of rigid support'}))check(label,vangMotion[key]);
     if(w.document.querySelector('#pause3d').getAttribute('aria-pressed')!=='true') w.document.querySelector('#pause3d').click();
     const routing=w.eval(`(()=>{
       const saved={...state},ok={single:true,entry:true,exit:true,wrap:true,fairlead:true,lazy:true,finite:true,clearance:true};
@@ -184,10 +220,10 @@ frame.onload=async()=>{
     check('Port tack mirrors boom without losing windward sign',w.eval('Math.abs(B3.boomShow+lastR.main.boom)<1e-8'));
     const rope=w.eval('(()=>{const m=B3.tubes.jsheet[0],uv=m.getVerticesData(BABYLON.VertexBuffer.UVKind);let u=0,v=0;for(let i=0;i<uv.length;i+=2){u=Math.max(u,uv[i]);v=Math.max(v,uv[i+1]);}return {u,v};})()');
     check('Wrapped jib sheet retains circumferential UV and repeats lengthwise',Math.abs(rope.u-1)<1e-6&&rope.v>15);
-    for(const name of ['rig','deck','sails','rigging']){
+    for(const name of ['rig','deck','sails','rigging','cunningham']){
       w.document.querySelector(`[data-view="${name}"]`).click();
       check(name+' camera stays inside zoom limits',w.eval('B3.cam.radius>=B3.cam.lowerRadiusLimit && B3.cam.radius<=B3.cam.upperRadiusLimit'));
-      const expected={rig:19,deck:8,sails:12,rigging:4.7}[name];
+      const expected={rig:19,deck:8,sails:12,rigging:4.7,cunningham:2.5}[name];
       check(name+' camera applies the requested distance',Math.abs(w.eval('B3.cam.radius')-expected*Math.max(1,1/w.eval('B3.engine.getAspectRatio(B3.cam)')))<1e-6);
     }
     const dynamics=w.eval(`(()=>{
@@ -216,7 +252,7 @@ frame.onload=async()=>{
           if(i===0){firstTube=B3.tubes.vang[0];firstVangUV=firstTube.getVertexBuffer(BABYLON.VertexBuffer.UVKind);}
           else {ok.reuse&&=B3.tubes.vang[0]===firstTube;ok.uvReuse&&=B3.tubes.vang[0].getVertexBuffer(BABYLON.VertexBuffer.UVKind)===firstVangUV;}
         }
-        ok.stableRoutes=['halyard','cunn','trav'].every(key=>!tubeCalls[key]);
+        ok.stableRoutes=['halyard','trav'].every(key=>!tubeCalls[key]);
         ok.movingRoutes=['vang','jsheet','jsheetw'].every(key=>(tubeCalls[key]||0)>0);
         ok.moves=max-min>1;
         const angle=B3.boomShow,velocity=B3.boomMotion.velocity,time=B3.t;
@@ -227,8 +263,51 @@ frame.onload=async()=>{
         return {...ok,excursion:max-min};
       }finally{if(originalTube) BABYLON.MeshBuilder.CreateTube=originalTube;B3.engine.getDeltaTime=getDelta;B3.paused=true;Object.assign(state,saved);update("sheet");tick3D();}
     })()`);
-    for(const [key,label] of Object.entries({moves:'Luffing drives visible boom swing',pins:'Sail foot remains attached to moving boom',gear:'Boom and tackle anchors follow every dynamics frame',sheet:'Luffing boom respects paid mainsheet length',finite:'Moving cloth remains finite',reuse:'Moving vang reuses its rope mesh',uvReuse:'Moving vang keeps its UV vertex buffer',pause:'Pause freezes boom angle and angular momentum',highlight:'Highlighted rope rebuilds at the wider radius',stableRoutes:'Static halyard/cunningham/traveler tubes avoid rebuilds',movingRoutes:'Moving vang and jib-sheet tubes still update'}))check(label,dynamics[key]);
+    for(const [key,label] of Object.entries({moves:'Luffing drives visible boom swing',pins:'Sail foot remains attached to moving boom',gear:'Boom and tackle anchors follow every dynamics frame',sheet:'Luffing boom respects paid mainsheet length',finite:'Moving cloth remains finite',reuse:'Moving vang reuses its rope mesh',uvReuse:'Moving vang keeps its UV vertex buffer',pause:'Pause freezes boom angle and angular momentum',highlight:'Highlighted rope rebuilds at the wider radius',stableRoutes:'Static halyard/traveler tubes avoid rebuilds',movingRoutes:'Moving vang and jib-sheet tubes still update'}))check(label,dynamics[key]);
     check('Luffing excursion measured: '+dynamics.excursion.toFixed(2)+' degrees',dynamics.excursion>1);
+    const cunninghamDynamics=w.eval(`(()=>{
+      const saved={...state},paused=B3.paused,getDelta=B3.engine.getDeltaTime;
+      const finitePath=p=>Array.isArray(p)&&p.length>1&&p.every(v=>Number.isFinite(v.x)&&Number.isFinite(v.y)&&Number.isFinite(v.z));
+      const snapshot=p=>p.map(v=>[v.x,v.y,v.z]);
+      const moved=(a,b)=>a.length===b.length&&a.some((v,i)=>Math.hypot(v.x-b[i].x,v.y-b[i].y,v.z-b[i].z)>1e-6);
+      const ok={exists:false,finite:false,meshGeometry:false,triangleAttachment:false,eyeMoves:false,paused:true,slackMoves:false,gradual:false,reuse:false,tautEase:false};
+      try{
+        B3.engine.getDeltaTime=()=>1000/60;
+        Object.assign(state,{twaSide:1,twaC:45,cunn:.15,sheet:.85,trav:0,mainhal:.9});
+        B3.paused=true;update('cunn');tick3D();
+        const c=B3.cunningham;
+        ok.exists=!!(c&&c.eye&&c.mesh&&c.ring&&finitePath(c.path));
+        const meshPositions=c?.mesh?.getVerticesData(BABYLON.VertexBuffer.PositionKind)||[];
+        ok.finite=ok.exists&&[c.eye,...c.path].every(v=>Number.isFinite(v.x)&&Number.isFinite(v.y)&&Number.isFinite(v.z));
+        ok.meshGeometry=ok.exists&&c.mesh.isVisible&&c.mesh.parent===B3.boat&&meshPositions.length>c.path.length*3&&Array.from(meshPositions).every(Number.isFinite);
+        if(ok.exists){
+          const rows=clothRows('main'),a=rows[0][0],b=rows[1][0],cc=rows[0][1];
+          const expected=a.scale(.15).add(b.scale(.45)).add(cc.scale(.40));
+          ok.triangleAttachment=BABYLON.Vector3.Distance(c.eye,expected)<1e-8;
+        }
+        const easedEye=c.eye.clone(),easedPath=c.path.map(v=>v.clone());
+        Object.assign(state,{cunn:.85});update('cunn');tick3D();
+        const tautEye=c.eye.clone(),tautPath=c.path.map(v=>v.clone()),tautMesh=c.mesh,tautRing=c.ring;
+        ok.eyeMoves=tautEye.y<easedEye.y-1e-5;
+        ok.tautEase=moved(easedPath,tautPath);
+        const frozen=JSON.stringify({eye:[c.eye.x,c.eye.y,c.eye.z],path:snapshot(c.path)});
+        tick3D();tick3D();
+        ok.paused=JSON.stringify({eye:[c.eye.x,c.eye.y,c.eye.z],path:snapshot(c.path)})===frozen;
+        Object.assign(state,{cunn:.15});update('cunn');B3.paused=false;
+        const showBefore=B3.cunnShow;
+        tick3D();
+        const showMid=B3.cunnShow;
+        ok.gradual=showMid>state.cunn+1e-5&&showMid<showBefore-1e-5;
+        let before=null,after=null;
+        for(let i=0;i<90;i++){tick3D();if(i===20)before=c.path.map(v=>v.clone());if(i===89)after=c.path.map(v=>v.clone());}
+        ok.slackMoves=!!before&&!!after&&moved(before,after);
+        ok.reuse=c.mesh===tautMesh&&c.ring===tautRing;
+        return ok;
+      }finally{
+        B3.engine.getDeltaTime=getDelta;B3.paused=true;Object.assign(state,saved);update('sheet');tick3D();B3.paused=paused;
+      }
+    })()`);
+    for(const [key,label] of Object.entries({exists:'Cunningham exposes eye, line and luff ring',finite:'Cunningham geometry remains finite',meshGeometry:'Cunningham tube has rendered mesh geometry',triangleAttachment:'Cunningham eye attaches to first main sail triangle',eyeMoves:'Tight Cunningham lowers luff eye while paused',tautEase:'Taut and eased Cunningham geometry differ',paused:'Paused Cunningham edit freezes geometry',gradual:'Unpaused Cunningham slider change moves gradually',slackMoves:'Eased Cunningham line settles over animation frames',reuse:'Cunningham reuses line and ring meshes'}))check(label,cunninghamDynamics[key]);
     const jibDynamics=w.eval(`(()=>{
       const saved={...state},getDelta=B3.engine.getDeltaTime;
       const ok={clew:true,ends:true,length:true,finite:true,wrap:true,pause:true,slackMoves:false};

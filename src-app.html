@@ -265,6 +265,7 @@
     background:rgba(10,20,26,.65);color:#fff;border:1.5px solid rgba(255,255,255,.5)}
   .dye-btn.on{background:var(--accent);border-color:var(--accent)}
   .dye-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .controls .dye-btn{position:static;display:block;width:100%;min-height:44px;margin-top:12px}
   /* ============ AI COACH ============ */
   .coach-fab{font-family:var(--disp);letter-spacing:.08em;text-transform:uppercase;font-size:12px;font-weight:700;
     padding:7px 14px;border-radius:3px;cursor:pointer;background:var(--accent);color:#fff;border:none}
@@ -439,6 +440,7 @@
         <div class="twa-big" id="twaBig"></div>
         <div class="twa-hint" id="twaHint">drag the dial to change heading</div>
         <div class="aw-card" id="awCard"></div>
+        <button id="dyeBtn" class="dye-btn on" aria-pressed="true">wind dye: on</button>
       </div>
       <div class="ctl-group" data-g="main">
         <div class="ctl"><div class="row1"><label for="sheet">Mainsheet</label><span class="val" id="v-sheet"></span></div>
@@ -485,10 +487,9 @@
         <div class="threed-hud" id="hud3d"></div>
         <div class="scene-toolbar" aria-label="3D view controls">
           <div id="cameraViews" class="camera-views" role="group" aria-label="Camera presets">
-            <button data-view="rig">Full rig</button><button data-view="deck">Deck detail</button><button data-view="sails">Sail detail</button><button data-view="rigging">Rigging</button>
+            <button data-view="rig">Full rig</button><button data-view="deck">Deck detail</button><button data-view="sails">Sail detail</button><button data-view="rigging">Rigging</button><button data-view="cunningham">Cunningham</button>
           </div>
           <div class="scene-toggles" role="group" aria-label="Visual aids">
-            <button id="dyeBtn" class="dye-btn on" aria-pressed="true">wind dye: on</button>
             <button id="ttBtn" class="dye-btn on" aria-pressed="true">telltales: on</button>
             <button id="pause3d" aria-pressed="false">Pause motion</button>
           </div>
@@ -2403,6 +2404,10 @@ function sailPathArray(kind, sh, forceFull){
       const cf=ix/(NC-1);
       const off=c*chord*Math.sin(Math.PI*Math.pow(cf,k));
       const pt=luff.add(cdir.scale(chord*cf)).add(ndir.scale(off));
+      // Cunningham loads the lower luff while tack, clew and head stay fixed.
+      // Local travel is illustrative, like the trainer's draft-position model.
+      if(kind==="main") pt.y-=.20*(sh.cunn??state.cunn)*hoistM3*
+        (hf/.1)*Math.exp(1-hf/.1)*(1-hf)*Math.pow(1-cf,5);
       if(kind==="jib") pt.y+=.19*chord*cf;   // foot rises from the tack to a clew ~0.55 m above deck
       row.push(pt);
     }
@@ -2535,7 +2540,7 @@ function ensure3Dinner(canvas){
   };
   syncPause();
   pauseBtn.addEventListener("click",()=>{ B3.paused=!B3.paused; syncPause(); });
-  const views={rig:[2.55,1.20,19,.3,5.1,0],deck:[2.3,.72,8,-.2,.8,0],sails:[2.2,1.15,12,.5,6,0],rigging:[3.0,1.02,4.7,-1.0,.90,0]};
+  const views={rig:[2.55,1.20,19,.3,5.1,0],deck:[2.3,.72,8,-.2,.8,0],sails:[2.2,1.15,12,.5,6,0],rigging:[3.0,1.02,4.7,-1.0,.90,0],cunningham:[-1.8,1.25,2.5,1.25,1.9,0]};
   $("cameraViews").addEventListener("click",e=>{
     const button=e.target.closest("button"); if(!button) return;
     const [alpha,beta,radius,x,y,z]=views[button.dataset.view];
@@ -3005,11 +3010,94 @@ function clothResolveContacts(){
     }
   }
 }
+// Display purchase beside the rigid support, with both sheaves in the rope plane.
+// Boom pitch remains supported; this animates the exposed control line, not a
+// second boom-height solver. Easing adds sag; hauling removes it continuously.
+function vangTackle(bottom,top,tension,t,aws){
+  const axis=top.subtract(bottom).normalize();
+  const normal=BABYLON.Vector3.Cross(V3(0,1,0),axis).normalize();
+  const across=BABYLON.Vector3.Cross(axis,normal).normalize();
+  const low=bottom.subtract(normal.scale(.135)),high=top.subtract(normal.scale(.135));
+  const radius=.039,groove=-.0275*.65;
+  const point=(center,x,y)=>center.add(across.scale(x)).add(axis.scale(y-.005*.65)).add(normal.scale(groove));
+  const ease=1-clamp(tension,0,1),sag=.15*ease*ease;
+  const fall=(a,b,phase)=>Array.from({length:17},(_,i)=>{
+    const u=i/16,envelope=Math.sin(Math.PI*u)**2;
+    const flutter=.014*ease*clamp(aws/18,0,1)*Math.sin(t*3.1+phase+u*2.4);
+    return BABYLON.Vector3.Lerp(a,b,u).add(V3(0,-sag*envelope,0))
+      .subtract(normal.scale((sag*.35+flutter)*envelope));
+  });
+  const arc=(center,start,end)=>Array.from({length:15},(_,i)=>{
+    const a=lerp(start,end,i/14);return point(center,radius*Math.cos(a),radius*Math.sin(a));
+  });
+  const falls=[fall(point(low,-radius,0),point(high,-radius,0),0),
+    fall(point(high,radius,0),point(low,radius,0),1.7)];
+  return {low,high,axis,across,normal,falls,
+    rotation:BABYLON.Vector3.RotationFromAxis(across,axis,normal),
+    path:[...falls[0],...arc(high,Math.PI,0).slice(1),...falls[1].slice(1),...arc(low,0,-Math.PI).slice(1)]};
+}
+function cunninghamGeometry(rows, trim, time, tail){
+  // Barycentric point on the actual first cloth triangle, after the cloth solve.
+  const a=rows[0][0],b=rows[1][0],c=rows[0][1];
+  const eye=a.scale(.15).add(b.scale(.45)).add(c.scale(.40));
+  const up=b.subtract(a).normalize(),aft=c.subtract(a).normalize();
+  const normal=BABYLON.Vector3.Cross(up,aft).normalize();
+  const across=BABYLON.Vector3.Cross(normal,up).normalize();
+  const ringPath=Array.from({length:25},(_,i)=>{
+    const angle=i/24*Math.PI*2;
+    return eye.add(up.scale(.046*Math.sin(angle))).add(across.scale(.046*Math.cos(angle)));
+  });
+  const lowPort=V3(RIG.mastX-.24,1.18,.16),lowStar=V3(RIG.mastX-.24,1.18,-.16);
+  const slack=Math.pow(1-clamp(trim,0,1),2);
+  const fall=(start,end,side)=>Array.from({length:17},(_,i)=>{
+    const u=i/16,p=BABYLON.Vector3.Lerp(start,end,u),bow=Math.sin(Math.PI*u)*slack;
+    p.x-=.16*bow;
+    p.z+=side*bow*(.055+.035*Math.sin(time*3.2+u*2));
+    return p;
+  });
+  // Two exposed falls, through the luff cringle, then aft to the clutch.
+  const turn=Array.from({length:13},(_,i)=>{
+    const angle=Math.PI*i/12;
+    return eye.add(normal.scale(.036*Math.cos(angle))).add(up.scale(.036*Math.sin(angle)));
+  });
+  const path=[...fall(lowPort,turn[0],1),...turn.slice(1),
+    ...fall(turn.at(-1),lowStar,-1).slice(1),
+    V3(RIG.mastX-.30,1.16,-.23),...tail];
+  return {eye,path,ringPath};
+}
+function updateCunningham(rows){
+  const geometry=cunninghamGeometry(rows,B3.cunnShow,B3.t,B3.cunnTail);
+  const gear=B3.cunningham||(B3.cunningham={});
+  for(const [key,path,radius,material] of [
+    ["mesh",geometry.path,.007,B3.hiKey==="cunn"?B3.ropeHi:B3.ropeMats.cunn],
+    ["ring",geometry.ringPath,.008,B3.materials.steel]]){
+    const previous=gear[key+"Path"];
+    if(!previous||path.some((p,i)=>!p.equals(previous[i]))){
+      gear[key]=BABYLON.MeshBuilder.CreateTube("cunningham_"+key,
+        {path,radius,tessellation:10,updatable:true,...(gear[key]?{instance:gear[key]}:{})},B3.scene);
+      gear[key].parent=B3.boat;
+      if(key==="mesh"){
+        let length=0;for(let i=1;i<path.length;i++)length+=BABYLON.Vector3.Distance(path[i-1],path[i]);
+        const uv=gear[key].getVerticesData(BABYLON.VertexBuffer.UVKind);
+        for(let i=1;i<uv.length;i+=2)uv[i]=Math.floor((i-1)/2/11)/(path.length-1)*length/.28;
+        gear[key].updateVerticesData(BABYLON.VertexBuffer.UVKind,uv);
+      }
+      gear[key+"Path"]=path;
+    }
+    gear[key].material=material;
+  }
+  gear.eye=geometry.eye;gear.path=geometry.path;
+  B3.ropePaths.cunn=[geometry.path];
+}
 function tick3D(elapsed){
   if(!B3||!lastR) return;
   const r=lastR, dt=B3.paused?0:clamp(elapsed??B3.engine.getDeltaTime()/1000,0,.05);
   const stillUpdate=B3.paused&&B3dirty;
   B3.t+=dt;
+  if(B3.vangShow===undefined||stillUpdate) B3.vangShow=state.vang;
+  else B3.vangShow+=(state.vang-B3.vangShow)*(1-Math.exp(-dt*8));
+  if(B3.cunnShow===undefined||stillUpdate) B3.cunnShow=state.cunn;
+  else B3.cunnShow+=(state.cunn-B3.cunnShow)*(1-Math.exp(-dt*8));
   // Display angles are signed by tack (+ = set to port). Both sails respond
   // to wind moments, with their moving anchors restrained by sheet length.
   const S=tackSign();
@@ -3037,7 +3125,7 @@ function tick3D(elapsed){
   // meshes where topology is unchanged instead of allocating them each time.
   const rebuildRopes=B3dirty||swinging||sheetMotion||settled||!B3.tubes;
   if(B3dirty||swinging||sheetMotion||settled){
-    const shM={boom:B3.boomShow,twist:r.main.twist,depth:r.main.depth,draft:r.main.draft,flip:S<0};
+    const shM={boom:B3.boomShow,twist:r.main.twist,depth:r.main.depth,draft:r.main.draft,cunn:B3.cunnShow,flip:S<0};
     const shJ={clew:B3.clewShow,twist:r.jib.twist,depth:r.jib.depth,draft:r.jib.draft,wow:r.jib.wow,flip:(S<0)!==!!r.jib.wow};
     const tgtM=sailPathArray("main",shM,true), tgtJ=sailPathArray("jib",shJ,true);
     const pinM=sailPathArray("main",shM,false), pinJ=sailPathArray("jib",shJ,false);
@@ -3086,7 +3174,6 @@ function tick3D(elapsed){
     B3.tubes={};
     const boomDir=V3(-Math.cos(d),0,Math.sin(d));
     const boomEnd=V3(RIG.mastX,RIG.boomY,0).add(boomDir.scale(RIG.boomLength));
-    const boomVangPt=V3(RIG.mastX,RIG.boomY,0).add(boomDir.scale(1.15));
     // main clew actually slides along the boom with the outhaul
     const mClew=pinM[0].at(-1).clone();
     function sagLine(a,b,slack,floor,parts){
@@ -3217,7 +3304,6 @@ function tick3D(elapsed){
       ...arc(cb.add(V3(0,0,-.0275)),R,0,-Math.PI).slice(1),...fall(cb.add(V3(-R,0,-.0275)),bb.add(V3(-R,0,.0275))).slice(1),
       ...arc(bb.add(V3(0,0,.0275)),R,Math.PI,Math.PI*1.5).slice(1),front.add(V3(0,-R,0)),...arc(front,R,Math.PI*1.5,Math.PI*2).slice(1),...fall(front.add(V3(R,0,0)),ratchet.add(V3(R,0,0)))];
     const mainTail=coil(V3(RIG.pedestalX-.18,.23,.26));
-    const vangTop=B3.vangBlock.position,vangLow=V3(RIG.mastX-.08,1.12,0);
     // Slab-reef pennants: boom attachment → leech cringle → aft sheave,
     // then inside the boom and out to separate cabin-top clutches.
     const reefRope=(level)=>{
@@ -3234,7 +3320,14 @@ function tick3D(elapsed){
         ...sagLine(cringle,aft,slack,RIG.boomY+.015).slice(1)],
         lane(level===1?.28:.35,V3(RIG.mastX-.09,RIG.boomY-.06,level===1?.08:.12))];
     };
+    const vang=vangTackle(vangBottom,vangUpper,B3.vangShow,B3.t,r.aws);
+    B3.vangBase.position=vang.low;B3.vangBlock.position=vang.high;
+    B3.vangBase.rotation.copyFrom(vang.rotation);B3.vangBlock.rotation.copyFrom(vang.rotation);
+    B3.vangFalls=vang.falls;
+    const vangLane=lane(-.14,V3(RIG.mastX-.10,1.15,-.14));
+    const vangLead=sagLine(vang.path.at(-1),vangLane[0],0,p=>trunkTopY(p.x,p.z)+.018,14);
     B3.mainSheetFalls=[[cb,bb],[bb,cb],[cb,bb],[front,ratchet]];
+    B3.cunnTail=lane(.14,V3(RIG.mastX-.38,1.16,.30));
     const ropes={
       sheet:[mainSheet.concat(sagLine(mainSheet.at(-1),mainTail[0],.05,.23,14).slice(1),mainTail.slice(1))],
       jsheet:[working.path],
@@ -3242,12 +3335,9 @@ function tick3D(elapsed){
       jcar:[],
       reef1:reefRope(1),
       reef2:reefRope(2),
-      vang:[[vangLow.add(V3(-.035,0,-.017)),vangTop.add(V3(-.035,0,-.017)),
-        ...arc(vangTop.add(V3(0,0,-.017)),.037,Math.PI,0).slice(1),vangLow.add(V3(.035,0,-.017)),
-        ...lane(-.14,V3(RIG.mastX-.10,1.15,-.14))]],
+      vang:[[...vang.path,...vangLead.slice(1),...vangLane.slice(1)]],
       // Outhaul and halyards run inside the extrusions. Only exposed ends show.
       outhaul:[[mClew,boomEnd.add(V3(0,.025,0))],lane(-.21,V3(RIG.mastX-.07,RIG.boomY-.06,-.07))],
-      cunn:[[V3(RIG.mastX-.04,RIG.boomY+.24,.07),V3(RIG.mastX-.12,1.14,.14),...lane(.14,V3(RIG.mastX-.12,1.14,.14)).slice(1)]],
       halyard:[lane(-.28,V3(RIG.mastX-.07,1.17,-.07))],
       jhal:[lane(.21,V3(RIG.mastX-.08,1.17,.07))],
       toplift:[], // Support is unloaded while sailing; omit a fake taut second stay.
@@ -3367,6 +3457,7 @@ function tick3D(elapsed){
     if(rowsJ) B3.jibSail =BABYLON.MeshBuilder.CreateRibbon("jibSail",{pathArray:rowsJ,instance:B3.jibSail});
     // yarns run at frame rate against whatever the cloth currently holds
     if(B3.tt) stepTelltales(rowsM||clothRows("main"), rowsJ||clothRows("jib"), rT, dt);
+    updateCunningham(rowsM||clothRows("main"));
   }
   // heel to port (+z down means rotate.x negative in LH — sign tuned visually)
   const target=-S*rad(r.heel);                       // heel to leeward, whichever side that is
