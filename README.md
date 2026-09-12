@@ -4,7 +4,8 @@ Interactive trainer: approximate steady-state physics (segment aero, two-element
 heel/leeway force balance), Babylon.js 3D with PBD sail cloth (folding, flogging),
 wind-driven boom yaw with inertia, damping and mainsheet length limits,
 wind-driven jib clew motion and constrained free-sheet spans,
-wind-dye streamlines from solved circulation, per-slider trim-optimality indicators,
+wind-dye streamlines from solved circulation, depth-tested 3D yarn telltales,
+per-slider trim-optimality indicators,
 and a coordinate-descent "perfect trim" solver. 2D views: sail sections, deck plan,
 twist-from-astern, heel gauge, a hand-written, reviewed static drill list (in `src-app.html`),
 and concept guides.
@@ -34,7 +35,9 @@ It warms up for two seconds, measures six seconds of frame/update work with wind
 enabled, reports timings and call counts, then pauses. Compare runs in the same browser
 and viewport; rendering is capped at 60 FPS, while simulation uses elapsed time.
 The reported FPS is local and includes the scene and display refresh-rate caps.
-Use **Inspect luffing boom** on the scene-check page to see the head-to-wind motion.
+Use **Inspect red port yarn** and **Inspect green starboard yarn** for close-ups
+of the jib faces. Pixel checks verify the cloth hides the far-side yarn on both tacks.
+Use **Inspect luffing boom** on that page to see the head-to-wind motion.
 Use **Inspect luffing jib sheets** to inspect both sheets following the clew.
 Use the two **Inspect … tack slot** buttons to inspect sail contact with an
 eased main and tightly sheeted jib on either tack.
