@@ -313,13 +313,19 @@
   .was-tick{position:absolute;top:-4px;width:3px;height:16px;border-radius:1px;background:var(--ink3);
     pointer-events:none;transition:opacity 1s;box-shadow:0 0 3px rgba(0,0,0,.5)}
 
+  .helm-modes{display:flex;gap:4px;margin-bottom:8px;flex:none}
+  .helm-modes button{min-width:52px;min-height:36px;padding:6px 14px;border:1px solid var(--line);border-radius:3px;background:var(--panel);color:var(--ink2);font:700 12px var(--body);cursor:pointer}
+  .helm-modes button:hover{border-color:var(--ink2)}
+  .helm-modes button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  #pane-sim .helm-view[hidden]{display:none}
+
   /* ===== desktop: whole Helm tab fits one viewport, no page scroll ===== */
   @media(min-width:760px) and (min-height:520px){
     main.lock{height:calc(100dvh - 60px);padding:8px 16px;overflow:hidden;max-width:none}
-    #pane-sim.active,#pane-view3d.active{height:100%}
-    #pane-sim .sim-grid{height:100%;grid-template-columns:min(340px,28vw) minmax(0,1fr);gap:10px}
+    #pane-sim.active{height:100%}
+    #pane-sim .sim-grid{height:100%;grid-template-rows:minmax(0,1fr);grid-template-columns:min(340px,28vw) minmax(0,1fr);gap:10px}
     #pane-sim .controls{position:static;height:100%}
-    #pane-sim .stage{height:100%;display:flex;flex-direction:column;min-width:0}
+    #pane-sim .stage{height:100%;display:flex;flex-direction:column;min-width:0;min-height:0}
     /* Coach strip: fixed height (fits 3 lines) so a 1- vs 2-tip message never reflows the viz grid */
     #pane-sim .coach{flex:none;box-sizing:border-box;height:74px;overflow-y:auto;align-items:baseline}
     #pane-sim .viz-grid{flex:1;min-height:0;display:grid;grid-template-columns:1.25fr 1fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:8px}
@@ -327,10 +333,7 @@
     #fig-sections{grid-row:auto}
     #pane-sim figure.viz{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;padding:8px 10px}
     #pane-sim figure.viz svg{flex:1 1 0;min-height:0;width:100%;height:100%}
-    #pane-view3d .sim-grid{height:100%;grid-template-columns:min(340px,28vw) minmax(0,1fr);gap:10px}
-    #pane-view3d #dock3d{height:100%;overflow-y:auto;min-width:0}
-    #pane-view3d #dock3d .controls{height:100%}
-    #pane-view3d .threed-wrap{height:100%;min-height:0}
+    #pane-sim .threed-wrap{flex:1;height:auto;min-height:0;grid-template-rows:auto minmax(0,1fr) auto auto}
     /* Lines: horizontal card carousel, no page scroll */
     #pane-lines.active{height:100%;display:flex;flex-direction:column;min-height:0}
     #pane-lines .prose{max-width:none}
@@ -388,10 +391,11 @@
     nav.tabs{width:100%;margin-left:0;gap:4px}
     nav.tabs button{padding:9px 10px;min-height:40px;font-size:11px;letter-spacing:.04em}
     main{padding:10px 12px 32px}
-    #pane-view3d .sim-grid{display:flex;flex-direction:column;gap:12px}
-    #pane-view3d .threed-wrap{order:-1;width:100%;height:70svh;min-height:490px}
-    #dock3d{width:100%}
-    .rail-tabs button,.gustbtn{min-height:44px}
+    #pane-sim .sim-grid{display:flex;flex-direction:column;gap:12px}
+    #pane-sim .stage{order:-1;width:100%;min-width:0}
+    #pane-sim .threed-wrap{height:65svh;min-height:420px}
+    #pane-sim .controls{width:100%;box-sizing:border-box}
+    .helm-modes button,.rail-tabs button,.gustbtn{min-height:44px}
     input[type=range]{height:28px}
     .tiles{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
     .tile{min-width:0;padding:7px}
@@ -410,7 +414,6 @@
     <button data-tab="lines">The Lines</button>
     <button data-tab="concepts">Concepts</button>
     <button data-tab="drills">Drills</button>
-    <button data-tab="view3d">3D</button>
     <button class="coach-fab" id="coachFab" data-notab="1">⚓ Coach</button>
   </nav>
 </header>
@@ -472,7 +475,26 @@
     <div class="stage">
       <div class="tiles" id="tiles"></div>
       <div class="coach" id="coach"></div>
-      <div class="viz-grid">
+      <div class="helm-modes" role="tablist" aria-label="Helm view">
+        <button id="helm-mode-3d" role="tab" aria-selected="true" aria-controls="helm-3d" data-helm-view="3d">3D</button>
+        <button id="helm-mode-2d" role="tab" aria-selected="false" aria-controls="helm-2d" data-helm-view="2d" tabindex="-1">2D</button>
+      </div>
+      <div class="threed-wrap helm-view" id="helm-3d" role="tabpanel" aria-labelledby="helm-mode-3d">
+        <canvas id="bab" tabindex="0" aria-label="Interactive sailboat: drag to orbit, scroll to zoom. Use camera buttons for preset views."></canvas>
+        <div class="threed-hud" id="hud3d"></div>
+        <div class="scene-toolbar" aria-label="3D view controls">
+          <div id="cameraViews" class="camera-views" role="group" aria-label="Camera presets">
+            <button data-view="rig">Full rig</button><button data-view="deck">Deck detail</button><button data-view="sails">Sail detail</button><button data-view="rigging">Rigging</button>
+          </div>
+          <div class="scene-toggles" role="group" aria-label="Visual aids">
+            <button id="dyeBtn" class="dye-btn" aria-pressed="false">wind dye: off</button>
+            <button id="ttBtn" class="dye-btn on" aria-pressed="true">telltales: on</button>
+            <button id="pause3d" aria-pressed="false">Pause motion</button>
+          </div>
+        </div>
+        <div class="threed-tip">Drag to orbit · scroll to zoom · adjust lines in the trim panel</div>
+      </div>
+      <div class="viz-grid helm-view" id="helm-2d" role="tabpanel" aria-labelledby="helm-mode-2d" hidden>
         <figure class="viz" id="fig-sections">
           <figcaption>Sail sections <span class="hint">solid = your trim · dashed = fast shape · ● draft point</span></figcaption>
           <svg id="svg-sections" viewBox="0 0 640 360" role="img" aria-label="Main and jib cross-sections at head, mid and foot"></svg>
@@ -518,27 +540,6 @@
   <div class="prose"><h2>Drills</h2>
   <p style="font-family:var(--serif);font-size:15.5px;max-width:66ch">Real situations from the cockpit. Pick your first move — the answer explains the why, and points back to the concept it trains. Some drills accept more than one answer: pick what you would do first. After you answer, every option shows why it is or is not a good move, and accepted answers are tagged racing, cruising or school where the sailing schools and race coaches differ.</p></div>
   <div class="drill" id="drill"></div>
-</section>
-<!-- ================= 3D ================= -->
-<section class="tabpane" id="pane-view3d">
-  <div class="sim-grid">
-    <div id="dock3d"></div>
-    <div class="threed-wrap">
-      <canvas id="bab" tabindex="0" aria-label="Interactive sailboat: drag to orbit, scroll to zoom. Use camera buttons for preset views."></canvas>
-      <div class="threed-hud" id="hud3d"></div>
-      <div class="scene-toolbar" aria-label="3D view controls">
-        <div id="cameraViews" class="camera-views" role="group" aria-label="Camera presets">
-          <button data-view="rig">Full rig</button><button data-view="deck">Deck detail</button><button data-view="sails">Sail detail</button><button data-view="rigging">Rigging</button>
-        </div>
-        <div class="scene-toggles" role="group" aria-label="Visual aids">
-          <button id="dyeBtn" class="dye-btn" aria-pressed="false">wind dye: off</button>
-          <button id="ttBtn" class="dye-btn on" aria-pressed="true">telltales: on</button>
-          <button id="pause3d" aria-pressed="false">Pause motion</button>
-        </div>
-      </div>
-      <div class="threed-tip">Drag to orbit · scroll to zoom · adjust lines in the trim panel</div>
-    </div>
-  </div>
 </section>
 </main>
 
@@ -1625,20 +1626,49 @@ $("perfect").addEventListener("click",()=>{
 });
 
 /* ---------------- tabs ---------------- */
+let helmView="3d";
+function syncHelmView(){
+  $("helm-3d").hidden=helmView!=="3d";
+  $("helm-2d").hidden=helmView!=="2d";
+  document.querySelectorAll("[data-helm-view]").forEach(button=>{
+    const selected=button.dataset.helmView===helmView;
+    button.setAttribute("aria-selected",String(selected));
+    button.tabIndex=selected?0:-1;
+  });
+  if(helmView==="3d" && $("pane-sim").classList.contains("active")){
+    ensure3D();
+    requestAnimationFrame(()=>{ if(B3) B3.engine.resize(); });
+  }
+}
+function setHelmView(view){
+  if(view!=="3d" && view!=="2d") return;
+  helmView=view;
+  syncHelmView();
+}
 function showTab(name){
+  // Retain the old 3D entry point for demos and existing scene checks.
+  if(name==="view3d"){name="sim";helmView="3d";}
   [...$("tabs").children].forEach(c=>c.classList.toggle("active",c.dataset.tab===name));
   document.querySelectorAll("#tabs [data-tab]").forEach(c=>c.setAttribute("aria-current",c.dataset.tab===name?"page":"false"));
   document.querySelectorAll(".tabpane").forEach(p=>p.classList.toggle("active",p.id==="pane-"+name));
   document.querySelector("main").classList.add("lock");
-  // the one controls rail moves between Helm and 3D so state stays in sync
-  if(name==="view3d"){ $("dock3d").appendChild($("controls")); ensure3D(); setTimeout(()=>{ if(B3) B3.engine.resize(); },60); }
-  else if(name==="sim"){ document.querySelector("#pane-sim .sim-grid").prepend($("controls")); }
+  if(name==="sim") syncHelmView();
   window.scrollTo(0,0);
 }
 document.querySelector("main").classList.add("lock");
 $("tabs").addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b||b.dataset.notab)return;
   showTab(b.dataset.tab);
+});
+document.querySelector(".helm-modes").addEventListener("click",e=>{
+  const button=e.target.closest("[data-helm-view]");
+  if(button) setHelmView(button.dataset.helmView);
+});
+document.querySelector(".helm-modes").addEventListener("keydown",e=>{
+  if(!["ArrowLeft","ArrowRight","Home","End"].includes(e.key)) return;
+  e.preventDefault();
+  setHelmView(e.key==="Home"?"3d":e.key==="End"?"2d":helmView==="3d"?"2d":"3d");
+  $("helm-mode-"+helmView).focus();
 });
 
 /* ---------------- demo sweep: pull a line and watch ---------------- */
@@ -2282,11 +2312,12 @@ function ensure3Dinner(canvas){
     B3dirty=true;
   });
 
-  engine.runRenderLoop(()=>{ if(document.hidden||!$("pane-view3d").classList.contains("active")) return;
+  engine.runRenderLoop(()=>{ if(document.hidden||!$("pane-sim").classList.contains("active")||helmView!=="3d") return;
     try{ tick3D(); scene.render(); }catch(err){
     if($("hud3d") && !$("hud3d").dataset.err){ $("hud3d").dataset.err="1";
       $("hud3d").innerHTML="3D render error: "+err.message; } } });
   window.addEventListener("resize",()=>engine.resize());
+  new ResizeObserver(()=>engine.resize()).observe(canvas);
 }
 
 // horizontal air velocity in the boat frame at (x,z), height y — freestream +
@@ -3170,6 +3201,7 @@ document.querySelectorAll('.ctl-group[data-g="main"],.ctl-group[data-g="jib"]').
   l.innerHTML="<i></i> fast setting for this wind"; g.prepend(l); });
 update();
 scheduleOptims();
+showTab("sim");
 </script>
 
 
