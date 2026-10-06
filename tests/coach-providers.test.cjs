@@ -1,7 +1,9 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const {test} = require('node:test');
+const {test, after} = require('node:test');
+const originalFetch=globalThis.fetch; after(()=>{globalThis.fetch=originalFetch;});
+const byosReady=import('data:text/javascript;base64,'+fs.readFileSync('vendor/byos/byos.js').toString('base64'));
 
 const source = fs.readFileSync(process.env.TRIM_SOURCE || 'src-app.html', 'utf8');
 const start = source.indexOf('const COACH={');
@@ -17,13 +19,7 @@ function storage(initial = {}) {
   };
 }
 
-function response(body, {status = 200} = {}) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    async json() { return body; },
-  };
-}
+function response(body, {status = 200} = {}) { return Response.json(body,{status}); }
 
 function harness(saved = {}, fetchImpl) {
   const calls = [];
@@ -42,13 +38,21 @@ function harness(saved = {}, fetchImpl) {
   const document = {createElement:tag => element(`${tag}-${elements.size}`)};
   const fetch = async (...args) => {
     calls.push(args);
-    if (fetchImpl) return fetchImpl(...args);
-    return response({choices:[{message:{content:'openai answer'}}]});
+    const result=fetchImpl?await fetchImpl(...args):response({choices:[{message:{content:'openai answer'}}]});
+    if(result.ok&&JSON.parse(args[1]?.body||'{}').stream){
+      const body=await result.json();
+      const events=String(args[0]).includes('anthropic.com')
+        ? [{type:'content_block_delta',delta:{type:'text_delta',text:(body.content||[]).map(x=>x.text||'').join('')}},{type:'message_stop'}]
+        : [{choices:[{delta:{content:body.choices?.[0]?.message?.content||''}}]}];
+      return new Response(events.map(e=>'data: '+JSON.stringify(e)+'\n\n').join('')+'data: [DONE]\n\n');
+    }
+    return result;
   };
+  globalThis.fetch=fetch;
   const context = vm.createContext({
     localStorage, fetch, URL, URLSearchParams, TextEncoder,
-    Date, JSON, Math, Uint8Array,
-    window:{open() {}},
+    Date, JSON, Math, Uint8Array, AbortSignal,
+    window:{open() {},__byosReady:byosReady},
     crypto:{getRandomValues:a=>a, subtle:{digest:async()=>new ArrayBuffer(32)}},
     btoa:value=>Buffer.from(value, 'binary').toString('base64'),
     document, $:element,
@@ -57,7 +61,7 @@ function harness(saved = {}, fetchImpl) {
     ${source.slice(start, end)}
     coachInstructions=()=>"coach system instructions";
     globalThis.coachApi={COACH,COACH_PROVIDERS,COACH_CONFIG,COACH_STORE,COACH_MODEL,OAUTH_STORE,
-      coachConfig,coachEndpoint,coachAskApi,coachSave,coachForget,coachSettings,coachStatus};`, context);
+      coachConfig,coachEndpoint,coachAskApi,coachAskSample,coachSave,coachForget,coachSettings,coachStatus};`, context);
   return {api:context.coachApi, calls, localStorage, elements, element};
 }
 
@@ -67,7 +71,7 @@ function configured(provider, overrides = {}) {
       provider,
       model:`${provider}-test-model`,
       endpoint:'',
-      key:`${provider}-secret`,
+      key:provider==='anthropic'?'sk-ant-api-synthetic':`${provider}-secret`,
       ...overrides,
     }),
   };
@@ -87,13 +91,14 @@ test('named providers route to their registered endpoint with the configured mod
     const config = h.api.coachConfig();
     assert.equal(url, h.api.coachEndpoint(config), provider);
     assert.equal(init.method, 'POST', provider);
-    assert.equal(init.headers.authorization, `Bearer ${provider}-secret`, provider);
-    assert.equal(init.headers['content-type'], 'application/json', provider);
+    assert.equal(new Headers(init.headers).get("authorization"), `Bearer ${provider}-secret`, provider);
+    assert.equal(new Headers(init.headers).get('content-type'), 'application/json', provider);
     const body = JSON.parse(init.body);
     assert.equal(body.model, `${provider}-test-model`, provider);
     const tokenField = provider === 'openai' ? 'max_completion_tokens' : 'max_tokens';
     const otherField = provider === 'openai' ? 'max_tokens' : 'max_completion_tokens';
-    assert.ok(Number.isInteger(body[tokenField]) && body[tokenField] > 0, provider);
+    if(provider!=="openrouter") assert.ok(Number.isInteger(body[tokenField]) && body[tokenField] > 0, provider);
+    else assert.equal(body.stream,true);
     assert.equal(body[otherField], undefined, provider);
     assert.deepEqual(body.messages.slice(-2), [
       {role:'assistant',content:'prior'},
@@ -123,12 +128,13 @@ test('Anthropic uses its message shape and API-key headers without output_config
   assert.equal(await h.api.coachAskApi('trim me'), 'anthropic answer');
   const [url, init] = h.calls[0];
   assert.equal(url, h.api.coachEndpoint(h.api.coachConfig()));
-  assert.equal(init.headers['x-api-key'], 'anthropic-secret');
+  assert.equal(init.headers['x-api-key'], 'sk-ant-api-synthetic');
   assert.equal(init.headers.authorization, undefined);
   assert.equal(init.headers['anthropic-version'], '2023-06-01');
   const body = JSON.parse(init.body);
   assert.equal(body.model, 'anthropic-test-model');
-  assert.equal(body.max_tokens, 1024);
+  assert.equal(body.max_tokens, 16000);
+  assert.equal(body.stream,true);
   assert.equal(typeof body.system, 'string');
   assert.equal(body.output_config, undefined);
   assert.deepEqual(body.messages.at(-1), {role:'user',content:'trim me'});
@@ -165,20 +171,16 @@ test('an unknown stored provider discards its credential and falls back to defau
   });
 });
 
-test('OAuth is considered only for Anthropic without a configured key', async () => {
-  const oauth = JSON.stringify({access:'oauth-access',refresh:'refresh',exp:Date.now()+60_000});
-  for (const provider of ['openrouter','openai','gemini','groq','xai','mistral','deepseek']) {
-    const h = harness({...configured(provider, {key:''}), trimlab_oauth:oauth});
-    await assert.rejects(h.api.coachAskApi('hello'), error => error && error.code === 'no_key', provider);
-    assert.equal(h.calls.length, 0, provider);
+test('legacy Claude subscription credentials stay inactive and never reach any provider', async () => {
+  const oauth=JSON.stringify({access:'synthetic-oauth',refresh:'synthetic-refresh',exp:Date.now()+60_000});
+  for(const provider of ['anthropic','openrouter','openai','gemini','groq','xai','mistral','deepseek']){
+    const h=harness({...configured(provider,{key:''}),trimlab_oauth:oauth});
+    await assert.rejects(h.api.coachAskApi('hello'),error=>error.code===(provider==='anthropic'?'subscription_paused':'no_key'));
+    assert.equal(h.calls.length,0);
   }
-
-  const anth = harness({...configured('anthropic', {key:''}), trimlab_oauth:oauth}, async () =>
-    response({content:[{type:'text',text:'oauth answer'}]}));
-  assert.equal(await anth.api.coachAskApi('hello'), 'oauth answer');
-  assert.equal(anth.calls[0][1].headers.authorization, 'Bearer oauth-access');
-  assert.equal(anth.calls[0][1].headers['anthropic-beta'], 'oauth-2025-04-20');
-  assert.equal(anth.calls[0][1].headers['x-api-key'], undefined);
+  const h=harness(configured('anthropic',{key:'sk-ant-oat-synthetic'}));
+  await assert.rejects(h.api.coachAskApi('hello'),error=>error.code==='subscription_paused');
+  assert.equal(h.calls.length,0);
 });
 
 test('custom provider accepts HTTPS and localhost HTTP chat-completion URLs without a key', async () => {
@@ -274,4 +276,19 @@ test('Forget removes provider config, OAuth, and both legacy settings', () => {
     assert.equal(h.localStorage.getItem(key), null, key);
   }
   assert.equal(h.api.COACH.provider, null);
+});
+
+
+test('artifact sampling remains separate from saved API credentials', async()=>{
+  const h=harness(); let seen;
+  h.api.COACH.sampleFn={json:async input=>{seen=input;return {reply:'Sample coach',changes:null};}};
+  assert.equal(await h.api.coachAskSample('Why twist?'),'{"reply":"Sample coach","changes":null}');
+  assert.equal(seen.at(-1).content,'Why twist?'); assert.equal(h.calls.length,0);
+});
+
+test('shared adapter errors and echoed credentials never reach coach output', async()=>{
+  const denied=harness(configured('openrouter'),async()=>response({error:{message:'openrouter-secret'}},{status:401}));
+  await assert.rejects(denied.api.coachAskApi('hello'),error=>error.code==='http_401'&&!JSON.stringify(error).includes('openrouter-secret'));
+  const echo=harness(configured('openrouter'),async()=>response({choices:[{message:{content:'openrouter-secret'}}]}));
+  await assert.rejects(echo.api.coachAskApi('hello'),error=>error.code==='invalid_reply');
 });

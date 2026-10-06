@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Trim Lab coach browser checks</title>
+<style>body{font:14px system-ui;margin:16px;background:#eef2ef;color:#182e36}iframe{width:100%;height:760px;border:1px solid #aabbbd}li{margin:6px 0}.fail{color:#a32825}</style>
+<h1>Trim Lab coach browser checks</h1>
+<p>Synthetic credentials and provider responses only. Uses the real built page, shared adapters and settings controls.</p>
+<ol id="results"></ol>
+<iframe title="Simulator under test"></iframe>
+<script>
+const frame=document.querySelector('iframe'),results=document.querySelector('#results');
+const check=(name,pass)=>{const li=document.createElement('li');li.textContent=(pass?'PASS: ':'FAIL: ')+name;li.className=pass?'':'fail';results.append(li);if(!pass)throw Error(name);};
+frame.onload=async()=>{
+  const w=frame.contentWindow,doc=w.document;
+  const storageKeys=['trimlab_coach_config','trimlab_anth_cred','trimlab_coach_model','trimlab_oauth','trimlab_relay'];
+  const saved=storageKeys.map(key=>[key,w.localStorage.getItem(key)]);
+  const realFetch=w.fetch;
+  let calls=[],mode='success';
+  try{
+    // Never use existing credentials: isolate the fixture and restore settings on completion.
+    for(const key of storageKeys)w.localStorage.removeItem(key);
+    await w.__byosReady;
+    w.fetch=async(url,init)=>{
+      const endpoint=String(url);
+      if(!['https://api.anthropic.com/v1/messages','https://openrouter.ai/api/v1/chat/completions'].includes(endpoint))throw Error('Unexpected fixture endpoint');
+      const body=JSON.parse(init.body);calls.push({endpoint,body});
+      if(mode==='error')return new w.Response(JSON.stringify({error:{message:'sk-ant-api-synthetic-private'}}),{status:401});
+      const text=JSON.stringify({reply:'Fixture: ease the mainsheet to open the leech.',changes:null});
+      const events=endpoint.includes('anthropic.com')
+        ?[{type:'content_block_delta',delta:{type:'text_delta',text}},{type:'message_stop'}]
+        :[{choices:[{delta:{content:text}}]}];
+      return new w.Response(events.map(e=>'data: '+JSON.stringify(e)+'\n\n').join('')+'data: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
+    };
+    const configure=provider=>{
+      w.coachSettings(provider);
+      doc.getElementById('modelSel').value='fixture-selected-model';
+      doc.getElementById('keyIn').value=provider==='anthropic'?'sk-ant-api-synthetic-private':'sk-or-synthetic-private';
+      doc.getElementById('keySave').click();
+    };
+    doc.getElementById('coachFab').click();
+    configure('openrouter');
+    check('Claude-only notice stays hidden for OpenRouter',w.getComputedStyle(doc.getElementById('claudePolicy')).display==='none');
+    check('Saved model and provider restored',w.coachConfig().model==='fixture-selected-model'&&w.coachConfig().provider==='openrouter');
+    doc.getElementById('coachMsg').value='How do I open the leech?';await w.coachSend();
+    check('OpenRouter stream reaches the coach UI',doc.querySelector('#coachLog .ai')?.textContent.includes('Fixture: ease')&&calls.at(-1).body.stream===true);
+    configure('anthropic');
+    doc.getElementById('coachMsg').value='Explain mainsheet tension';await w.coachSend();
+    check('Claude stream uses selected model and shared API adapter',calls.at(-1).endpoint.includes('anthropic.com')&&calls.at(-1).body.model==='fixture-selected-model'&&calls.at(-1).body.stream===true);
+    check('Policy notice replaces retired subscription controls',!doc.getElementById('claudePolicy').hidden&&!doc.getElementById('claudeSignIn'));
+    mode='error';doc.getElementById('coachMsg').value='Try fixture rejection';await w.coachSend();
+    check('Provider rejection is safe and actionable',doc.getElementById('coachLog').textContent.includes('Credential rejected (401)')&&!doc.getElementById('coachLog').textContent.includes('synthetic-private'));
+    const count=calls.length;
+    w.localStorage.setItem('trimlab_coach_config',JSON.stringify({provider:'anthropic',endpoint:'',model:'fixture-selected-model',key:'sk-ant-oat-synthetic-private'}));
+    let code='';try{await w.coachAskApi('Must stay local');}catch(e){code=e.code;}
+    check('Subscription tokens never reach the network',code==='subscription_paused'&&calls.length===count);
+    w.eval('COACH.sampleFn={json:async()=>({reply:"Artifact fixture answer",changes:null})};COACH.provider="sample"');
+    doc.getElementById('coachMsg').value='Use artifact sample';await w.coachSend();
+    check('Artifact sample stays independent of API credentials',doc.getElementById('coachLog').textContent.includes('Artifact fixture answer')&&calls.length===count);
+    w.localStorage.setItem('trimlab_oauth','synthetic legacy');w.localStorage.setItem('trimlab_relay','https://relay.invalid');
+    doc.getElementById('keyForget').click();
+    check('Forget clears current and legacy credentials',storageKeys.every(key=>w.localStorage.getItem(key)===null));
+    document.title='PASS: Trim Lab coach browser checks';
+  }catch(error){const li=document.createElement('li');li.className='fail';li.textContent='FAIL: '+error.message;results.append(li);document.title='FAIL: Trim Lab coach browser checks';}
+  finally{
+    w.fetch=realFetch;
+    for(const [key,value]of saved)value===null?w.localStorage.removeItem(key):w.localStorage.setItem(key,value);
+  }
+};
+frame.src='../app.html?coach-fixture';
+</script>

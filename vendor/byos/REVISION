@@ -1,0 +1,6 @@
+commit=e5bb738cbb7168479824311647e8171de382f80e
+sourcePath=packages
+mode=bundle
+packages=core,providers
+bundle=byos.js
+engine=omit
