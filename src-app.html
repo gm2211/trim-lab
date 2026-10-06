@@ -300,8 +300,7 @@
   .coach-key small{display:block;color:var(--ink3)}
   .coach-key label{display:block;margin-top:7px}
   .coach-key select{width:100%;margin:6px 0}
-  .coach-key details{margin-top:10px}
-  .coach-key summary{cursor:pointer}
+  .coach-key [hidden]{display:none}
   .coach-head,.coach-in{flex-shrink:0}
   .ai-flash{animation:aiflash 1.2s ease 4;border-radius:4px}
   @keyframes aiflash{0%,100%{background:transparent}50%{background:var(--accent-soft);box-shadow:0 0 0 2px var(--accent)}}
@@ -588,20 +587,7 @@
       <button id="keyForget" style="font-size:11px;padding:5px 10px;background:none;border:1px solid var(--line);color:var(--ink2);border-radius:4px;cursor:pointer">Forget all credentials</button>
     </div>
     <small id="coachSettingsStatus" role="status"></small>
-    <details id="claudeSignIn" hidden>
-      <summary>Use a Claude subscription</summary>
-      <small>Approve in a new tab, then paste the code. Sign-in uses a token relay; coach requests go directly to Anthropic.</small>
-      <a href="#" id="relayAdv" style="font-size:10.5px;color:var(--ink3)">Change sign-in relay</a>
-      <input type="url" id="relayIn" aria-label="Sign-in relay URL" placeholder="https://your-relay.example.com" style="font-size:11px;display:none">
-      <div class="row" style="margin-bottom:8px">
-        <button id="oauthStart" style="font-size:11px;padding:5px 10px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Connect Claude</button>
-        <span id="oauthState" style="font-size:11px;color:var(--ink3)"></span>
-      </div>
-      <div id="oauthCodeRow" style="display:none">
-        <input type="text" id="oauthCode" aria-label="Claude sign-in code" placeholder="Paste the code from the sign-in page" autocomplete="off">
-        <button id="oauthFinish" style="font-size:11px;padding:5px 10px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Finish sign-in</button>
-      </div>
-    </details>
+    <small id="claudePolicy" hidden>Claude subscription sign-in is unavailable under Anthropic’s policy. Use an Anthropic API key. Artifact-provided Claude access remains separate.</small>
   </div>
   <div class="coach-in"><input id="coachMsg" placeholder="Ask, or say “demonstrate …”" maxlength="500">
     <button id="coachSend">Ask</button></div>
@@ -614,6 +600,7 @@ window.__bootErrs=[];
 window.addEventListener("error",e=>{ if(window.__bootErrs.length<5) window.__bootErrs.push((e.message||"?")+(e.lineno?" @"+e.lineno:"")); });
 </script>
 <script id="lib-slot"></script>
+<script id="byos-slot"></script>
 <script>
 "use strict";
 /* ---------------- helpers ---------------- */
@@ -4040,9 +4027,11 @@ function tick3D(elapsed){
 const COACH={provider:null, sampleFn:null, turns:[], busy:false};
 const COACH_STORE="trimlab_anth_cred", COACH_MODEL="trimlab_coach_model";
 const COACH_CONFIG="trimlab_coach_config";
+// Retained only for recognizing/forgetting legacy browser state; never sent or refreshed.
+const OAUTH_STORE="trimlab_oauth", RELAY_STORE="trimlab_relay";
 const COACH_PROVIDERS={
   openrouter:{name:"OpenRouter",endpoint:"https://openrouter.ai/api/v1/chat/completions",models:["openai/gpt-4.1-mini","anthropic/claude-haiku-4.5","google/gemini-2.5-flash"],help:"Use any model available through OpenRouter, including Claude, GPT, Gemini and open models."},
-  anthropic:{name:"Anthropic",endpoint:"https://api.anthropic.com/v1/messages",models:["claude-haiku-4-5","claude-sonnet-4-5"],help:"Use an Anthropic API key, a Claude setup token, or subscription sign-in below."},
+  anthropic:{name:"Anthropic",endpoint:"https://api.anthropic.com/v1/messages",models:["claude-haiku-4-5","claude-sonnet-4-5"],help:"Use an Anthropic API key. Claude subscription sign-in is unavailable under Anthropic’s policy."},
   openai:{name:"OpenAI",endpoint:"https://api.openai.com/v1/chat/completions",models:["gpt-4.1-mini","gpt-4.1"],help:"Use an OpenAI API key and a chat model available to your account."},
   gemini:{name:"Google Gemini",endpoint:"https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",models:["gemini-2.5-flash","gemini-2.5-pro"],help:"Use a Google AI Studio API key and a Gemini model ID."},
   groq:{name:"Groq",endpoint:"https://api.groq.com/openai/v1/chat/completions",models:["llama-3.1-8b-instant","llama-3.3-70b-versatile"],help:"Use a Groq API key and a model from Groq’s catalog."},
@@ -4082,8 +4071,8 @@ function coachEndpoint(config){
   return url.href;
 }
 function coachConfigured(config){
-  return !!(config.key||(config.provider==="anthropic"&&localStorage.getItem(OAUTH_STORE))||
-    (config.provider==="custom"&&config.endpoint&&config.model));
+  if(config.provider==="anthropic"&&config.key.startsWith("sk-ant-oat")) return false;
+  return !!(config.key||(config.provider==="custom"&&config.endpoint&&config.model));
 }
 function coachStatus(){
   const config=coachConfig();
@@ -4100,9 +4089,9 @@ function coachSettings(provider=coachConfig().provider){
   $("modelSel").value=same?saved.model:info.models[0]||"";
   $("endpointIn").value=same?saved.endpoint||"":"";
   $("endpointRow").hidden=provider!=="custom";
-  $("claudeSignIn").hidden=provider!=="anthropic";
+  $("claudePolicy").hidden=provider!=="anthropic";
   $("providerHelp").textContent=info.help;
-  $("keyLabel").textContent=provider==="custom"?"API key (optional)":provider==="anthropic"?"API key or setup token":"API key";
+  $("keyLabel").textContent=provider==="custom"?"API key (optional)":"API key";
   $("keyIn").value="";
   $("keyIn").placeholder=same&&saved.key?"Saved — leave blank to keep":"Paste your provider’s API key";
   $("coachSettingsStatus").textContent="";
@@ -4115,6 +4104,7 @@ function coachSave(){
   const config={provider,endpoint,model:$("modelSel").value.trim(),key:$("keyIn").value.trim()||(same?saved.key:"")};
   if(!config.model){ $("coachSettingsStatus").textContent="Enter a model ID from your provider."; return; }
   try{ coachEndpoint(config); }catch(e){ $("coachSettingsStatus").textContent="Enter an HTTPS endpoint, or HTTP on localhost, without credentials, query parameters or a fragment."; return; }
+  if(config.provider==="anthropic"&&config.key.startsWith("sk-ant-oat")){ $("coachSettingsStatus").textContent="Claude subscription tokens are unavailable. Use an Anthropic API key."; return; }
   if(!coachConfigured(config)){ $("coachSettingsStatus").textContent="Paste an API key for "+COACH_PROVIDERS[provider].name+"."; return; }
   localStorage.setItem(COACH_CONFIG,JSON.stringify(config));
   localStorage.removeItem(COACH_STORE); localStorage.removeItem(COACH_MODEL);
@@ -4123,8 +4113,7 @@ function coachSave(){
   coachNote("Settings saved for "+COACH_PROVIDERS[provider].name+" in this browser.");
 }
 function coachForget(){
-  for(const key of [COACH_CONFIG,COACH_STORE,COACH_MODEL,OAUTH_STORE]) localStorage.removeItem(key);
-  PKCE=null; $("oauthCode").value=""; $("oauthCodeRow").style.display="none"; $("oauthState").textContent="";
+  for(const key of [COACH_CONFIG,COACH_STORE,COACH_MODEL,OAUTH_STORE,RELAY_STORE]) localStorage.removeItem(key);
   COACH.provider=COACH.sampleFn?"sample":null; COACH.turns=[];
   coachStatus(); coachSettings(); coachNote("Saved API keys and Claude sign-in forgotten.");
 }
@@ -4187,122 +4176,53 @@ function coachApply(changes){
   const a=lastR;
   return `${applied.join(" · ")}\nresult: speed ${before.speed.toFixed(2)}→${a.speed.toFixed(2)} kt · heel ${before.heel.toFixed(1)}→${a.heel.toFixed(1)}° · main twist ${before.twist.toFixed(1)}→${a.main.twist.toFixed(1)}° · power ${Math.round(before.eff*100)}→${Math.round(a.eff*100)}%`;
 }
-const OAUTH_STORE="trimlab_oauth", RELAY_STORE="trimlab_relay";
-// Default relay baked into the app: any stateless code->token forwarder
-// (relay/worker.js, or a motive server deployment). Users never see this
-// unless they open "advanced". Empty string = one-click disabled until set.
-const RELAY_DEFAULT="https://motive-vp3s.onrender.com";
-function relayUrl(){
-  return ($("relayIn").value.trim()||localStorage.getItem(RELAY_STORE)||RELAY_DEFAULT).replace(/\/$/,"");
-}
-let PKCE=null;
-function b64url(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
-async function oauthBegin(){
-  const relay=relayUrl();
-  if(!relay){ $("oauthState").textContent="no relay configured — use a token below, or set one under advanced"; return; }
-  if(relay!==RELAY_DEFAULT) localStorage.setItem(RELAY_STORE, relay);
-  const raw=new Uint8Array(32); crypto.getRandomValues(raw);
-  const verifier=b64url(raw);
-  const challenge=b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
-  PKCE={verifier, state:b64url(crypto.getRandomValues(new Uint8Array(16)))};
-  // Manual paste flow pairs with the CONSOLE authorize (successor of
-  // console.anthropic.com/oauth/authorize): the cai authorize rejects the
-  // hosted callback with "Invalid request format" — it expects the CLI's
-  // localhost listener. platform.claude.com accepts Pro/Max chat accounts.
-  const u=new URL("https://platform.claude.com/oauth/authorize");
-  u.search=new URLSearchParams({code:"true", client_id:"9d1c250a-e61b-44d9-88ed-5944d1962f5e",
-    response_type:"code", redirect_uri:"https://platform.claude.com/oauth/code/callback",
-    scope:"user:inference", code_challenge:challenge, code_challenge_method:"S256",
-    state:PKCE.state}).toString();
-  window.open(u.toString(),"_blank");
-  $("oauthCodeRow").style.display="block";
-  $("oauthState").textContent="approve in the new tab, then paste the code";
-}
-async function relayPost(relay, kind, payload){
-  // native worker path first, then the motive server's route — the same relay
-  // deployment can serve both apps (bodies and response shapes already match)
-  const paths = kind==="exchange"
-    ? ["/claude/exchange","/api/ai/claude-oauth/exchange"]
-    : ["/claude/refresh","/api/ai/claude-oauth/refresh"];
-  let last=null;
-  for(const p of paths){
-    try{
-      const res=await fetch(relay+p,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
-      if(res.status===404){ last=new Error("relay has no "+p); continue; }
-      return res;
-    }catch(e){ last=e; }
-  }
-  throw last||new Error("relay unreachable");
-}
-async function oauthFinish(){
-  const relay=relayUrl();
-  const code=$("oauthCode").value.trim();
-  if(!relay||!code||!PKCE){ $("oauthState").textContent="start with Connect Claude first"; return; }
-  $("oauthState").textContent="exchanging…";
+// Shared adapters own Claude/OpenRouter protocol and the Claude subscription policy.
+// Other explicitly selected API presets retain their existing compatibility path.
+async function coachAskByos(config,userMsg){
+  let byos;
+  try{ byos=await window.__byosReady; }catch{ throw {code:"adapter_unavailable"}; }
+  if(!byos) throw {code:"adapter_unavailable"};
+  if(config.provider==="anthropic"&&!byos.claudeCredentialAllowed(config.key)) throw {code:"subscription_paused"};
+  const adapter=config.provider==="anthropic"?byos.claude():byos.openrouter({appTitle:"Trim Lab"});
+  let answer="", done=false;
   try{
-    const res=await relayPost(relay,"exchange",{code, verifier:PKCE.verifier, state:PKCE.state});
-    const data=await res.json();
-    if(!res.ok||!data.accessToken) throw new Error(data.error||"exchange failed");
-    localStorage.setItem(OAUTH_STORE, JSON.stringify({access:data.accessToken, refresh:data.refreshToken,
-      exp:Date.now()+((data.expiresIn||3600)-120)*1000}));
-    const saved=coachConfig();
-    localStorage.setItem(COACH_CONFIG,JSON.stringify({provider:"anthropic",key:"",endpoint:COACH_PROVIDERS.anthropic.endpoint,
-      model:saved.provider==="anthropic"?saved.model:COACH_PROVIDERS.anthropic.models[0]}));
-    localStorage.removeItem(COACH_STORE); localStorage.removeItem(COACH_MODEL);
-    COACH.provider="api"; COACH.turns=[]; coachStatus(); coachSettings(); PKCE=null;
-    $("oauthState").textContent="connected ✓"; $("oauthCodeRow").style.display="none"; $("oauthCode").value="";
-    coachNote("Claude subscription connected — tokens live only in this browser.");
-  }catch(e){ $("oauthState").textContent="failed: "+e.message; }
-}
-async function oauthAccess(){
-  let saved=null; try{ saved=JSON.parse(localStorage.getItem(OAUTH_STORE)||"null"); }catch(e){}
-  if(!saved) return null;
-  if(Date.now()<saved.exp) return saved.access;
-  const relay=(localStorage.getItem(RELAY_STORE)||RELAY_DEFAULT).replace(/\/$/,"");
-  if(!relay||!saved.refresh){ return null; }
-  let res=null;
-  try{ res=await relayPost(relay,"refresh",{refreshToken:saved.refresh}); }catch(e){ return null; }
-  if(!res.ok) return null;
-  const d=await res.json();
-  localStorage.setItem(OAUTH_STORE, JSON.stringify({access:d.accessToken, refresh:d.refreshToken||saved.refresh,
-    exp:Date.now()+((d.expiresIn||3600)-120)*1000}));
-  return d.accessToken;
+    for await(const event of adapter.stream(config.key,{model:config.model,
+      messages:[{role:"system",content:coachInstructions()},...COACH.turns,{role:"user",content:userMsg}],
+      signal:AbortSignal.timeout(90_000)})){
+      if(event.type==="text") answer+=event.text;
+      if(answer.length>100_000||answer.includes(config.key)) throw {code:"invalid_reply"};
+      if(event.type==="done") done=true;
+    }
+  }catch(error){
+    if(error.code) throw error;
+    if(error.status) throw {code:"http_"+error.status};
+    throw {code:"network_error"};
+  }
+  if(!done||!answer.trim()) throw {code:"empty_reply"};
+  return answer;
 }
 async function coachAskApi(userMsg){
   const config=coachConfig(), endpoint=coachEndpoint(config);
-  const anthropic=config.provider==="anthropic";
-  const oat=anthropic&&!config.key?await oauthAccess():null;
-  const token=config.key||oat;
-  if(!token&&config.provider!=="custom") throw {code:"no_key"};
-  const headers={"content-type":"application/json"};
-  let body;
-  if(anthropic){
-    headers["anthropic-version"]="2023-06-01";
-    headers["anthropic-dangerous-direct-browser-access"]="true";
-    if(oat||token.startsWith("sk-ant-oat")){
-      headers["authorization"]="Bearer "+token; headers["anthropic-beta"]="oauth-2025-04-20";
-    }else headers["x-api-key"]=token;
-    body={model:config.model,max_tokens:1024,system:coachInstructions(),messages:[...COACH.turns,{role:"user",content:userMsg}]};
-  }else{
-    if(token) headers["authorization"]="Bearer "+token;
-    body={model:config.model,messages:[{role:"system",content:coachInstructions()},...COACH.turns,{role:"user",content:userMsg}]};
-    body[config.provider==="openai"?"max_completion_tokens":"max_tokens"]=1024;
-    if(config.provider==="deepseek") body.thinking={type:"disabled"};
-    if(config.provider==="xai"){ body.reasoning_effort="low"; body.max_tokens=4096; }
+  const token=config.key;
+  if(!token&&config.provider!=="custom"){
+    if(config.provider==="anthropic"&&localStorage.getItem(OAUTH_STORE)) throw {code:"subscription_paused"};
+    throw {code:"no_key"};
   }
+  if(config.provider==="anthropic"||config.provider==="openrouter") return coachAskByos(config,userMsg);
+  const headers={"content-type":"application/json"};
+  if(token) headers["authorization"]="Bearer "+token;
+  const body={model:config.model,messages:[{role:"system",content:coachInstructions()},...COACH.turns,{role:"user",content:userMsg}]};
+  body[config.provider==="openai"?"max_completion_tokens":"max_tokens"]=1024;
+  if(config.provider==="deepseek") body.thinking={type:"disabled"};
+  if(config.provider==="xai"){ body.reasoning_effort="low"; body.max_tokens=4096; }
   let res;
   try{ res=await fetch(endpoint,{method:"POST",redirect:"error",headers,body:JSON.stringify(body)}); }
   catch(e){ throw {code:"network_error"}; }
   if(!res.ok){
     let detail=""; try{ detail=(await res.json()).error?.message||""; }catch(e){}
-    if(anthropic&&res.status===401&&/CORS requests are not allowed/i.test(detail)) throw {code:"org_cors"};
     throw {code:"http_"+res.status,message:detail};
   }
   const data=await res.json();
-  if(anthropic){
-    if(data.stop_reason==="refusal") throw {code:"refused"};
-    return (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
-  }
   const message=data.choices?.[0]?.message;
   if(message?.refusal) throw {code:"refused"};
   if(typeof message?.content!=="string"||!message.content.trim()) throw {code:"empty_reply"};
@@ -4339,6 +4259,9 @@ async function coachSend(){
       org_cors:"Your Anthropic organization blocks browser requests. Choose another provider, or use a server you control through Custom endpoint.",
       network_error:"Could not reach your provider. Check the endpoint and connection. For custom or local servers, enable CORS for this site.",
       invalid_endpoint:"Invalid endpoint. Use HTTPS, or HTTP on localhost, without credentials, query parameters or a fragment.",
+      subscription_paused:"Claude subscription sign-in is unavailable under Anthropic’s policy. Use an Anthropic API key.",
+      adapter_unavailable:"The shared provider adapter could not load. Reload this page.",
+      invalid_reply:"The provider returned an invalid answer. Try again.",
       empty_reply:"The model returned no answer. Check the model ID or try another model.",
       http_403:"Provider denied access (403). Check your API key’s permissions and browser access.",
       http_404:"Model or endpoint not found (404). Check both in settings.",
@@ -4354,11 +4277,6 @@ async function coachSend(){
 }
 async function coachInit(){
   coachSettings(); coachStatus();
-  const savedRelay=localStorage.getItem(RELAY_STORE)||RELAY_DEFAULT; if(savedRelay) $("relayIn").value=savedRelay;
-  $("relayAdv").addEventListener("click",e=>{
-    e.preventDefault();
-    const f=$("relayIn"); f.style.display=f.style.display==="none"?"block":"none";
-  });
   if(!localStorage.getItem(COACH_CONFIG)){
     try{
       if(window.claude&&claude.use){
@@ -4381,9 +4299,6 @@ $("coachClose").addEventListener("click",()=>$("coachPanel").classList.remove("o
 $("coachGear").addEventListener("click",()=>$("coachKey").classList.toggle("show"));
 $("coachSend").addEventListener("click",coachSend);
 $("coachMsg").addEventListener("keydown",e=>{ if(e.key==="Enter") coachSend(); });
-$("oauthStart").addEventListener("click",oauthBegin);
-$("oauthFinish").addEventListener("click",oauthFinish);
-$("relayIn").addEventListener("change",()=>{ const v=$("relayIn").value.trim(); if(v) localStorage.setItem(RELAY_STORE,v); });
 $("providerSel").addEventListener("change",()=>coachSettings($("providerSel").value));
 $("keySave").addEventListener("click",coachSave);
 $("keyForget").addEventListener("click",coachForget);

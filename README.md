@@ -48,13 +48,13 @@ not calibrated Colgate handling data.
 suspend the maneuver without a catch-up jump on return.
 
 ## Layout
-- `src-app.html` — the entire app (HTML/CSS/JS) with a `<script id="lib-slot">` placeholder.
+- `src-app.html` — the entire app (HTML/CSS/JS) with library and BYOS placeholders.
 - `babylon.lib.js` — committed canonical WebGL-only Babylon bundle and water normals.
 - `assets/boat/trim-boat.blend` — editable Blender boat and hardware geometry.
 - `build-tools/model-boat.py` — evaluated mesh export with original modifier stacks.
 - `build-tools/bake-materials.py` — reproducible Blender marine material bakes.
 - `assets/materials/` — committed normal/roughness maps and authoring instructions.
-- `build.py` — embeds the library, rope textures and marine maps into both built pages.
+- `build.py` — embeds the library, BYOS bundle, rope textures and marine maps into both built pages.
 
 ## Build
 ```bash
@@ -62,7 +62,7 @@ python3 build.py                # all build inputs are committed; Blender is opt
 ```
 `build.py` writes two identical self-contained pages (~4.2 MB each): `app.html` at the
 repo root and `docs/index.html`. Both are committed; rebuild and commit them whenever
-`src-app.html` or the bundled library changes.
+`src-app.html` or a bundled dependency changes.
 
 Run `node --test tests/*.test.cjs` for physics, free-sheet and sail-contact regressions. Serve locally
 with `python3 -m http.server 8765 --bind 127.0.0.1` and open
@@ -137,19 +137,34 @@ Provider reference docs: [OpenAI](https://developers.openai.com/api/reference/re
 [Mistral](https://docs.mistral.ai/api),
 [DeepSeek](https://api-docs.deepseek.com/).
 
-## One-click Claude subscription sign-in (auth relay)
+## Shared BYOS adapters
 
-The coach's "Connect Claude" button runs the whole OAuth flow in the browser except
-the code→token exchange, which Anthropic's endpoint refuses from any browser origin.
-`relay/worker.js` is that one step as a stateless serverless function (nothing stored,
-nothing logged). Deploy it once, free, either way:
+Claude API-key and OpenRouter inference use the canonical [BYOS](https://github.com/gm2211/byos)
+`core`/`providers` browser bundle. `vendor/byos/REVISION` records its immutable source commit.
+Other API presets and custom endpoints retain their existing compatibility path, including
+provider-specific request options and keyless local endpoints. The artifact-provided Claude
+sample capability remains separate from API-key inference. The shared Claude adapter uses
+BYOS’s 16,000-token output cap; the prompt still requests coaching under 110 words.
+
+Claude subscription sign-in is paused in BYOS under Anthropic’s policy. The obsolete
+OAuth controls and relay have been removed. Saved legacy subscription tokens are never
+sent or refreshed; **Forget all credentials** removes them. Anthropic API keys remain supported.
+The native ChatGPT SIWC package requires a local Node process and native credential store;
+it cannot run in this static GitHub Pages application.
+
+Update shared code at its source, then sync a reviewed commit (do not edit the bundle):
 
 ```bash
-npx wrangler deploy relay/worker.js --name trim-lab-relay --compatibility-date 2026-01-01
+scripts/sync-byos.sh <full-BYOS-commit-SHA>
+python3 build.py
+node --test tests/*.test.cjs
 ```
 
-or point a [Deno Deploy](https://dash.deno.com) project at `relay/worker.js`.
+`BYOS_REPO` may point to a local BYOS clone. The sync tool uses BYOS’s locked build tooling;
+Trim Lab requires no npm installation at runtime. `build.py` embeds the bundle as a data-URL
+module, so both committed pages remain self-contained. Browser API keys remain owned by
+Trim Lab’s existing settings and are passed directly to the shared adapters in memory.
 
-Paste the deployed URL into the coach ⚙ panel once. Grok device-code support and the
-Codex enterprise-token path (motive's own one-click Codex is disabled upstream too)
-can ride the same relay later.
+Open `tests/coach-browser.html` on a local development server for a synthetic browser check
+of saved settings, both shared providers, paused subscription tokens, sample mode and safe
+errors. It uses fake credentials and fixture responses; it does not prove live account access.
