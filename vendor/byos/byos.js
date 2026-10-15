@@ -573,23 +573,20 @@ async function listOpenRouterModels(key, signal) {
     };
   }).sort((a, b) => fitRank(a.analysisFit) - fitRank(b.analysisFit) || a.name.localeCompare(b.name));
 }
-function isDatedSnapshot(id) {
-  return /(?:^|[-_:@])20\d{2}-?(?:0[1-9]|1[0-2])-?(?:0[1-9]|[12]\d|3[01])(?=$|[-_.:])/.test(id) || /(?:^|[-_:@])(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])(?=$|[-_:])/.test(id);
-}
-function compareListedModels(a, b) {
-  if (a.snapshot !== b.snapshot) return a.snapshot ? 1 : -1;
-  if (a.created !== void 0 && b.created !== void 0 && a.created !== b.created) return b.created - a.created;
-  return a.name.localeCompare(b.name);
+var NON_CHAT_MODEL_WORDS = /* @__PURE__ */ new Set(["imagine", "image", "video", "embed", "embedding", "tts", "whisper", "dall", "moderation", "transcribe", "sora", "realtime", "audio", "speech"]);
+function isChatModel(id) {
+  return !id.toLowerCase().split(/[^a-z0-9]+/).some((word) => NON_CHAT_MODEL_WORDS.has(word));
 }
 async function listModelsForEndpoint(endpoint, signal) {
   const response = await fetch(`${endpoint.baseUrl}/models`, { signal, redirect: "error", headers: { Authorization: `Bearer ${endpoint.apiKey}`, ...endpoint.headers } });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(safeProviderErrorText(payload, endpoint.apiKey) || "Could not load models.");
-  return (payload.data ?? []).filter((model) => Boolean(model.id)).map((model) => ({
-    model: { id: model.id, name: model.name || model.id, analysisFit: "standard", reasoning: false },
-    snapshot: isDatedSnapshot(model.id),
-    created: typeof model.created === "number" && Number.isFinite(model.created) ? model.created : void 0
-  })).sort((a, b) => compareListedModels({ ...a, name: a.model.name }, { ...b, name: b.model.name })).map((entry) => entry.model);
+  const seen = /* @__PURE__ */ new Set();
+  return (payload.data ?? []).filter((model) => {
+    if (!model.id || !isChatModel(model.id) || seen.has(model.id)) return false;
+    seen.add(model.id);
+    return true;
+  }).map((model) => ({ id: model.id, name: model.name || model.id, analysisFit: "standard", reasoning: false }));
 }
 
 // packages/providers/src/providers.ts
@@ -1451,7 +1448,6 @@ export {
   buildXaiResponsesBody,
   claude,
   claudeCredentialAllowed,
-  compareListedModels,
   createCredentialVault,
   createEffortStore,
   createHuggingFaceSignIn,
@@ -1462,8 +1458,8 @@ export {
   grok,
   groq,
   huggingface,
+  isChatModel,
   isClaudeSubscriptionCredential,
-  isDatedSnapshot,
   isReasoningEffort,
   isUsableModelId,
   iterateSseEvents,
