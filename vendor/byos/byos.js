@@ -293,6 +293,10 @@ function tokenNeedsRefresh(expiresAt, skewMs, now = Date.now()) {
   return Boolean(expiresAt && expiresAt - now <= skewMs);
 }
 
+// packages/core/src/codex-client.ts
+var CODEX_CLIENT_VERSION = "0.161.0";
+var CODEX_ACCOUNT_CATALOG_URL = `https://chatgpt.com/backend-api/codex/models?client_version=${CODEX_CLIENT_VERSION}`;
+
 // packages/providers/src/sse.ts
 function parseSseLine(rawLine) {
   const line = rawLine.trim();
@@ -569,11 +573,23 @@ async function listOpenRouterModels(key, signal) {
     };
   }).sort((a, b) => fitRank(a.analysisFit) - fitRank(b.analysisFit) || a.name.localeCompare(b.name));
 }
+function isDatedSnapshot(id) {
+  return /(?:^|[-_:@])20\d{2}-?(?:0[1-9]|1[0-2])-?(?:0[1-9]|[12]\d|3[01])(?=$|[-_.:])/.test(id) || /(?:^|[-_:@])(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])(?=$|[-_:])/.test(id);
+}
+function compareListedModels(a, b) {
+  if (a.snapshot !== b.snapshot) return a.snapshot ? 1 : -1;
+  if (a.created !== void 0 && b.created !== void 0 && a.created !== b.created) return b.created - a.created;
+  return a.name.localeCompare(b.name);
+}
 async function listModelsForEndpoint(endpoint, signal) {
   const response = await fetch(`${endpoint.baseUrl}/models`, { signal, redirect: "error", headers: { Authorization: `Bearer ${endpoint.apiKey}`, ...endpoint.headers } });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(safeProviderErrorText(payload, endpoint.apiKey) || "Could not load models.");
-  return (payload.data ?? []).filter((model) => Boolean(model.id)).map((model) => ({ id: model.id, name: model.name || model.id, analysisFit: "standard", reasoning: false })).sort((a, b) => a.name.localeCompare(b.name));
+  return (payload.data ?? []).filter((model) => Boolean(model.id)).map((model) => ({
+    model: { id: model.id, name: model.name || model.id, analysisFit: "standard", reasoning: false },
+    snapshot: isDatedSnapshot(model.id),
+    created: typeof model.created === "number" && Number.isFinite(model.created) ? model.created : void 0
+  })).sort((a, b) => compareListedModels({ ...a, name: a.model.name }, { ...b, name: b.model.name })).map((entry) => entry.model);
 }
 
 // packages/providers/src/providers.ts
@@ -629,6 +645,11 @@ function huggingface(options = {}) {
 
 // packages/providers/src/claude.ts
 var ANTHROPIC_POLICY_URL = "https://code.claude.com/docs/en/legal-and-compliance";
+var CLAUDE_PLAN_CREDITS_URL = "https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers";
+var CLAUDE_API_KEY_SETUP = [
+  { label: "Claim your Max or Team plan\u2019s API credits (optional)", url: "https://claude.ai/settings/billing" },
+  { label: "Create an API key in Claude Console", url: "https://platform.claude.com/settings/keys" }
+];
 var CLAUDE_SUBSCRIPTIONS_PAUSED_NOTE = "Claude subscriptions are momentarily unavailable because of Anthropic\u2019s policy. Use an API key, or pick another service.";
 var API = "https://api.anthropic.com/v1";
 var ANTHROPIC_VERSION = "2023-06-01";
@@ -739,7 +760,7 @@ function claude(options = {}) {
   return {
     id: "claude",
     displayName: "Claude",
-    signIn: [{ kind: "api-key", hint: "An Anthropic API key from console.anthropic.com" }],
+    signIn: [{ kind: "api-key", hint: "A Claude API key from platform.claude.com. Max and Team plans include monthly API credits for it.", setup: CLAUDE_API_KEY_SETUP }],
     // API keys work; the note tells users why there is no subscription button.
     availability: () => ({ available: true }),
     listModels: (token, signal) => listClaudeModels(token, signal, paused),
@@ -1244,9 +1265,9 @@ function createHuggingFaceSignIn(options) {
 }
 
 // packages/providers/src/order.ts
-var DEFAULT_SERVICE_ORDER = ["grok", "chatgpt", "openrouter", "claude"];
+var DEFAULT_SERVICE_ORDER = ["claude", "chatgpt", "grok", "gemini", "openrouter", "groq", "huggingface"];
 var NOT_RECOMMENDED_REASON = {
-  claude: "Anthropic doesn't allow subscriptions in other apps."
+  claude: "Anthropic doesn't allow subscription sign-in in other apps; use an API key (Max and Team plans include API credits)."
 };
 function orderServices(items, keyOf, order = DEFAULT_SERVICE_ORDER) {
   const rank = (item) => {
@@ -1256,27 +1277,193 @@ function orderServices(items, keyOf, order = DEFAULT_SERVICE_ORDER) {
   };
   return items.map((item, index) => ({ item, index })).sort((a, b) => rank(a.item) - rank(b.item) || a.index - b.index).map((entry) => entry.item);
 }
+
+// packages/providers/src/on-device.ts
+var ON_DEVICE_PROVIDERS = [
+  {
+    id: "local",
+    displayName: "Local (Embedded)",
+    description: "Run AI locally with llama.cpp \u2014 no server needed",
+    execution: "on-device"
+  },
+  {
+    id: "mlx",
+    displayName: "On-device (MLX)",
+    description: "Run a downloaded MLX model on-device. Offline. iOS/macOS only.",
+    execution: "on-device"
+  },
+  {
+    id: "foundation-models",
+    displayName: "Apple Intelligence",
+    description: "Apple's on-device model. Requires macOS 26+ or iOS 26+ on Apple Intelligence hardware.",
+    execution: "on-device"
+  }
+];
+var RUNTIME_UNAVAILABLE = "This provider requires a native on-device runtime.";
+var BINDING_UNAVAILABLE = "This native runtime does not support this provider.";
+var BRIDGE_UNAVAILABLE = "The native provider is not connected.";
+var PROVIDER_UNAVAILABLE = "The on-device provider is unavailable.";
+var ABORTED = "The operation was aborted.";
+function isAbortError(error) {
+  try {
+    return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
+  } catch {
+    return false;
+  }
+}
+function abortError() {
+  return new DOMException(ABORTED, "AbortError");
+}
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw abortError();
+}
+function safeBridgeCall(operation) {
+  try {
+    return operation();
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    throw new Error(PROVIDER_UNAVAILABLE);
+  }
+}
+function safeBridgePromise(operation) {
+  try {
+    return operation().catch((error) => {
+      if (isAbortError(error)) throw abortError();
+      throw new Error(PROVIDER_UNAVAILABLE);
+    });
+  } catch (error) {
+    if (isAbortError(error)) throw abortError();
+    throw new Error(PROVIDER_UNAVAILABLE);
+  }
+}
+function bridgeReadiness(bridge) {
+  if (!bridge) return { available: false, reason: BRIDGE_UNAVAILABLE };
+  try {
+    return safeBridgeCall(() => bridge.availability());
+  } catch {
+    return { available: false, reason: PROVIDER_UNAVAILABLE };
+  }
+}
+function makeAbortRace(signal) {
+  if (!signal) return void 0;
+  let rejectAbort;
+  const promise = new Promise((_resolve, reject) => {
+    rejectAbort = reject;
+  });
+  void promise.catch(() => {
+  });
+  const onAbort = () => rejectAbort(abortError());
+  signal.addEventListener("abort", onAbort, { once: true });
+  if (signal.aborted) onAbort();
+  return { promise, cancel: () => signal.removeEventListener("abort", onAbort) };
+}
+async function* guardedStream(request, availability, requireReady) {
+  const signal = request.signal;
+  throwIfAborted(signal);
+  const ready = availability();
+  if (!ready.available) throw new Error(ready.reason);
+  let iterator;
+  let returned = false;
+  const returnIterator = async (wait) => {
+    if (returned || !iterator?.return) return;
+    returned = true;
+    try {
+      const closing = Promise.resolve(iterator.return());
+      if (wait) await closing;
+      else void closing.catch(() => {
+      });
+    } catch {
+    }
+  };
+  const abortRace = makeAbortRace(signal);
+  let wasAborted = false;
+  try {
+    throwIfAborted(signal);
+    const liveBridge = requireReady(signal);
+    const source = safeBridgeCall(() => liveBridge.stream(request));
+    iterator = source[Symbol.asyncIterator]();
+    throwIfAborted(signal);
+    while (true) {
+      throwIfAborted(signal);
+      const next = safeBridgePromise(() => Promise.resolve(iterator.next()));
+      const result = abortRace ? await Promise.race([next, abortRace.promise]) : await next;
+      if (result.done) return;
+      yield result.value;
+    }
+  } catch (error) {
+    if (isAbortError(error)) {
+      wasAborted = true;
+      await returnIterator(false);
+      throw abortError();
+    }
+    throw new Error(PROVIDER_UNAVAILABLE);
+  } finally {
+    abortRace?.cancel();
+    await returnIterator(!wasAborted);
+  }
+}
+function onDeviceProvidersFor(runtime) {
+  if (runtime.kind !== "native") return [];
+  return ON_DEVICE_PROVIDERS.filter((provider) => runtime.supportedProviders.includes(provider.id));
+}
+function createOnDeviceProvider(id, options) {
+  const metadata = ON_DEVICE_PROVIDERS.find((provider) => provider.id === id);
+  const runtimeSupported = options.runtime.kind === "native" && options.runtime.supportedProviders.includes(id);
+  const availability = () => {
+    if (options.runtime.kind !== "native") return { available: false, reason: RUNTIME_UNAVAILABLE };
+    if (!runtimeSupported) return { available: false, reason: BINDING_UNAVAILABLE };
+    return bridgeReadiness(options.bridge);
+  };
+  const requireReady = (signal) => {
+    throwIfAborted(signal);
+    const state = availability();
+    if (!state.available) throw new Error(state.reason);
+    return options.bridge;
+  };
+  return {
+    id,
+    displayName: metadata.displayName,
+    signIn: [],
+    availability,
+    async listModels(signal) {
+      const bridge = requireReady(signal);
+      throwIfAborted(signal);
+      return safeBridgePromise(() => bridge.listModels(signal));
+    },
+    stream(request) {
+      return guardedStream(request, availability, requireReady);
+    }
+  };
+}
 export {
   ANTHROPIC_POLICY_URL,
+  CLAUDE_API_KEY_SETUP,
+  CLAUDE_PLAN_CREDITS_URL,
   CLAUDE_SUBSCRIPTIONS_PAUSED_NOTE,
+  CODEX_ACCOUNT_CATALOG_URL,
+  CODEX_CLIENT_VERSION,
   DEFAULT_SERVICE_ORDER,
   NOT_RECOMMENDED_REASON,
+  ON_DEVICE_PROVIDERS,
   OpenRouterAuthenticationError,
   PROVIDER_BASE_URLS,
   ProviderRequestError,
   buildXaiResponsesBody,
   claude,
   claudeCredentialAllowed,
+  compareListedModels,
   createCredentialVault,
   createEffortStore,
   createHuggingFaceSignIn,
   createModelCatalogCache,
+  createOnDeviceProvider,
   createOpenRouterSignIn,
   endpointFor,
   grok,
   groq,
   huggingface,
   isClaudeSubscriptionCredential,
+  isDatedSnapshot,
   isReasoningEffort,
   isUsableModelId,
   iterateSseEvents,
@@ -1284,6 +1471,7 @@ export {
   listClaudeModels,
   listModelsForEndpoint,
   listOpenRouterModels,
+  onDeviceProvidersFor,
   openrouter,
   orderServices,
   parseAnthropicModels,
