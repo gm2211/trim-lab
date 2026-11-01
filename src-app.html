@@ -587,7 +587,7 @@
       <button id="keyForget" style="font-size:11px;padding:5px 10px;background:none;border:1px solid var(--line);color:var(--ink2);border-radius:4px;cursor:pointer">Forget all credentials</button>
     </div>
     <small id="coachSettingsStatus" role="status"></small>
-    <small id="claudePolicy" hidden>Claude subscription sign-in is unavailable under Anthropic’s policy. Use an Anthropic API key. Artifact-provided Claude access remains separate.</small>
+    <small id="claudeKeyNote" hidden>Claude accepts an API key or a Claude Pro/Max subscription token (sk-ant-oat…). Artifact-provided Claude access remains separate.</small>
   </div>
   <div class="coach-in"><input id="coachMsg" placeholder="Ask, or say “demonstrate …”" maxlength="500">
     <button id="coachSend">Ask</button></div>
@@ -4031,7 +4031,7 @@ const COACH_CONFIG="trimlab_coach_config";
 const OAUTH_STORE="trimlab_oauth", RELAY_STORE="trimlab_relay";
 const COACH_PROVIDERS={
   openrouter:{name:"OpenRouter",endpoint:"https://openrouter.ai/api/v1/chat/completions",models:["openai/gpt-4.1-mini","anthropic/claude-haiku-4.5","google/gemini-2.5-flash"],help:"Use any model available through OpenRouter, including Claude, GPT, Gemini and open models."},
-  anthropic:{name:"Anthropic",endpoint:"https://api.anthropic.com/v1/messages",models:["claude-haiku-4-5","claude-sonnet-4-5"],help:"Use an Anthropic API key. Claude subscription sign-in is unavailable under Anthropic’s policy."},
+  anthropic:{name:"Anthropic",endpoint:"https://api.anthropic.com/v1/messages",models:["claude-haiku-4-5","claude-sonnet-4-5"],help:"Use an Anthropic API key or a Claude Pro/Max subscription token."},
   openai:{name:"OpenAI",endpoint:"https://api.openai.com/v1/chat/completions",models:["gpt-4.1-mini","gpt-4.1"],help:"Use an OpenAI API key and a chat model available to your account."},
   gemini:{name:"Google Gemini",endpoint:"https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",models:["gemini-2.5-flash","gemini-2.5-pro"],help:"Use a Google AI Studio API key and a Gemini model ID."},
   groq:{name:"Groq",endpoint:"https://api.groq.com/openai/v1/chat/completions",models:["llama-3.1-8b-instant","llama-3.3-70b-versatile"],help:"Use a Groq API key and a model from Groq’s catalog."},
@@ -4043,8 +4043,8 @@ const COACH_PROVIDERS={
 function detectCred(raw){
   const token=(raw||"").trim();
   if(!token) return null;
-  if(token.startsWith("sk-or-")) return {kind:"openrouter", token};
-  return {kind:token.startsWith("sk-ant-oat") ? "oauth":"api-key",token};
+  // Which kind of Anthropic credential this is (API key or subscription token) is decided by the shared Claude adapter.
+  return {kind:token.startsWith("sk-or-") ? "openrouter":"anthropic",token};
 }
 function coachConfig(){
   try{
@@ -4071,7 +4071,6 @@ function coachEndpoint(config){
   return url.href;
 }
 function coachConfigured(config){
-  if(config.provider==="anthropic"&&config.key.startsWith("sk-ant-oat")) return false;
   return !!(config.key||(config.provider==="custom"&&config.endpoint&&config.model));
 }
 function coachStatus(){
@@ -4089,7 +4088,7 @@ function coachSettings(provider=coachConfig().provider){
   $("modelSel").value=same?saved.model:info.models[0]||"";
   $("endpointIn").value=same?saved.endpoint||"":"";
   $("endpointRow").hidden=provider!=="custom";
-  $("claudePolicy").hidden=provider!=="anthropic";
+  $("claudeKeyNote").hidden=provider!=="anthropic";
   $("providerHelp").textContent=info.help;
   $("keyLabel").textContent=provider==="custom"?"API key (optional)":"API key";
   $("keyIn").value="";
@@ -4104,7 +4103,6 @@ function coachSave(){
   const config={provider,endpoint,model:$("modelSel").value.trim(),key:$("keyIn").value.trim()||(same?saved.key:"")};
   if(!config.model){ $("coachSettingsStatus").textContent="Enter a model ID from your provider."; return; }
   try{ coachEndpoint(config); }catch(e){ $("coachSettingsStatus").textContent="Enter an HTTPS endpoint, or HTTP on localhost, without credentials, query parameters or a fragment."; return; }
-  if(config.provider==="anthropic"&&config.key.startsWith("sk-ant-oat")){ $("coachSettingsStatus").textContent="Claude subscription tokens are unavailable. Use an Anthropic API key."; return; }
   if(!coachConfigured(config)){ $("coachSettingsStatus").textContent="Paste an API key for "+COACH_PROVIDERS[provider].name+"."; return; }
   localStorage.setItem(COACH_CONFIG,JSON.stringify(config));
   localStorage.removeItem(COACH_STORE); localStorage.removeItem(COACH_MODEL);
@@ -4176,13 +4174,12 @@ function coachApply(changes){
   const a=lastR;
   return `${applied.join(" · ")}\nresult: speed ${before.speed.toFixed(2)}→${a.speed.toFixed(2)} kt · heel ${before.heel.toFixed(1)}→${a.heel.toFixed(1)}° · main twist ${before.twist.toFixed(1)}→${a.main.twist.toFixed(1)}° · power ${Math.round(before.eff*100)}→${Math.round(a.eff*100)}%`;
 }
-// Shared adapters own Claude/OpenRouter protocol and the Claude subscription policy.
+// Shared adapters own the Claude/OpenRouter protocol, including Claude API keys and subscription tokens.
 // Other explicitly selected API presets retain their existing compatibility path.
 async function coachAskByos(config,userMsg){
   let byos;
   try{ byos=await window.__byosReady; }catch{ throw {code:"adapter_unavailable"}; }
   if(!byos) throw {code:"adapter_unavailable"};
-  if(config.provider==="anthropic"&&!byos.claudeCredentialAllowed(config.key)) throw {code:"subscription_paused"};
   const adapter=config.provider==="anthropic"?byos.claude():byos.openrouter({appTitle:"Trim Lab"});
   let answer="", done=false;
   try{
@@ -4205,7 +4202,7 @@ async function coachAskApi(userMsg){
   const config=coachConfig(), endpoint=coachEndpoint(config);
   const token=config.key;
   if(!token&&config.provider!=="custom"){
-    if(config.provider==="anthropic"&&localStorage.getItem(OAUTH_STORE)) throw {code:"subscription_paused"};
+    if(config.provider==="anthropic"&&localStorage.getItem(OAUTH_STORE)) throw {code:"legacy_sign_in"};
     throw {code:"no_key"};
   }
   if(config.provider==="anthropic"||config.provider==="openrouter") return coachAskByos(config,userMsg);
@@ -4259,7 +4256,7 @@ async function coachSend(){
       org_cors:"Your Anthropic organization blocks browser requests. Choose another provider, or use a server you control through Custom endpoint.",
       network_error:"Could not reach your provider. Check the endpoint and connection. For custom or local servers, enable CORS for this site.",
       invalid_endpoint:"Invalid endpoint. Use HTTPS, or HTTP on localhost, without credentials, query parameters or a fragment.",
-      subscription_paused:"Claude subscription sign-in is unavailable under Anthropic’s policy. Use an Anthropic API key.",
+      legacy_sign_in:"A Claude sign-in saved by an earlier version can no longer be used. Open ⚙ and paste a Claude API key or subscription token.",
       adapter_unavailable:"The shared provider adapter could not load. Reload this page.",
       invalid_reply:"The provider returned an invalid answer. Try again.",
       empty_reply:"The model returned no answer. Check the model ID or try another model.",

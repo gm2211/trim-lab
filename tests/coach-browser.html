@@ -22,7 +22,7 @@ frame.onload=async()=>{
     w.fetch=async(url,init)=>{
       const endpoint=String(url);
       if(!['https://api.anthropic.com/v1/messages','https://openrouter.ai/api/v1/chat/completions'].includes(endpoint))throw Error('Unexpected fixture endpoint');
-      const body=JSON.parse(init.body);calls.push({endpoint,body});
+      const body=JSON.parse(init.body);calls.push({endpoint,body,headers:init.headers});
       if(mode==='error')return new w.Response(JSON.stringify({error:{message:'sk-ant-api-synthetic-private'}}),{status:401});
       const text=JSON.stringify({reply:'Fixture: ease the mainsheet to open the leech.',changes:null});
       const events=endpoint.includes('anthropic.com')
@@ -38,23 +38,24 @@ frame.onload=async()=>{
     };
     doc.getElementById('coachFab').click();
     configure('openrouter');
-    check('Claude-only notice stays hidden for OpenRouter',w.getComputedStyle(doc.getElementById('claudePolicy')).display==='none');
+    check('Claude-only notice stays hidden for OpenRouter',w.getComputedStyle(doc.getElementById('claudeKeyNote')).display==='none');
     check('Saved model and provider restored',w.coachConfig().model==='fixture-selected-model'&&w.coachConfig().provider==='openrouter');
     doc.getElementById('coachMsg').value='How do I open the leech?';await w.coachSend();
     check('OpenRouter stream reaches the coach UI',doc.querySelector('#coachLog .ai')?.textContent.includes('Fixture: ease')&&calls.at(-1).body.stream===true);
     configure('anthropic');
     doc.getElementById('coachMsg').value='Explain mainsheet tension';await w.coachSend();
     check('Claude stream uses selected model and shared API adapter',calls.at(-1).endpoint.includes('anthropic.com')&&calls.at(-1).body.model==='fixture-selected-model'&&calls.at(-1).body.stream===true);
-    check('Policy notice replaces retired subscription controls',!doc.getElementById('claudePolicy').hidden&&!doc.getElementById('claudeSignIn'));
+    check('Key notice names API keys and subscription tokens; no sign-in controls',!doc.getElementById('claudeKeyNote').hidden&&/subscription token/.test(doc.getElementById('claudeKeyNote').textContent)&&!doc.getElementById('claudeSignIn'));
     mode='error';doc.getElementById('coachMsg').value='Try fixture rejection';await w.coachSend();
     check('Provider rejection is safe and actionable',doc.getElementById('coachLog').textContent.includes('Credential rejected (401)')&&!doc.getElementById('coachLog').textContent.includes('synthetic-private'));
     const count=calls.length;
     w.localStorage.setItem('trimlab_coach_config',JSON.stringify({provider:'anthropic',endpoint:'',model:'fixture-selected-model',key:'sk-ant-oat-synthetic-private'}));
-    let code='';try{await w.coachAskApi('Must stay local');}catch(e){code=e.code;}
-    check('Subscription tokens never reach the network',code==='subscription_paused'&&calls.length===count);
+    mode='success';let code='';try{await w.coachAskApi('Subscription token');}catch(e){code=e.code;}
+    check('Subscription tokens reach Anthropic as a Bearer credential',code===''&&calls.length>count&&/^Bearer sk-ant-oat/.test(calls.at(-1).headers?.Authorization||''));
+    const afterSubscription=calls.length;
     w.eval('COACH.sampleFn={json:async()=>({reply:"Artifact fixture answer",changes:null})};COACH.provider="sample"');
     doc.getElementById('coachMsg').value='Use artifact sample';await w.coachSend();
-    check('Artifact sample stays independent of API credentials',doc.getElementById('coachLog').textContent.includes('Artifact fixture answer')&&calls.length===count);
+    check('Artifact sample stays independent of API credentials',doc.getElementById('coachLog').textContent.includes('Artifact fixture answer')&&calls.length===afterSubscription);
     w.localStorage.setItem('trimlab_oauth','synthetic legacy');w.localStorage.setItem('trimlab_relay','https://relay.invalid');
     doc.getElementById('keyForget').click();
     check('Forget clears current and legacy credentials',storageKeys.every(key=>w.localStorage.getItem(key)===null));

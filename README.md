@@ -146,9 +146,11 @@ provider-specific request options and keyless local endpoints. The artifact-prov
 sample capability remains separate from API-key inference. The shared Claude adapter uses
 BYOS’s 16,000-token output cap; the prompt still requests coaching under 110 words.
 
-Claude subscription sign-in is paused in BYOS under Anthropic’s policy. The obsolete
-OAuth controls and relay have been removed. Saved legacy subscription tokens are never
-sent or refreshed; **Forget all credentials** removes them. Anthropic API keys remain supported.
+The Claude provider accepts an Anthropic API key or a pasted Claude Pro/Max subscription
+token (`sk-ant-oat…`); the shared adapter sends it straight to api.anthropic.com. There is no
+in-app sign-in flow yet. The obsolete OAuth controls and relay were removed, and a sign-in saved
+by an earlier version is never sent or refreshed: paste a key or token again, and **Forget all
+credentials** removes the old one.
 The native ChatGPT SIWC package requires a local Node process and native credential store;
 it cannot run in this static GitHub Pages application.
 
@@ -166,5 +168,5 @@ module, so both committed pages remain self-contained. Browser API keys remain o
 Trim Lab’s existing settings and are passed directly to the shared adapters in memory.
 
 Open `tests/coach-browser.html` on a local development server for a synthetic browser check
-of saved settings, both shared providers, paused subscription tokens, sample mode and safe
+of saved settings, both shared providers, subscription tokens, sample mode and safe
 errors. It uses fake credentials and fixture responses; it does not prove live account access.
