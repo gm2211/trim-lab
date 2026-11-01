@@ -297,6 +297,136 @@ function tokenNeedsRefresh(expiresAt, skewMs, now = Date.now()) {
 var CODEX_CLIENT_VERSION = "0.161.0";
 var CODEX_ACCOUNT_CATALOG_URL = `https://chatgpt.com/backend-api/codex/models?client_version=${CODEX_CLIENT_VERSION}`;
 
+// packages/core/src/claude-oauth.ts
+var CLAUDE_OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+var CLAUDE_AUTHORIZE_URL = "https://claude.com/cai/oauth/authorize";
+var CLAUDE_TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
+var CLAUDE_OAUTH_SCOPE = "user:profile user:inference";
+var CLAUDE_PASTE_REDIRECT_URI = "https://platform.claude.com/oauth/code/callback";
+var CLAUDE_OAUTH_BETA = "oauth-2025-04-20,claude-code-20250219";
+var CLAUDE_CODE_SYSTEM_PREFIX = "You are Claude Code, Anthropic's official CLI for Claude.";
+function claudeAuthorizeUrl(params) {
+  const url = new URL(CLAUDE_AUTHORIZE_URL);
+  const query = {
+    code: "true",
+    client_id: CLAUDE_OAUTH_CLIENT_ID,
+    response_type: "code",
+    redirect_uri: params.redirectUri,
+    scope: CLAUDE_OAUTH_SCOPE,
+    code_challenge: params.challenge,
+    code_challenge_method: "S256",
+    state: params.state
+  };
+  for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
+  return url.href;
+}
+function parseClaudePastedCode(pasted, expectedState) {
+  if (typeof pasted !== "string") return void 0;
+  const [code, state = expectedState] = pasted.trim().split("#");
+  if (!code || code.length > 4096 || /\s/.test(code) || state !== expectedState) return void 0;
+  return code;
+}
+function buildClaudeTokenRequest(request) {
+  if (request.kind === "authorization_code") {
+    return {
+      grant_type: "authorization_code",
+      code: request.code,
+      state: request.state,
+      client_id: CLAUDE_OAUTH_CLIENT_ID,
+      redirect_uri: request.redirectUri,
+      code_verifier: request.verifier
+    };
+  }
+  return { grant_type: "refresh_token", refresh_token: request.refreshToken, client_id: CLAUDE_OAUTH_CLIENT_ID };
+}
+var EXCHANGE_KEYS = ["client_id", "code", "code_verifier", "grant_type", "redirect_uri", "state"];
+var REFRESH_KEYS = ["client_id", "grant_type", "refresh_token"];
+function isPlainObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+function grantText(value) {
+  return typeof value === "string" && value.length >= 1 && value.length <= 4096 && !/[\s\u0000-\u001f\u007f]/.test(value);
+}
+function base64urlText(value) {
+  return typeof value === "string" && value.length >= 43 && value.length <= 128 && /^[A-Za-z0-9_-]+$/.test(value);
+}
+function validateClaudeTokenRequest(value) {
+  if (!isPlainObject(value)) return void 0;
+  const keys = Object.keys(value).sort();
+  const same = (expected) => keys.length === expected.length && keys.every((key, index) => key === expected[index]);
+  if (value.client_id !== CLAUDE_OAUTH_CLIENT_ID) return void 0;
+  if (value.grant_type === "authorization_code" && same(EXCHANGE_KEYS)) {
+    if (value.redirect_uri !== CLAUDE_PASTE_REDIRECT_URI) return void 0;
+    if (!grantText(value.code) || !base64urlText(value.state) || !base64urlText(value.code_verifier)) return void 0;
+    return buildClaudeTokenRequest({
+      kind: "authorization_code",
+      code: value.code,
+      state: value.state,
+      verifier: value.code_verifier,
+      redirectUri: CLAUDE_PASTE_REDIRECT_URI
+    });
+  }
+  if (value.grant_type === "refresh_token" && same(REFRESH_KEYS)) {
+    if (!grantText(value.refresh_token)) return void 0;
+    return buildClaudeTokenRequest({ kind: "refresh_token", refreshToken: value.refresh_token });
+  }
+  return void 0;
+}
+function shortText(value, max) {
+  return typeof value === "string" && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value);
+}
+function filterClaudeTokenResponse(payload) {
+  if (!isPlainObject(payload) || !shortText(payload.access_token, 32768)) return void 0;
+  const email = isPlainObject(payload.account) && shortText(payload.account.email_address, 256) ? payload.account.email_address : void 0;
+  return {
+    access_token: payload.access_token,
+    ...shortText(payload.refresh_token, 32768) ? { refresh_token: payload.refresh_token } : {},
+    ...typeof payload.expires_in === "number" && Number.isFinite(payload.expires_in) && payload.expires_in > 0 ? { expires_in: payload.expires_in } : {},
+    ...shortText(payload.token_type, 64) ? { token_type: payload.token_type } : {},
+    ...shortText(payload.scope, 512) ? { scope: payload.scope } : {},
+    ...email ? { account: { email_address: email } } : {}
+  };
+}
+
+// packages/core/src/refresh-lock.ts
+async function waitForCaller(promise, signal) {
+  if (!signal) return promise;
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const aborted = () => reject(signal.reason ?? new DOMException("The operation was aborted.", "AbortError"));
+    signal.addEventListener("abort", aborted, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", aborted));
+  });
+}
+function createCredentialRefresher(options) {
+  let inflight;
+  return {
+    async refreshed(token, refresh, signal) {
+      const run = async () => {
+        const latest = options.readCredential();
+        if (latest !== token) {
+          if (!latest) throw options.reconnectError();
+          return latest;
+        }
+        const next = await refresh();
+        const afterRefresh = options.readCredential();
+        if (afterRefresh !== token) {
+          if (!afterRefresh) throw options.reconnectError();
+          return afterRefresh;
+        }
+        options.saveCredential(next);
+        return next;
+      };
+      inflight ??= (globalThis.navigator?.locks ? globalThis.navigator.locks.request(options.lockName, { mode: "exclusive" }, run) : run()).finally(() => {
+        inflight = void 0;
+      });
+      return waitForCaller(inflight, signal);
+    }
+  };
+}
+
 // packages/providers/src/sse.ts
 function parseSseLine(rawLine) {
   const line = rawLine.trim();
@@ -455,6 +585,18 @@ var ProviderRequestError = class extends Error {
     this.status = status;
   }
 };
+var PROVIDER_ERROR_MESSAGES = {
+  auth: "The provider did not accept this sign-in or key. Reconnect it, then try again.",
+  quota: "The provider refused the request because of credits or rate limits. Check your account, or choose another provider.",
+  aborted: "The request was cancelled.",
+  unavailable: "The provider could not complete this request. Try again later."
+};
+function classifyProviderError(error) {
+  const name = error && typeof error === "object" ? error.name : void 0;
+  const status = error && typeof error === "object" ? error.status : void 0;
+  const kind = name === "AbortError" || name === "TimeoutError" ? "aborted" : status === 401 || status === 403 ? "auth" : status === 402 || status === 429 ? "quota" : "unavailable";
+  return { kind, message: PROVIDER_ERROR_MESSAGES[kind] };
+}
 function providerErrorText(payload) {
   if (!payload || typeof payload !== "object") return void 0;
   const error = payload.error;
@@ -524,14 +666,14 @@ async function* streamChatCompletions(endpoint, request) {
 }
 
 // packages/providers/src/catalog.ts
-var OpenRouterAuthenticationError = class extends Error {
-  constructor() {
-    super("OpenRouter rejected this key. Reconnect your OpenRouter account.");
+var OpenRouterAuthenticationError = class extends ProviderRequestError {
+  constructor(status = 401) {
+    super("OpenRouter rejected this key. Reconnect your OpenRouter account.", status);
     this.name = "OpenRouterAuthenticationError";
   }
 };
 function rejectInvalidCredential(status) {
-  if (status === 401 || status === 403) throw new OpenRouterAuthenticationError();
+  if (status === 401 || status === 403) throw new OpenRouterAuthenticationError(status);
 }
 var API_ROOT = PROVIDER_BASE_URLS.openrouter;
 function perMillion(value) {
@@ -552,14 +694,14 @@ async function readOpenRouterKeyInfo(key, signal) {
   const response = await fetch(`${API_ROOT}/key`, { signal, redirect: "error", headers: { Authorization: `Bearer ${key}` } });
   rejectInvalidCredential(response.status);
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(safeProviderErrorText(payload, key) || "OpenRouter rejected this key.");
+  if (!response.ok) throw new ProviderRequestError(safeProviderErrorText(payload, key) || "OpenRouter rejected this key.", response.status);
   return payload.data ?? {};
 }
 async function listOpenRouterModels(key, signal) {
   const response = await fetch(`${API_ROOT}/models`, { signal, redirect: "error", headers: { Authorization: `Bearer ${key}` } });
   rejectInvalidCredential(response.status);
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(safeProviderErrorText(payload, key) || "Could not load OpenRouter models.");
+  if (!response.ok) throw new ProviderRequestError(safeProviderErrorText(payload, key) || "Could not load OpenRouter models.", response.status);
   return (payload.data ?? []).filter((model) => model.id && model.supported_parameters?.includes("tools")).map((model) => {
     const name = model.name || model.id;
     return {
@@ -573,20 +715,41 @@ async function listOpenRouterModels(key, signal) {
     };
   }).sort((a, b) => fitRank(a.analysisFit) - fitRank(b.analysisFit) || a.name.localeCompare(b.name));
 }
-var NON_CHAT_MODEL_WORDS = /* @__PURE__ */ new Set(["imagine", "image", "video", "embed", "embedding", "tts", "whisper", "dall", "moderation", "transcribe", "sora", "realtime", "audio", "speech"]);
+var NON_CHAT_MODEL_WORDS = /* @__PURE__ */ new Set(["imagine", "image", "video", "embed", "embedding", "tts", "whisper", "dall", "moderation", "transcribe", "sora", "realtime", "audio", "speech", "imagen", "banana", "veo", "lyria"]);
 function isChatModel(id) {
   return !id.toLowerCase().split(/[^a-z0-9]+/).some((word) => NON_CHAT_MODEL_WORDS.has(word));
+}
+var DATED_SEGMENT = /(?:^|-)\d{4,8}(?:-|$)/;
+function isVariantId(id) {
+  if (DATED_SEGMENT.test(id)) return true;
+  const parts = id.toLowerCase().split("-");
+  const firstVersion = parts.findIndex((part) => /\d/.test(part));
+  return firstVersion !== -1 && parts.slice(firstVersion + 1).some((part) => /^[a-z]+$/.test(part));
+}
+function versionOf(id) {
+  return id.split("-").filter((part) => !/^\d{4,8}$/.test(part)).flatMap((part) => part.match(/\d+/g) ?? []).map(Number);
+}
+function compareVersionsDescending(a, b) {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const diff = (b[i] ?? -1) - (a[i] ?? -1);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+function newestFirst(models) {
+  const createdAt = (model) => typeof model.created === "number" && Number.isFinite(model.created) ? model.created : -Infinity;
+  return models.map((model, index) => ({ model, index, created: createdAt(model), variant: isVariantId(model.id) ? 1 : 0, version: versionOf(model.id) })).sort((a, b) => (a.created === b.created ? 0 : b.created > a.created ? 1 : -1) || a.variant - b.variant || compareVersionsDescending(a.version, b.version) || a.index - b.index).map((entry) => entry.model);
 }
 async function listModelsForEndpoint(endpoint, signal) {
   const response = await fetch(`${endpoint.baseUrl}/models`, { signal, redirect: "error", headers: { Authorization: `Bearer ${endpoint.apiKey}`, ...endpoint.headers } });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(safeProviderErrorText(payload, endpoint.apiKey) || "Could not load models.");
+  if (!response.ok) throw new ProviderRequestError(safeProviderErrorText(payload, endpoint.apiKey) || "Could not load models.", response.status);
   const seen = /* @__PURE__ */ new Set();
-  return (payload.data ?? []).filter((model) => {
+  return newestFirst((payload.data ?? []).filter((model) => {
     if (!model.id || !isChatModel(model.id) || seen.has(model.id)) return false;
     seen.add(model.id);
     return true;
-  }).map((model) => ({ id: model.id, name: model.name || model.id, analysisFit: "standard", reasoning: false }));
+  })).map((model) => ({ id: model.id, name: model.name || model.id, analysisFit: "standard", reasoning: false }));
 }
 
 // packages/providers/src/providers.ts
@@ -640,6 +803,208 @@ function huggingface(options = {}) {
   };
 }
 
+// packages/providers/src/claude-sign-in.ts
+var CREDENTIAL_PREFIX = "claude-subscription:";
+var ATTEMPT_TTL_MS = 20 * 6e4;
+var REQUEST_TIMEOUT_MS = 3e4;
+var MAX_RESPONSE_BYTES = 64 * 1024;
+var DEFAULT_LIFETIME_SECONDS = 8 * 3600;
+var REFRESH_WINDOW_MS = 5 * 6e4;
+var ClaudeAuthError = class extends Error {
+  status;
+  constructor(status = 502, message = "Claude sign-in could not be completed. Try connecting again.") {
+    super(message);
+    this.status = status;
+    this.name = "ClaudeAuthError";
+  }
+};
+var ClaudeReconnectRequiredError = class extends Error {
+  status = 401;
+  constructor(message = "Your Claude sign-in expired. Connect it again.") {
+    super(message);
+    this.name = "ClaudeReconnectRequiredError";
+  }
+};
+function isRecord(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+function validText(value, maxLength = 32768) {
+  return typeof value === "string" && value.length > 0 && value.length <= maxLength && !/[\s\u0000-\u001f\u007f]/.test(value);
+}
+function toBase64url(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function textToBase64url(text) {
+  return toBase64url(new TextEncoder().encode(text));
+}
+function base64urlToText(value) {
+  const encoded = value.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(encoded + "=".repeat((4 - encoded.length % 4) % 4));
+  return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+}
+function linkedSignal(parent) {
+  return AbortSignal.any([...parent ? [parent] : [], AbortSignal.timeout(REQUEST_TIMEOUT_MS)]);
+}
+function encodeClaudeCredential(credential) {
+  return `${CREDENTIAL_PREFIX}${textToBase64url(JSON.stringify(credential))}`;
+}
+function decodeClaudeCredential(value) {
+  if (!value || !value.startsWith(CREDENTIAL_PREFIX)) return void 0;
+  try {
+    const payload = JSON.parse(base64urlToText(value.slice(CREDENTIAL_PREFIX.length)));
+    if (!isRecord(payload) || !validText(payload.accessToken)) return void 0;
+    if (typeof payload.expiresAt !== "number" || !Number.isFinite(payload.expiresAt)) return void 0;
+    return {
+      accessToken: payload.accessToken,
+      ...validText(payload.refreshToken) ? { refreshToken: payload.refreshToken } : {},
+      expiresAt: payload.expiresAt,
+      ...typeof payload.label === "string" && payload.label.length > 0 && payload.label.length <= 320 ? { label: payload.label } : {}
+    };
+  } catch {
+    return void 0;
+  }
+}
+function isClaudeSubscriptionRecord(value) {
+  return typeof value === "string" && value.startsWith(CREDENTIAL_PREFIX);
+}
+function claudeTokenRelayFetch(options) {
+  const path = options.path;
+  if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//") || /[?#\\]/.test(path) || path.includes("//")) {
+    throw new TypeError("path must be a same-origin absolute path with safe segments.");
+  }
+  const segments = path.slice(1).split("/");
+  if (segments.some((segment) => !segment || segment === "." || segment === ".." || !/^[A-Za-z0-9._~-]+$/.test(segment))) {
+    throw new TypeError("path must be a same-origin absolute path with safe segments.");
+  }
+  return (input, init) => {
+    if (input !== CLAUDE_TOKEN_URL) return Promise.reject(new ClaudeAuthError());
+    return fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: init.body,
+      signal: init.signal,
+      credentials: "same-origin",
+      redirect: "error",
+      cache: "no-store"
+    });
+  };
+}
+async function postGrant(tokenFetch, body, signal) {
+  return tokenFetch(CLAUDE_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    redirect: "error",
+    credentials: "omit",
+    signal: linkedSignal(signal)
+  });
+}
+async function readJsonObject(response) {
+  if (!response.body) throw new ClaudeAuthError(response.status);
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    for (; ; ) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => void 0);
+        throw new ClaudeAuthError(response.status);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  let payload;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    throw new ClaudeAuthError(response.status);
+  }
+  if (!isRecord(payload)) throw new ClaudeAuthError(response.status);
+  return payload;
+}
+function credentialFromTokens(value, previous, now = Date.now()) {
+  if (!validText(value.access_token)) throw new ClaudeAuthError();
+  if (value.refresh_token !== void 0 && !validText(value.refresh_token)) throw new ClaudeAuthError();
+  const refreshToken = typeof value.refresh_token === "string" ? value.refresh_token : previous?.refreshToken;
+  const expiresIn = typeof value.expires_in === "number" && Number.isFinite(value.expires_in) && value.expires_in > 0 ? Math.min(value.expires_in, 365 * 24 * 3600) : DEFAULT_LIFETIME_SECONDS;
+  const account = value.account;
+  const email = isRecord(account) && typeof account.email_address === "string" && account.email_address.length > 0 && account.email_address.length <= 256 && !/[\u0000-\u001f\u007f]/.test(account.email_address) ? account.email_address : void 0;
+  const label = email ?? previous?.label;
+  return {
+    accessToken: value.access_token,
+    ...refreshToken ? { refreshToken } : {},
+    expiresAt: now + expiresIn * 1e3,
+    ...label ? { label } : {}
+  };
+}
+async function beginClaudeSignIn(now = Date.now()) {
+  const verifier = toBase64url(crypto.getRandomValues(new Uint8Array(32)));
+  const state = toBase64url(crypto.getRandomValues(new Uint8Array(32)));
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  const url = claudeAuthorizeUrl({ challenge: toBase64url(new Uint8Array(digest)), state, redirectUri: CLAUDE_PASTE_REDIRECT_URI });
+  return { url, attempt: { verifier, state, createdAt: now } };
+}
+async function completeClaudeSignIn(tokenFetch, attempt, pasted, signal, now = Date.now()) {
+  if (now - attempt.createdAt > ATTEMPT_TTL_MS || now < attempt.createdAt) {
+    throw new ClaudeAuthError(400, "This sign-in expired. Start again.");
+  }
+  const code = parseClaudePastedCode(pasted, attempt.state);
+  if (!code) throw new ClaudeAuthError(400, "That code did not match. Copy all of it again.");
+  let response;
+  try {
+    response = await postGrant(tokenFetch, buildClaudeTokenRequest({
+      kind: "authorization_code",
+      code,
+      state: attempt.state,
+      verifier: attempt.verifier,
+      redirectUri: CLAUDE_PASTE_REDIRECT_URI
+    }), signal);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new ClaudeAuthError();
+  }
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => void 0);
+    throw new ClaudeAuthError(response.status);
+  }
+  return encodeClaudeCredential(credentialFromTokens(await readJsonObject(response), void 0, now));
+}
+function claudeNeedsRefresh(credential, now = Date.now()) {
+  return credential.expiresAt - now <= REFRESH_WINDOW_MS;
+}
+async function refreshClaudeCredential(tokenFetch, current, signal) {
+  if (!validText(current.refreshToken, 4096)) throw new ClaudeReconnectRequiredError();
+  let response;
+  try {
+    response = await postGrant(tokenFetch, buildClaudeTokenRequest({ kind: "refresh_token", refreshToken: current.refreshToken }), signal);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new ClaudeAuthError();
+  }
+  if ([400, 401, 403].includes(response.status)) {
+    await response.body?.cancel().catch(() => void 0);
+    throw new ClaudeReconnectRequiredError();
+  }
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => void 0);
+    throw new ClaudeAuthError();
+  }
+  return encodeClaudeCredential(credentialFromTokens(await readJsonObject(response), current));
+}
+
 // packages/providers/src/claude.ts
 var ANTHROPIC_POLICY_URL = "https://code.claude.com/docs/en/legal-and-compliance";
 var CLAUDE_PLAN_CREDITS_URL = "https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers";
@@ -647,7 +1012,7 @@ var CLAUDE_API_KEY_SETUP = [
   { label: "Claim your Max or Team plan\u2019s API credits (optional)", url: "https://claude.ai/settings/billing" },
   { label: "Create an API key in Claude Console", url: "https://platform.claude.com/settings/keys" }
 ];
-var CLAUDE_SUBSCRIPTIONS_PAUSED_NOTE = "Claude subscriptions are momentarily unavailable because of Anthropic\u2019s policy. Use an API key, or pick another service.";
+var CLAUDE_SUBSCRIPTIONS_PAUSED_NOTE = "This app has paused Claude subscription sign-in. Use an API key, or pick another service.";
 var API = "https://api.anthropic.com/v1";
 var ANTHROPIC_VERSION = "2023-06-01";
 var EFFORT_ORDER = ["low", "medium", "high", "xhigh", "max"];
@@ -656,12 +1021,13 @@ function isClaudeSubscriptionCredential(raw) {
   const token = raw.trim();
   return Boolean(token) && !(token.startsWith("sk-ant-") && !token.startsWith("sk-ant-oat"));
 }
-function claudeCredentialAllowed(raw, subscriptionsPaused = true) {
+function claudeCredentialAllowed(raw, subscriptionsPaused = false) {
   return !(subscriptionsPaused && isClaudeSubscriptionCredential(raw));
 }
 function headers(key, json) {
+  const subscription = isClaudeSubscriptionCredential(key);
   return {
-    "x-api-key": key,
+    ...subscription ? { Authorization: `Bearer ${key.trim()}`, "anthropic-beta": CLAUDE_OAUTH_BETA } : { "x-api-key": key },
     "anthropic-version": ANTHROPIC_VERSION,
     // Anthropic requires this opt-in for calls made straight from a browser page.
     "anthropic-dangerous-direct-browser-access": "true",
@@ -686,7 +1052,7 @@ function parseAnthropicModels(rows) {
 function requireKey(key, paused) {
   if (!claudeCredentialAllowed(key, paused)) throw new ProviderRequestError(CLAUDE_SUBSCRIPTIONS_PAUSED_NOTE, 403);
 }
-async function listClaudeModels(key, signal, subscriptionsPaused = true) {
+async function listClaudeModels(key, signal, subscriptionsPaused = false) {
   requireKey(key, subscriptionsPaused);
   const models = [];
   let after = "";
@@ -700,9 +1066,10 @@ async function listClaudeModels(key, signal, subscriptionsPaused = true) {
   }
   return models;
 }
-async function* streamClaude(key, request, subscriptionsPaused = true) {
+async function* streamClaude(key, request, subscriptionsPaused = false) {
   requireKey(key, subscriptionsPaused);
-  const system = request.messages.filter((message) => message.role === "system").map((message) => message.content).join("\n\n");
+  const userSystem = request.messages.filter((message) => message.role === "system").map((message) => message.content).join("\n\n");
+  const system = isClaudeSubscriptionCredential(key) ? [{ type: "text", text: CLAUDE_CODE_SYSTEM_PREFIX }, ...userSystem ? [{ type: "text", text: userSystem }] : []] : userSystem;
   const response = await fetch(`${API}/messages`, {
     method: "POST",
     signal: request.signal,
@@ -712,7 +1079,7 @@ async function* streamClaude(key, request, subscriptionsPaused = true) {
       model: request.model,
       max_tokens: 16e3,
       stream: true,
-      ...system ? { system } : {},
+      ...system.length ? { system } : {},
       messages: request.messages.filter((message) => message.role !== "system").map(({ role, content }) => ({ role, content })),
       // Effort only when chosen and listed for the model; some models reject the field outright.
       ...request.effort ? { thinking: { type: "adaptive" }, output_config: { effort: request.effort } } : {}
@@ -752,17 +1119,80 @@ async function* streamClaude(key, request, subscriptionsPaused = true) {
   }
   yield { type: "done" };
 }
+var API_KEY_METHOD = {
+  kind: "api-key",
+  hint: "A Claude API key from platform.claude.com. Max and Team plans include monthly API credits for it.",
+  setup: CLAUDE_API_KEY_SETUP
+};
 function claude(options = {}) {
-  const paused = options.subscriptionsPaused ?? true;
+  const paused = options.subscriptionsPaused ?? false;
+  const subscription = options.subscription;
+  const refresher = subscription && createCredentialRefresher({
+    lockName: `byos-claude-refresh:${subscription.namespace?.trim() || "default"}`,
+    readCredential: () => subscription.readCredential(),
+    saveCredential: (value) => subscription.saveCredential(value),
+    reconnectError: () => new ClaudeReconnectRequiredError()
+  });
+  async function accessToken(token, force, signal) {
+    requireKey(token, paused);
+    if (!isClaudeSubscriptionRecord(token)) return token;
+    const current = decodeClaudeCredential(token);
+    if (!current) throw new ClaudeReconnectRequiredError();
+    const expired = current.expiresAt <= Date.now();
+    if (!force && !claudeNeedsRefresh(current)) return current.accessToken;
+    if (!subscription || !refresher || !current.refreshToken) {
+      if (force || expired) throw new ClaudeReconnectRequiredError();
+      return current.accessToken;
+    }
+    const value = await refresher.refreshed(token, () => refreshClaudeCredential(subscription.tokenFetch, current), signal);
+    const next = decodeClaudeCredential(value);
+    if (!next) throw new ClaudeReconnectRequiredError();
+    return next.accessToken;
+  }
+  async function withRetry(token, signal, run) {
+    const key = await accessToken(token, false, signal);
+    try {
+      return await run(key);
+    } catch (error) {
+      if (!(error instanceof ProviderRequestError) || error.status !== 401 || !isClaudeSubscriptionRecord(token)) throw error;
+      return run(await accessToken(subscription?.readCredential() || token, true, signal));
+    }
+  }
   return {
     id: "claude",
     displayName: "Claude",
-    signIn: [{ kind: "api-key", hint: "A Claude API key from platform.claude.com. Max and Team plans include monthly API credits for it.", setup: CLAUDE_API_KEY_SETUP }],
-    // API keys work; the note tells users why there is no subscription button.
+    signIn: subscription && !paused ? [{ kind: "pkce", handshakeViaSite: true, completion: "paste-code" }, API_KEY_METHOD] : [API_KEY_METHOD],
     availability: () => ({ available: true }),
-    listModels: (token, signal) => listClaudeModels(token, signal, paused),
-    stream: (token, request) => streamClaude(token, request, paused)
+    listModels: (token, signal) => withRetry(token, signal, (key) => listClaudeModels(key, signal, paused)),
+    async *stream(token, request) {
+      const key = await accessToken(token, false, request.signal);
+      const first = streamClaude(key, request, paused);
+      let started = false;
+      try {
+        for await (const event of first) {
+          started = true;
+          yield event;
+        }
+        return;
+      } catch (error) {
+        if (started || !(error instanceof ProviderRequestError) || error.status !== 401 || !isClaudeSubscriptionRecord(token)) throw error;
+      }
+      const retryKey = await accessToken(subscription?.readCredential() || token, true, request.signal);
+      yield* streamClaude(retryKey, request, paused);
+    }
   };
+}
+function claudeAcceptsTemperature(model) {
+  const parts = model.toLowerCase().split("-");
+  if (parts.shift() !== "claude") return false;
+  if (parts[0] !== void 0 && !/^\d+$/.test(parts[0])) parts.shift();
+  if (!/^\d+$/.test(parts[0] ?? "")) return false;
+  const major = Number(parts[0]);
+  if (major <= 3) return true;
+  if (major !== 4) return false;
+  const next = parts[1];
+  const minor = next !== void 0 && next.length <= 2 && /^\d+$/.test(next) ? Number(next) : 0;
+  return minor <= 6;
 }
 
 // packages/providers/src/openrouter-sign-in.ts
@@ -1263,9 +1693,7 @@ function createHuggingFaceSignIn(options) {
 
 // packages/providers/src/order.ts
 var DEFAULT_SERVICE_ORDER = ["claude", "chatgpt", "grok", "gemini", "openrouter", "groq", "huggingface"];
-var NOT_RECOMMENDED_REASON = {
-  claude: "Anthropic doesn't allow subscription sign-in in other apps; use an API key (Max and Team plans include API credits)."
-};
+var NOT_RECOMMENDED_REASON = {};
 function orderServices(items, keyOf, order = DEFAULT_SERVICE_ORDER) {
   const rank = (item) => {
     const key = keyOf(item);
@@ -1435,31 +1863,53 @@ function createOnDeviceProvider(id, options) {
 export {
   ANTHROPIC_POLICY_URL,
   CLAUDE_API_KEY_SETUP,
+  CLAUDE_AUTHORIZE_URL,
+  CLAUDE_CODE_SYSTEM_PREFIX,
+  CLAUDE_OAUTH_BETA,
+  CLAUDE_OAUTH_CLIENT_ID,
+  CLAUDE_OAUTH_SCOPE,
+  CLAUDE_PASTE_REDIRECT_URI,
   CLAUDE_PLAN_CREDITS_URL,
   CLAUDE_SUBSCRIPTIONS_PAUSED_NOTE,
+  CLAUDE_TOKEN_URL,
   CODEX_ACCOUNT_CATALOG_URL,
   CODEX_CLIENT_VERSION,
+  ClaudeAuthError,
+  ClaudeReconnectRequiredError,
   DEFAULT_SERVICE_ORDER,
   NOT_RECOMMENDED_REASON,
   ON_DEVICE_PROVIDERS,
   OpenRouterAuthenticationError,
   PROVIDER_BASE_URLS,
   ProviderRequestError,
+  beginClaudeSignIn,
+  buildClaudeTokenRequest,
   buildXaiResponsesBody,
+  classifyProviderError,
   claude,
+  claudeAcceptsTemperature,
+  claudeAuthorizeUrl,
   claudeCredentialAllowed,
+  claudeNeedsRefresh,
+  claudeTokenRelayFetch,
+  completeClaudeSignIn,
+  createCredentialRefresher,
   createCredentialVault,
   createEffortStore,
   createHuggingFaceSignIn,
   createModelCatalogCache,
   createOnDeviceProvider,
   createOpenRouterSignIn,
+  decodeClaudeCredential,
+  encodeClaudeCredential,
   endpointFor,
+  filterClaudeTokenResponse,
   grok,
   groq,
   huggingface,
   isChatModel,
   isClaudeSubscriptionCredential,
+  isClaudeSubscriptionRecord,
   isReasoningEffort,
   isUsableModelId,
   iterateSseEvents,
@@ -1471,6 +1921,7 @@ export {
   openrouter,
   orderServices,
   parseAnthropicModels,
+  parseClaudePastedCode,
   parseModelCatalog,
   parseSseLine,
   parseXaiResponsesPayload,
@@ -1479,6 +1930,7 @@ export {
   readOpenRouterKeyInfo,
   reasoningEffortOptions,
   redactProviderSecrets,
+  refreshClaudeCredential,
   requireStoragePrefix,
   resolveStorage,
   safeGet,
@@ -1489,6 +1941,7 @@ export {
   streamChatCompletions,
   streamClaude,
   tokenNeedsRefresh,
+  validateClaudeTokenRequest,
   xaiResponsesErrorText,
   xaiResponsesUrl
 };

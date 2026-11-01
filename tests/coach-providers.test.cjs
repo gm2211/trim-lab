@@ -175,12 +175,21 @@ test('legacy Claude subscription credentials stay inactive and never reach any p
   const oauth=JSON.stringify({access:'synthetic-oauth',refresh:'synthetic-refresh',exp:Date.now()+60_000});
   for(const provider of ['anthropic','openrouter','openai','gemini','groq','xai','mistral','deepseek']){
     const h=harness({...configured(provider,{key:''}),trimlab_oauth:oauth});
-    await assert.rejects(h.api.coachAskApi('hello'),error=>error.code===(provider==='anthropic'?'subscription_paused':'no_key'));
+    await assert.rejects(h.api.coachAskApi('hello'),error=>error.code===(provider==='anthropic'?'legacy_sign_in':'no_key'));
     assert.equal(h.calls.length,0);
   }
-  const h=harness(configured('anthropic',{key:'sk-ant-oat-synthetic'}));
-  await assert.rejects(h.api.coachAskApi('hello'),error=>error.code==='subscription_paused');
-  assert.equal(h.calls.length,0);
+});
+
+test('a pasted Claude subscription token is sent to Anthropic as a Bearer credential', async () => {
+  const h=harness(configured('anthropic',{key:'sk-ant-oat-synthetic'}), async () => response({
+    content:[{type:'text',text:'subscription answer'}], stop_reason:'end_turn',
+  }));
+  assert.equal(await h.api.coachAskApi('hello'),'subscription answer');
+  assert.equal(h.calls.length,1);
+  const [url,init]=h.calls.at(-1);
+  assert.match(String(url),/api\.anthropic\.com/);
+  assert.equal(init.headers.Authorization,'Bearer sk-ant-oat-synthetic');
+  assert.equal(init.headers['x-api-key'],undefined);
 });
 
 test('custom provider accepts HTTPS and localhost HTTP chat-completion URLs without a key', async () => {
